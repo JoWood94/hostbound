@@ -3,63 +3,66 @@ import { PAL } from '../render/palette.js';
 import { strokePoly, fillPoly, drawGlowDot, ring } from '../render/draw.js';
 import { playerBullets, spawn } from './bullets.js';
 import { burst, shake, hitStop } from '../render/fx.js';
+import { LANES, laneX } from './world.js';
 
 export const PLAYER_Y = H * 0.78;
 const HALF_W = 12;
-const MIN_X = 22;
-const MAX_X = W - 22;
+const LANE_SNAP = 18;     // higher = snappier lane change
+const JUMP_TIME = 0.45;
+const PHASE_TIME = 0.25;
+const PHASE_CD = 2.0;
 
 export function makePlayer() {
+  const lane = Math.floor(LANES / 2);
   return {
-    x: W / 2,
-    prevX: W / 2,
-    vx: 0,
-    r: 7,                 // hurt radius (small, forgiving, bullet-hell style)
+    lane,
+    x: laneX(lane),
+    prevX: laneX(lane),
+    r: 7,                 // hurt radius
     hearts: 3,
     maxHearts: 3,
     blueHearts: 0,
     iframes: 0,
     fireTimer: 0,
-    fireRate: 7,          // shots per second
-    jumpT: 0,             // >0 while in the air
-    dashT: 0,
-    dashCd: 0,
-    dashDir: 0,
+    fireRate: 7,
+    jumpT: 0,
+    phaseT: 0,
+    phaseCd: 0,
     glitch: 0,
     dead: false,
-    trail: new Float32Array(24), // ring buffer of x positions
+    trail: new Float32Array(24),
     trailI: 0,
   };
 }
 
 export function updatePlayer(p, input, dt) {
   p.prevX = p.x;
-  // Movement: drag delta (touch) or keyboard axis. Drag is 1:1 with a small gain.
-  let dx = input.moveDelta * 1.15 + input.axis * 260 * dt;
-  if (p.dashT > 0) dx += p.dashDir * 620 * dt;
-  p.x += dx;
-  if (p.x < MIN_X) p.x = MIN_X;
-  if (p.x > MAX_X) p.x = MAX_X;
+
+  // Lane change (queued inputs feel responsive on mobile)
+  if (input.left && p.lane > 0) p.lane--;
+  if (input.right && p.lane < LANES - 1) p.lane++;
+  const tx = laneX(p.lane);
+  p.x += (tx - p.x) * Math.min(1, LANE_SNAP * dt);
+  if (Math.abs(tx - p.x) < 0.3) p.x = tx;
 
   // Jump
   if (p.jumpT > 0) p.jumpT -= dt;
-  else if (input.jump) p.jumpT = 0.45;
+  else if (input.jump) p.jumpT = JUMP_TIME;
 
-  // Dash
-  if (p.dashCd > 0) p.dashCd -= dt;
-  if (p.dashT > 0) p.dashT -= dt;
-  else if (input.dash && p.dashCd <= 0) {
-    p.dashT = 0.16;
-    p.dashCd = 2.0;
-    p.dashDir = input.axis !== 0 ? input.axis : (input.moveDelta !== 0 ? Math.sign(input.moveDelta) : (p.x < W / 2 ? 1 : -1));
-    p.iframes = Math.max(p.iframes, 0.2);
-    burst(p.x, PLAYER_Y, PAL.cyan, 8, 140, 0.3, 2);
+  // Phase: brief invulnerability in place
+  if (p.phaseCd > 0) p.phaseCd -= dt;
+  if (p.phaseT > 0) p.phaseT -= dt;
+  else if (input.phase && p.phaseCd <= 0) {
+    p.phaseT = PHASE_TIME;
+    p.phaseCd = PHASE_CD;
+    p.iframes = Math.max(p.iframes, PHASE_TIME);
+    burst(p.x, PLAYER_Y, PAL.cyan, 10, 140, 0.3, 2);
   }
 
   if (p.iframes > 0) p.iframes -= dt;
   if (p.glitch > 0) p.glitch = Math.max(0, p.glitch - dt * 2.5);
 
-  // Auto-fire
+  // Auto-fire straight up the lane
   p.fireTimer -= dt;
   if (p.fireTimer <= 0) {
     p.fireTimer += 1 / p.fireRate;
@@ -70,7 +73,8 @@ export function updatePlayer(p, input, dt) {
   p.trailI = (p.trailI + 1) % p.trail.length;
 }
 
-// Returns true if damage was actually applied.
+export function isAirborne(p) { return p.jumpT > 0; }
+
 export function hurtPlayer(p, amount = 1) {
   if (p.iframes > 0 || p.dead) return false;
   if (p.blueHearts > 0) p.blueHearts -= amount;
@@ -86,17 +90,20 @@ export function hurtPlayer(p, amount = 1) {
 
 export function jumpHeight(p) {
   if (p.jumpT <= 0) return 0;
-  const t = 1 - p.jumpT / 0.45; // 0..1
-  return Math.sin(t * Math.PI); // 0..1..0
+  const t = 1 - p.jumpT / JUMP_TIME;
+  return Math.sin(t * Math.PI);
+}
+
+function boardPoly(x, y, w, h) {
+  return [x, y - h, x + w, y - h * 0.3, x + w * 0.7, y + h * 0.6, x - w * 0.7, y + h * 0.6, x - w, y - h * 0.3];
 }
 
 export function drawPlayer(p, alpha) {
   const x = p.prevX + (p.x - p.prevX) * alpha;
   const jh = jumpHeight(p);
   const y = PLAYER_Y - jh * 26;
-  const blink = p.iframes > 0 && Math.floor(p.iframes * 20) % 2 === 0;
+  const blink = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 20) % 2 === 0;
 
-  // Trail
   for (let i = 0; i < p.trail.length; i += 3) {
     const idx = (p.trailI + i) % p.trail.length;
     const t = i / p.trail.length;
@@ -104,21 +111,22 @@ export function drawPlayer(p, alpha) {
   }
 
   if (blink) return;
-
-  // Shadow on the floor while jumping
   if (jh > 0) ring(x, PLAYER_Y + 6, 10 * (1 - jh * 0.5), PAL.dim, 2, 0.6);
 
   const scale = 1 + jh * 0.25;
   const w = HALF_W * scale;
   const h = 16 * scale;
-  // Hoverboard: elongated hexagon
-  fillPoly([x, y - h, x + w, y - h * 0.3, x + w * 0.7, y + h * 0.6, x - w * 0.7, y + h * 0.6, x - w, y - h * 0.3], PAL.bg2);
-  strokePoly([x, y - h, x + w, y - h * 0.3, x + w * 0.7, y + h * 0.6, x - w * 0.7, y + h * 0.6, x - w, y - h * 0.3], PAL.cyan, 2);
-  // Rider core
+  const poly = boardPoly(x, y, w, h);
+  if (p.phaseT > 0) {
+    // Phased: ghostly, offset copies
+    strokePoly(boardPoly(x - 4, y, w, h), PAL.magenta, 1);
+    strokePoly(boardPoly(x + 4, y, w, h), PAL.cyan, 1);
+    strokePoly(poly, PAL.white, 1);
+    return;
+  }
+  fillPoly(poly, PAL.bg2);
+  strokePoly(poly, PAL.cyan, 2);
   drawGlowDot(x, y - 2, PAL.white, 3);
-  // Thrusters
   drawGlowDot(x - w * 0.5, y + h * 0.6, PAL.magenta, 2.5);
   drawGlowDot(x + w * 0.5, y + h * 0.6, PAL.magenta, 2.5);
-  // Dash ghost
-  if (p.dashT > 0) strokePoly([x, y - h, x + w, y - h * 0.3, x + w * 0.7, y + h * 0.6, x - w * 0.7, y + h * 0.6, x - w, y - h * 0.3], PAL.white, 1);
 }

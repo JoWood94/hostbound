@@ -17,6 +17,6 @@ export function drawHud(p, distance, coins) {
   text(`¤${coins}`, W - 10, y + 18, { color: PAL.acid, size: 12, align: 'right' });
 
   // Dash cooldown pip
-  const ready = p.dashCd <= 0;
-  text(ready ? 'DASH' : '····', W / 2, y, { color: ready ? PAL.white : PAL.dim, size: 10, align: 'center' });
+  const ready = p.phaseCd <= 0;
+  text(ready ? 'PHASE' : '·····', W / 2, y, { color: ready ? PAL.white : PAL.dim, size: 10, align: 'center' });
 }

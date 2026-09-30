@@ -1,29 +1,18 @@
-// Unifies touch, mouse and keyboard into a small set of intents:
-//   moveDelta  : horizontal delta (logical px) accumulated since last read (drag)
-//   axis       : -1..1 keyboard horizontal axis
-//   jump, dash : one-shot flags (swipe up / down, or keys)
-//   tap        : one-shot flag, pointer down+up without significant movement
-//   down       : pointer currently pressed
+// Unifies touch, mouse and keyboard into one-shot intents:
+//   left, right : change lane
+//   jump        : swipe up / Space
+//   phase       : swipe down / Shift
+//   tap         : pointer down+up without movement, or Enter
+//   pause       : Esc / P / window blur
 import { canvas, toLogical } from './canvas.js';
 
-const SWIPE_MIN = 28;      // logical px
-const SWIPE_MAX_MS = 260;
+const SWIPE_MIN = 22;      // logical px
+const SWIPE_MAX_MS = 320;
 const TAP_MAX_MOVE = 8;
 
-const state = {
-  moveDelta: 0,
-  axis: 0,
-  jump: false,
-  dash: false,
-  tap: false,
-  down: false,
-  pause: false,
-  pointer: { x: 0, y: 0 },
-};
+const state = { left: false, right: false, jump: false, phase: false, tap: false, pause: false, down: false };
 
-const keys = new Set();
 let pointerId = null;
-let lastX = 0;
 let startX = 0;
 let startY = 0;
 let startT = 0;
@@ -34,33 +23,32 @@ function onDown(e) {
   pointerId = e.pointerId;
   canvas.setPointerCapture(pointerId);
   const p = toLogical(e.clientX, e.clientY);
-  lastX = startX = p.x;
-  startY = p.y;
+  startX = p.x; startY = p.y;
   startT = performance.now();
   swiped = false;
   state.down = true;
-  state.pointer = p;
+}
+
+function detectSwipe(p) {
+  if (swiped || performance.now() - startT > SWIPE_MAX_MS) return;
+  const dx = p.x - startX;
+  const dy = p.y - startY;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  if (adx < SWIPE_MIN && ady < SWIPE_MIN) return;
+  swiped = true;
+  if (adx > ady) { if (dx < 0) state.left = true; else state.right = true; }
+  else { if (dy < 0) state.jump = true; else state.phase = true; }
 }
 
 function onMove(e) {
   if (e.pointerId !== pointerId) return;
-  const p = toLogical(e.clientX, e.clientY);
-  state.pointer = p;
-  state.moveDelta += p.x - lastX;
-  lastX = p.x;
-  if (!swiped && performance.now() - startT < SWIPE_MAX_MS) {
-    const dy = p.y - startY;
-    const dx = p.x - startX;
-    if (Math.abs(dy) > SWIPE_MIN && Math.abs(dy) > Math.abs(dx) * 1.3) {
-      swiped = true;
-      if (dy < 0) state.jump = true; else state.dash = true;
-    }
-  }
+  detectSwipe(toLogical(e.clientX, e.clientY));
 }
 
 function onUp(e) {
   if (e.pointerId !== pointerId) return;
   const p = toLogical(e.clientX, e.clientY);
+  detectSwipe(p);
   const moved = Math.hypot(p.x - startX, p.y - startY);
   if (!swiped && moved < TAP_MAX_MOVE) state.tap = true;
   pointerId = null;
@@ -75,32 +63,22 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  keys.add(e.code);
-  if (e.code === 'Space' || e.code === 'KeyW' || e.code === 'ArrowUp') state.jump = true;
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyS' || e.code === 'ArrowDown') state.dash = true;
-  if (e.code === 'Escape' || e.code === 'KeyP') state.pause = true;
-  if (e.code === 'Enter') state.tap = true;
-  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  switch (e.code) {
+    case 'ArrowLeft': case 'KeyA': state.left = true; break;
+    case 'ArrowRight': case 'KeyD': state.right = true; break;
+    case 'ArrowUp': case 'KeyW': case 'Space': state.jump = true; break;
+    case 'ArrowDown': case 'KeyS': case 'ShiftLeft': case 'ShiftRight': state.phase = true; break;
+    case 'Escape': case 'KeyP': state.pause = true; break;
+    case 'Enter': state.tap = true; break;
+    default: return;
+  }
+  e.preventDefault();
 });
-window.addEventListener('keyup', (e) => keys.delete(e.code));
-window.addEventListener('blur', () => { keys.clear(); state.pause = true; });
+window.addEventListener('blur', () => { state.pause = true; });
 
 // Read and reset one-shot intents. Call once per logic step.
 export function pollInput() {
-  const left = keys.has('ArrowLeft') || keys.has('KeyA');
-  const right = keys.has('ArrowRight') || keys.has('KeyD');
-  state.axis = (right ? 1 : 0) - (left ? 1 : 0);
-  const out = {
-    moveDelta: state.moveDelta,
-    axis: state.axis,
-    jump: state.jump,
-    dash: state.dash,
-    tap: state.tap,
-    pause: state.pause,
-    down: state.down,
-    pointer: state.pointer,
-  };
-  state.moveDelta = 0;
-  state.jump = state.dash = state.tap = state.pause = false;
+  const out = { ...state };
+  state.left = state.right = state.jump = state.phase = state.tap = state.pause = false;
   return out;
 }

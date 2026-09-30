@@ -8,8 +8,8 @@ import { applyPost } from './render/post.js';
 import { updateFx, drawFx, updateShake, shakeOffset, consumeHitStop } from './render/fx.js';
 import { playerBullets, enemyBullets, updatePool, clearPool, kill, drawPlayerBullets, drawEnemyBullets } from './game/bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, drawPlayer, PLAYER_Y } from './game/player.js';
-import { enemies, spawnDrone, updateEnemies, damageEnemy, drawEnemies, clearEnemies } from './game/enemies.js';
-import { updateWorld, drawWorld, laneX, LANES, PX_PER_M } from './game/world.js';
+import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, drawEnemies, drawTelegraphs, clearEnemies } from './game/enemies.js';
+import { updateWorld, drawWorld, LANES, PX_PER_M } from './game/world.js';
 import { drawHud } from './ui/hud.js';
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ function newRun() {
     kills: 0,
     time: 0,
     speed: 220,        // px/s scroll
-    spawnT: 1.2,
+    spawnT: 1.5,
     deadT: 0,
   };
   clearPool(playerBullets);
@@ -41,7 +41,21 @@ function newRun() {
 }
 
 // Difficulty 0..∞, grows with distance. Everything scales from this one number.
-function difficulty(r) { return r.distance / 100; }
+// 400 m per point: first minute stays gentle so patterns can be learned.
+function difficulty(r) { return r.distance / 400; }
+
+// Pick an enemy type unlocked at this distance, weighted toward newer types a bit.
+function pickType(r) {
+  const pool = Object.keys(TYPES).filter((k) => TYPES[k].unlockAt <= r.distance);
+  return r.rng.pick(pool);
+}
+
+// Lanes that currently hold an enemy which is still holding position.
+function busyLanes() {
+  const set = new Set();
+  for (const e of enemies) if (e.state !== 'leave') set.add(e.lane);
+  return set;
+}
 
 // ---------------------------------------------------------------------------
 // Update
@@ -76,15 +90,21 @@ function update(dt) {
 
   updatePlayer(p, input, dt);
 
-  // Spawner
+  // Spawner: one enemy at a time early on, never two in the same lane,
+  // and never more than 3 holding at once.
   r.spawnT -= dt;
   if (r.spawnT <= 0) {
-    r.spawnT = Math.max(0.35, 1.3 - d * 0.12);
-    const n = 1 + (r.rng.chance(Math.min(0.6, d * 0.1)) ? 1 : 0);
-    for (let i = 0; i < n; i++) spawnDrone(r.rng, laneX(r.rng.int(0, LANES - 1)), d);
+    r.spawnT = Math.max(1.0, 2.4 - d * 0.25);
+    const busy = busyLanes();
+    const maxActive = 1 + Math.min(2, Math.floor(d));
+    if (busy.size < maxActive) {
+      const free = [];
+      for (let l = 0; l < LANES; l++) if (!busy.has(l)) free.push(l);
+      if (free.length) spawnEnemy(pickType(r), r.rng.pick(free), d);
+    }
   }
 
-  updateEnemies(dt, p, d);
+  updateEnemies(dt, d);
   updatePool(playerBullets, dt);
   updatePool(enemyBullets, dt);
   updateFx(dt, r.speed);
@@ -156,6 +176,7 @@ function render(alpha) {
   } else {
     const r = run;
     drawWorld(r.distance);
+    drawTelegraphs();
     drawFx();
     drawEnemies(alpha);
     drawPlayerBullets();
@@ -175,7 +196,7 @@ function drawMenu() {
   text('OVERDRIFT', W / 2, H * 0.32 + 48, { color: PAL.cyan, size: 40, align: 'center' });
   line(W * 0.2, H * 0.32 + 78, W * 0.8, H * 0.32 + 78, PAL.acid, 2);
   text('TAP TO RUN', W / 2, H * 0.62, { color: PAL.white, size: 16, align: 'center', alpha: pulse });
-  text('DRAG · SWIPE UP JUMP · SWIPE DOWN DASH', W / 2, H * 0.68, { color: PAL.dim, size: 9, align: 'center' });
+  text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE', W / 2, H * 0.68, { color: PAL.dim, size: 9, align: 'center' });
   if (best > 0) text(`BEST ${best}m`, W / 2, H * 0.9, { color: PAL.acid, size: 12, align: 'center' });
 }
 

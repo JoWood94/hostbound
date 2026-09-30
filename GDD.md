@@ -18,7 +18,7 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 ## 3. Vista e mondo
 
 - **Top-down 2D verticale**, portrait. Player nel terzo inferiore dello schermo, mondo scorre verso il basso.
-- **5 corsie** logiche per ostacoli e pickup. Movimento orizzontale del player **continuo** (non snappato): le corsie servono a spawn e ostacoli, non al player.
+- **5 corsie** fisse. Il player è **sempre in una corsia** (snap animato). Nemici, proiettili, ostacoli e pickup vivono nelle corsie. Tutto è leggibile in termini di "quale corsia è sicura".
 - **Velocità di scroll** cresce con la distanza (curva logaritmica, cap per restare leggibile).
 - **Distretti**: ogni ~1000 m cambia palette e set nemici (solo cosmetico + mix spawn, non contenuto extra). Cicla.
 
@@ -26,14 +26,14 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 
 | Azione | Mobile | Desktop (debug) |
 |---|---|---|
-| Muovi | Trascina dito ovunque, board segue con offset relativo (dito non copre board) | ← → / A D |
-| Salto / hop | Swipe su (breve) | Spazio / W |
-| Dash (i-frame) | Swipe giù | Shift / S |
+| Cambia corsia | Swipe sx / dx | ← → / A D |
+| Salto / hop | Swipe su | Spazio / W |
+| Phase (i-frame sul posto) | Swipe giù | Shift / S |
 | Sparo | Automatico, sempre | — |
 | Pausa | Tap in alto / perdi focus | Esc / P |
 
 - **Salto**: supera ostacoli bassi (barriere, buchi). Durante salto sei ancora colpibile dai proiettili.
-- **Dash**: scatto laterale corto con invulnerabilità ~150 ms. Cooldown 2 s. Item lo modificano.
+- **Phase**: invulnerabilità ~250 ms sul posto (la board "sfasa"). Cooldown 2 s. Item lo modificano (es. phase = dash di 2 corsie).
 - Dead zone tocco e sensibilità configurabili in impostazioni.
 
 ## 5. Vita, scudo, danno
@@ -55,15 +55,19 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 - **Laser gate**: si accende/spegne a ritmo, passa nel buio.
 - **Muro pieno con varco**: 1 corsia libera, si vede da lontano.
 
-### Nemici (bullet hell)
-- **Drone**: entra dall'alto, spara 1 colpo mirato, esce. Fodder.
-- **Torretta a parete**: fissa sui lati, pattern a ventaglio.
-- **Sciame**: 5-8 unità in formazione sinusoidale, spirali di proiettili lenti.
-- **Tank**: lento, molti HP, anelli di proiettili.
-- **Virus**: si divide quando colpito (max 2 volte).
-- **Kamikaze**: non spara, ti carica.
+### Nemici (bullet hell su corsie)
+Regola d'oro: **ogni nemico ha UN pattern fisso e un telegraph** (la corsia che sta per colpire si illumina prima dello sparo). Il giocatore impara il nemico, non il caso. La difficoltà scala cadenza/velocità, mai il pattern.
 
-Pattern proiettili: mirato, ventaglio, anello, spirale, muro con buco, pioggia random. Composti con velocità e cadenza scalate dalla difficoltà.
+- **Drone**: scende nella sua corsia, si ferma, spara **raffica di 3** dritta nella corsia. Safe: qualsiasi altra corsia.
+- **Sweeper**: spara **in sequenza** corsia sx → centro → dx (le 3 adiacenti). Safe: leggere la direzione, spostarsi contro.
+- **Fork**: spara **simultaneamente** nella sua corsia e nelle 2 adiacenti. Safe: 2 corsie di distanza.
+- **Hopper** (dopo): cambia corsia ogni sparo, colpi singoli.
+- **Wall** (dopo): muro di proiettili su 4 corsie, 1 buco. Safe: il buco, telegrafato.
+- **Kamikaze** (dopo): non spara, scende veloce nella corsia. Safe: cambiare corsia o ucciderlo.
+- **Tank** (dopo): lento, molti HP, ogni N secondi spara in tutte le corsie con proiettili **bassi** (saltabili).
+
+Proiettili viaggiano **dritti giù nella corsia** (vx = 0). Variante "bassa" (arancio) si può saltare; variante "alta" (magenta) no.
+Nuovi tipi sbloccati per distanza: Drone 0 m, Sweeper 300 m, Fork 600 m, poi gli altri.
 
 ### Boss
 Ogni **~500 m** (scala) un boss. Schermo si ferma di scrollare (o scroll lento), arena. 3 fasi, pattern che cambiano. Al boss 5, 10, 15... variante "élite" più dura.
