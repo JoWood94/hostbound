@@ -9,6 +9,7 @@ export const PAL = {
   blue: '#3d7bff',
   white: '#f4f0ff',
   dim: '#3a1030',
+  mute: '#9a86a6',   // readable secondary text
 };
 
 // Reserved colours: enemy bullets are ALWAYS magenta/orange, player bullets ALWAYS cyan.

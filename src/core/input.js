@@ -10,7 +10,7 @@ const SWIPE_MIN = 22;      // logical px
 const SWIPE_MAX_MS = 320;
 const TAP_MAX_MOVE = 8;
 
-const state = { left: false, right: false, jump: false, phase: false, tap: false, pause: false, down: false };
+const state = { left: false, right: false, jump: false, phase: false, tap: false, tapX: -1, tapY: -1, pause: false, down: false, any: false };
 
 let pointerId = null;
 let startX = 0;
@@ -50,7 +50,8 @@ function onUp(e) {
   const p = toLogical(e.clientX, e.clientY);
   detectSwipe(p);
   const moved = Math.hypot(p.x - startX, p.y - startY);
-  if (!swiped && moved < TAP_MAX_MOVE) state.tap = true;
+  if (!swiped && moved < TAP_MAX_MOVE) { state.tap = true; state.tapX = p.x; state.tapY = p.y; }
+  state.any = true;
   pointerId = null;
   state.down = false;
 }
@@ -63,22 +64,25 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
+  state.any = true;
   switch (e.code) {
     case 'ArrowLeft': case 'KeyA': state.left = true; break;
     case 'ArrowRight': case 'KeyD': state.right = true; break;
     case 'ArrowUp': case 'KeyW': case 'Space': state.jump = true; break;
     case 'ArrowDown': case 'KeyS': case 'ShiftLeft': case 'ShiftRight': state.phase = true; break;
     case 'Escape': case 'KeyP': state.pause = true; break;
-    case 'Enter': state.tap = true; break;
+    case 'Enter': state.tap = true; state.tapX = -1; state.tapY = -1; break;
+    case 'KeyE': state.active = true; break;
     default: return;
   }
   e.preventDefault();
 });
-window.addEventListener('blur', () => { state.pause = true; });
+// Losing focus only ever pauses; it must never toggle a paused game back on.
+window.addEventListener('blur', () => { state.blur = true; });
 
 // Read and reset one-shot intents. Call once per logic step.
 export function pollInput() {
   const out = { ...state };
-  state.left = state.right = state.jump = state.phase = state.tap = state.pause = false;
+  state.left = state.right = state.jump = state.phase = state.tap = state.pause = state.any = state.active = state.blur = false;
   return out;
 }

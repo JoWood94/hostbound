@@ -26,7 +26,9 @@ export function glowSprite(color, radius, blur = radius * 1.5) {
 }
 
 export function drawGlowDot(x, y, color, radius, alpha = 1) {
-  const s = glowSprite(color, radius);
+  // Quantize to 0.5px so the sprite cache stays small (particles shrink every frame).
+  const r = Math.max(0.5, Math.round(radius * 2) / 2);
+  const s = glowSprite(color, r);
   if (alpha !== 1) ctx.globalAlpha = alpha;
   ctx.drawImage(s.canvas, x - s.half, y - s.half);
   if (alpha !== 1) ctx.globalAlpha = 1;

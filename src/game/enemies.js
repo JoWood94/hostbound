@@ -12,6 +12,10 @@ import { strokePoly, drawGlowDot, line } from '../render/draw.js';
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
+import { sfx } from '../audio/audio.js';
+
+let nextId = 1;
+export const newId = () => nextId++;
 
 export const enemies = [];
 
@@ -49,6 +53,8 @@ export function spawnEnemy(type, lane, difficulty, rng) {
   const T = TYPES[type];
   const x = laneX(lane);
   const e = {
+    id: newId(),
+    poison: 0, poisonT: 0, poisonTick: 0, poisoned: false,
     type, T, lane,
     dir: rng.chance(0.5) ? 1 : -1,
     x, y: -24, prevX: x, prevY: -24,
@@ -89,14 +95,16 @@ export function updateEnemies(dt, difficulty) {
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
     const T = e.T;
+    if (e.type === 'boss') continue; // bosses drive themselves
     e.prevX = e.x; e.prevY = e.y;
     e.t += dt;
     e.stateT += dt;
+    if (e.hitFlash > 0) e.hitFlash -= dt;
 
     switch (e.state) {
       case 'enter':
         e.y += 170 * dt;
-        if (e.y >= T.holdY) { e.y = T.holdY; e.state = 'telegraph'; e.stateT = 0; e.telegraphLanes = allSequenceLanes(e); }
+        if (e.y >= T.holdY) { e.y = T.holdY; e.state = 'telegraph'; e.stateT = 0; e.telegraphLanes = allSequenceLanes(e); sfx.telegraph(); }
         break;
       case 'telegraph':
         if (e.stateT >= T.telegraph / m) {
@@ -122,7 +130,7 @@ export function updateEnemies(dt, difficulty) {
         break;
       }
       case 'rest':
-        if (e.stateT >= T.rest / m) { e.state = 'telegraph'; e.stateT = 0; e.telegraphLanes = allSequenceLanes(e); }
+        if (e.stateT >= T.rest / m) { e.state = 'telegraph'; e.stateT = 0; e.telegraphLanes = allSequenceLanes(e); sfx.telegraph(); }
         break;
       case 'leave':
         e.y += 240 * dt;
@@ -132,8 +140,12 @@ export function updateEnemies(dt, difficulty) {
   }
 }
 
+// Marks the enemy dead; rewards are handled by the run so every damage
+// source (bullets, arcs, frags, poison, EMP) is treated the same.
 export function damageEnemy(e, dmg) {
+  if (e.dead) return false;
   e.hp -= dmg;
+  e.hitFlash = 0.06;
   burst(e.x, e.y, e.T.color, 3, 90, 0.25, 1.5);
   if (e.hp <= 0) {
     e.dead = true;
@@ -148,7 +160,7 @@ export function damageEnemy(e, dmg) {
 // Glowing lane strips for telegraphed shots, under everything else.
 export function drawTelegraphs() {
   for (const e of enemies) {
-    if (!e.telegraphLanes.length) continue;
+    if (e.type === 'boss' || !e.telegraphLanes.length) continue;
     const prog = e.state === 'telegraph' ? Math.min(1, e.stateT / e.T.telegraph) : 1;
     const a = 0.12 + prog * 0.4;
     const low = e.type === 'crusher';
@@ -184,12 +196,14 @@ function ctxFill(x, y, w, h, color, alpha) {
 
 export function drawEnemies(alpha) {
   for (const e of enemies) {
+    if (e.type === 'boss' || e.dead) continue;
     const x = e.prevX + (e.x - e.prevX) * alpha;
     const y = e.prevY + (e.y - e.prevY) * alpha;
     const r = e.r;
     const c = e.T.color;
     const flash = e.state === 'telegraph' && e.stateT > e.T.telegraph * 0.5 && Math.floor(e.stateT * 16) % 2 === 0;
-    const col = flash ? PAL.white : c;
+    const col = flash || e.hitFlash > 0 ? PAL.white : c;
+    if (e.poison > 0) drawGlowDot(x, y - r - 5, PAL.acid, 2.5, 0.8);
     if (e.type === 'drone') {
       const spin = e.t * 3;
       const pts = [];

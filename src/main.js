@@ -1,176 +1,123 @@
 import { ctx, W, H } from './core/canvas.js';
 import { startLoop } from './core/loop.js';
 import { pollInput } from './core/input.js';
-import { makeRng, randomSeed } from './core/rng.js';
-import { PAL } from './render/palette.js';
-import { text, line } from './render/draw.js';
+import { loadSave, writeSave } from './core/save.js';
+import { beginUi, endUi, hitTest } from './core/ui.js';
 import { applyPost } from './render/post.js';
-import { updateFx, drawFx, updateShake, shakeOffset, consumeHitStop } from './render/fx.js';
-import { LOW, playerBullets, enemyBullets, updatePool, clearPool, kill, drawPlayerBullets, drawEnemyBullets } from './game/bullets.js';
-import { makePlayer, updatePlayer, hurtPlayer, drawPlayer, isAirborne, PLAYER_Y } from './game/player.js';
-import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, drawEnemies, drawTelegraphs, clearEnemies } from './game/enemies.js';
-import { updateWorld, drawWorld, LANES, PX_PER_M } from './game/world.js';
+import { drawFx, updateShake, shakeOffset } from './render/fx.js';
+import { drawPlayerBullets, drawEnemyBullets } from './game/bullets.js';
+import { drawPlayer } from './game/player.js';
+import { drawEnemies, drawTelegraphs } from './game/enemies.js';
+import { drawWorld, updateWorld } from './game/world.js';
+import { drawObstacles } from './game/obstacles.js';
+import { drawPickups } from './game/pickups.js';
+import { drawBoss, drawBossTelegraph, drawBossBar } from './game/boss.js';
+import { drawWeaponFx } from './game/weapon.js';
+import { BOARDS } from './game/boards.js';
+import { unlockedBoards } from './game/achievements.js';
+import { createRun, updateRun, updateDead, endRun, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
 import { drawHud } from './ui/hud.js';
+import { drawMenu, drawArchive, drawPick, drawShop, drawPause, drawDead } from './ui/screens.js';
+import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
+import { startMusic, setMusic } from './audio/music.js';
 
 // ---------------------------------------------------------------------------
-// Game state
+// Top-level state: menu | archive | run
 // ---------------------------------------------------------------------------
-const S = { MENU: 'menu', RUN: 'run', DEAD: 'dead' };
-let state = S.MENU;
+const save = loadSave();
+let screen = 'menu';
 let run = null;
 let menuT = 0;
-let best = Number(localStorage.getItem('no.best') || 0);
+let boardIdx = Math.max(0, BOARDS.findIndex((b) => b.id === save.board));
+let archiveTab = 'items';
+let archiveSel = null;
 
-function newRun() {
-  const seed = randomSeed();
-  run = {
-    seed,
-    rng: makeRng(seed),
-    player: makePlayer(),
-    distance: 0,       // metres
-    coins: 0,
-    kills: 0,
-    time: 0,
-    speed: 220,        // px/s scroll
-    spawnT: 2.0,
-    deadT: 0,
-  };
-  clearPool(playerBullets);
-  clearPool(enemyBullets);
-  clearEnemies();
+applySettings(save.settings);
+
+function ensureAudio() {
+  unlockAudio();
+  applySettings(save.settings);
+  startMusic();
 }
 
-// Difficulty 0..∞, grows with distance. Everything scales from this one number.
-// 400 m per point: first minute stays gentle so patterns can be learned.
-function difficulty(r) { return r.distance / 400; }
-
-// Pick an enemy type unlocked at this distance, weighted toward newer types a bit.
-function pickType(r) {
-  const pool = Object.keys(TYPES).filter((k) => TYPES[k].unlockAt <= r.distance);
-  return r.rng.pick(pool);
+function startRun() {
+  save.board = BOARDS[boardIdx].id;
+  writeSave(save);
+  run = createRun(save);
+  screen = 'run';
+  sfx.select();
 }
 
-// Lanes that currently hold an enemy which is still holding position.
-function busyLanes() {
-  const set = new Set();
-  for (const e of enemies) if (e.state !== 'leave') set.add(e.lane);
-  return set;
+function toMenu() {
+  screen = 'menu';
+  run = null;
+  setMusic('menu');
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (run && run.mode === 'play') run.mode = 'pause';
+    suspendAudio();
+  } else {
+    resumeAudio();
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
 function update(dt) {
   const input = pollInput();
+  if (input.any) ensureAudio();
   updateShake(dt);
+  const id = input.tap ? (input.tapX >= 0 ? hitTest(input.tapX, input.tapY) : 'enter') : null;
 
-  if (state === S.MENU) {
+  if (screen === 'menu') {
     menuT += dt;
-    if (input.tap || input.jump) { newRun(); state = S.RUN; }
+    updateWorld(dt, 60);
+    const unlocked = unlockedBoards(save).includes(BOARDS[boardIdx].id);
+    if (id === 'boardPrev' || input.left) { boardIdx = (boardIdx + BOARDS.length - 1) % BOARDS.length; sfx.lane(); }
+    else if (id === 'boardNext' || input.right) { boardIdx = (boardIdx + 1) % BOARDS.length; sfx.lane(); }
+    else if ((id === 'run' || id === 'enter' || input.jump) && unlocked) startRun();
+    else if (id === 'archive') { screen = 'archive'; sfx.select(); }
+    else if (id === 'sfx') { save.settings.sfx = !save.settings.sfx; applySettings(save.settings); writeSave(save); sfx.select(); }
+    else if (id === 'music') { save.settings.music = !save.settings.music; applySettings(save.settings); writeSave(save); sfx.select(); }
     return;
   }
 
-  if (state === S.DEAD) {
-    run.deadT += dt;
-    updateFx(dt, 0);
-    if (run.deadT > 0.8 && (input.tap || input.jump)) { newRun(); state = S.RUN; }
+  if (screen === 'archive') {
+    if (id === 'back' || input.pause) { screen = 'menu'; sfx.select(); }
+    else if (id === 'tabItems') archiveTab = 'items';
+    else if (id === 'tabGoals') archiveTab = 'goals';
+    else if (id && id.startsWith('item:')) { archiveSel = id.slice(5); sfx.lane(); }
     return;
   }
 
-  // RUN
-  if (consumeHitStop(dt)) return;
-  const r = run;
-  const p = r.player;
-  const d = difficulty(r);
-
-  r.time += dt;
-  r.speed = 220 + Math.min(260, 40 * Math.log1p(d * 2));
-  r.distance += (r.speed / PX_PER_M) * dt;
-  updateWorld(dt, r.speed);
-
-  updatePlayer(p, input, dt);
-
-  // Spawner. Base stats must be enough to survive: one enemy at a time until
-  // 800 m, 2 until 2000 m, then 3. A gap always follows once the screen clears.
-  const busy = busyLanes();
-  const maxActive = d < 2 ? 1 : d < 5 ? 2 : 3;
-  if (busy.size >= maxActive) {
-    r.spawnT = Math.max(r.spawnT, 0.8);
-  } else {
-    r.spawnT -= dt;
-    if (r.spawnT <= 0) {
-      r.spawnT = Math.max(1.2, 2.2 - d * 0.1);
-      // Keep enemies at least 2 lanes apart so there is always a readable safe lane.
-      const free = [];
-      for (let l = 0; l < LANES; l++) {
-        let ok = true;
-        for (const b of busy) if (Math.abs(b - l) < 2) ok = false;
-        if (ok) free.push(l);
+  // screen === 'run'
+  switch (run.mode) {
+    case 'play':
+      updateRun(run, input, dt);
+      break;
+    case 'pick':
+      if (id && id.startsWith('pick:')) pickItem(run, Number(id.slice(5)));
+      else if (id === 'skip') skipPick(run);
+      break;
+    case 'shop':
+      if (id && id.startsWith('buy:')) shopBuy(run, Number(id.slice(4)));
+      else if (id === 'reroll') shopReroll(run);
+      else if (id === 'leave') shopLeave(run);
+      break;
+    case 'pause':
+      if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; sfx.select(); }
+      else if (id === 'quit') { run.player.dead = true; endRun(run); run.deadT = 0.8; }
+      break;
+    case 'dead':
+      updateDead(run, dt);
+      if (run.deadT > 0.8) {
+        if (id === 'retry' || id === 'enter' || input.jump) startRun();
+        else if (id === 'menu') toMenu();
       }
-      // Wide patterns (sweeper, crusher) only when alone on screen
-      let type = pickType(r);
-      if (busy.size > 0 && type !== 'drone') type = 'drone';
-      if (free.length) spawnEnemy(type, r.rng.pick(free), d, r.rng);
-    }
-  }
-
-  updateEnemies(dt, d);
-  updatePool(playerBullets, dt);
-  updatePool(enemyBullets, dt);
-  updateFx(dt, r.speed);
-
-  // Player bullets vs enemies
-  for (let i = 0; i < playerBullets.n; i++) {
-    const bx = playerBullets.x[i], by = playerBullets.y[i], br = playerBullets.r[i];
-    for (let j = 0; j < enemies.length; j++) {
-      const e = enemies[j];
-      const rr = e.r + br;
-      const dx = e.x - bx, dy = e.y - by;
-      if (dx * dx + dy * dy < rr * rr) {
-        if (damageEnemy(e, playerBullets.dmg[i])) {
-          enemies.splice(j, 1);
-          r.kills++;
-          r.coins += 1;
-        }
-        kill(playerBullets, i); i--;
-        break;
-      }
-    }
-  }
-
-  // Enemy bullets vs player
-  if (p.iframes <= 0) {
-    const air = isAirborne(p);
-    for (let i = 0; i < enemyBullets.n; i++) {
-      if (air && enemyBullets.kind[i] === LOW) continue;
-      const dx = enemyBullets.x[i] - p.x, dy = enemyBullets.y[i] - PLAYER_Y;
-      const rr = enemyBullets.r[i] + p.r;
-      if (dx * dx + dy * dy < rr * rr) {
-        kill(enemyBullets, i); i--;
-        hurtPlayer(p, 1);
-        break;
-      }
-    }
-  }
-  // Enemy body vs player
-  if (p.iframes <= 0) {
-    for (let j = 0; j < enemies.length; j++) {
-      const e = enemies[j];
-      const dx = e.x - p.x, dy = e.y - PLAYER_Y;
-      const rr = e.r + p.r;
-      if (dx * dx + dy * dy < rr * rr) {
-        damageEnemy(e, 999);
-        enemies.splice(j, 1);
-        hurtPlayer(p, 1);
-        break;
-      }
-    }
-  }
-
-  if (p.dead) {
-    state = S.DEAD;
-    r.deadT = 0;
-    if (r.distance > best) { best = Math.floor(r.distance); localStorage.setItem('no.best', String(best)); }
+      break;
   }
 }
 
@@ -178,54 +125,50 @@ function update(dt) {
 // Render
 // ---------------------------------------------------------------------------
 function render(alpha) {
+  beginUi();
   const sh = shakeOffset();
   ctx.save();
   ctx.translate(sh.x, sh.y);
 
-  if (state === S.MENU) {
-    drawWorld(menuT * 60);
-    drawMenu();
+  if (screen === 'menu') {
+    drawWorld(menuT * 6, -1);
+    drawMenu(save, menuT, boardIdx);
+  } else if (screen === 'archive') {
+    drawArchive(save, archiveTab, archiveSel);
   } else {
     const r = run;
     drawWorld(r.distance, r.player.lane);
     drawTelegraphs();
+    drawBossTelegraph(r.boss);
+    drawObstacles(alpha);
+    drawPickups(alpha, r.time);
     drawFx();
+    drawBoss(r.boss, alpha);
     drawEnemies(alpha);
+    drawWeaponFx();
     drawPlayerBullets();
-    if (!r.player.dead) drawPlayer(r.player, alpha);
+    if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
     drawEnemyBullets(); // enemy bullets always on top: readability rule
-    drawHud(r.player, r.distance, r.coins);
-    if (state === S.DEAD) drawDead();
+    drawBossBar(r.boss);
+    drawHud(r);
+    if (r.mode === 'pick') drawPick(r);
+    else if (r.mode === 'shop') drawShop(r);
+    else if (r.mode === 'pause') drawPause(r);
+    else if (r.mode === 'dead') drawDead(r);
   }
 
   ctx.restore();
-  applyPost(state === S.RUN ? run.player.glitch : state === S.DEAD ? Math.max(0, 0.6 - run.deadT) : 0);
+  endUi();
+  const glitch = screen === 'run'
+    ? (run.mode === 'dead' ? Math.max(0, 0.6 - run.deadT) : run.player.glitch)
+    : 0;
+  applyPost(glitch);
 }
 
-function drawMenu() {
-  const pulse = 0.7 + Math.sin(menuT * 4) * 0.3;
-  text('NEON', W / 2, H * 0.32, { color: PAL.magenta, size: 52, align: 'center' });
-  text('OVERDRIFT', W / 2, H * 0.32 + 48, { color: PAL.cyan, size: 40, align: 'center' });
-  line(W * 0.2, H * 0.32 + 78, W * 0.8, H * 0.32 + 78, PAL.acid, 2);
-  text('TAP TO RUN', W / 2, H * 0.62, { color: PAL.white, size: 16, align: 'center', alpha: pulse });
-  text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE', W / 2, H * 0.68, { color: PAL.dim, size: 9, align: 'center' });
-  text('v0.3 · 5 LANES', W / 2, H - 16, { color: PAL.dim, size: 9, align: 'center' });
-  if (best > 0) text(`BEST ${best}m`, W / 2, H * 0.9, { color: PAL.acid, size: 12, align: 'center' });
-}
-
-function drawDead() {
-  const r = run;
-  ctx.fillStyle = 'rgba(10,0,8,0.72)';
-  ctx.fillRect(0, 0, W, H);
-  const jitter = r.deadT < 0.5 ? (Math.random() - 0.5) * 6 : 0;
-  text('SIGNAL LOST', W / 2 + jitter, H * 0.36, { color: PAL.red, size: 32, align: 'center' });
-  text(`${Math.floor(r.distance)}m`, W / 2, H * 0.46, { color: PAL.cyan, size: 28, align: 'center' });
-  text(`KILLS ${r.kills}   ¤${r.coins}`, W / 2, H * 0.52, { color: PAL.acid, size: 12, align: 'center' });
-  text(`BEST ${best}m`, W / 2, H * 0.58, { color: PAL.white, size: 12, align: 'center' });
-  if (r.deadT > 0.8) {
-    const pulse = 0.6 + Math.sin(r.deadT * 5) * 0.4;
-    text('TAP TO RETRY', W / 2, H * 0.72, { color: PAL.white, size: 14, align: 'center', alpha: pulse });
-  }
-}
-
+setMusic('menu');
 startLoop({ update, render });
+
+// Debug handle for testing: open with ?debug to reach run state from the console.
+if (new URLSearchParams(location.search).has('debug')) {
+  window.__game = { get run() { return run; }, save };
+}
