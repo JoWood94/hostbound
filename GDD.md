@@ -229,44 +229,25 @@ Principi:
 - **PWA**: manifest + service worker minimale → "Aggiungi a Home", fullscreen, offline. Amici lo installano come app.
 - URL finale: `https://<user>.github.io/neon-overdrift/`.
 
-## 14. Piano fasi
+## 14. Stato implementazione
 
-### Fase 0 — Scheletro (giocabile in 1 sessione)
-- Vite, canvas portrait con DPR, loop fixed timestep, input drag.
-- Player si muove, spara auto, scroll sfondo con corsie.
-- Drone base che spara. Collisioni. Cuori. Morte → restart.
-- Post FX base (scanline, grain). **Già sembra il gioco.**
+Fatto (v0.4):
+- 5 corsie discrete, salto, phase, auto-fire, tap per l'attivo.
+- Nemici: Drone, Sweeper, Crusher con telegraph. Ostacoli: barriera bassa, muro, cancello.
+- Monete in fila, cuori, cuori blu, drop corrotti (sbloccano l'item se batti il boss successivo).
+- 27 item (arma, difesa, economia, rischio, attivi), 7 sinergie nominate.
+- Boss (Sentinel, Hive, Warden, poi varianti MK2+) e Black Market alternati ogni 600 m.
+- Scelta 1 di 3 dopo il boss, negozio con reroll, riparazione, cuori blu.
+- Meta: 20 achievement, 5 board sbloccabili, archivio item e obiettivi, salvataggio versionato.
+- Audio procedurale: SFX + sequencer con BPM che sale; tema diverso per boss e negozio.
+- PWA (icona, manifest, offline) + GitHub Actions per Pages.
 
-### Fase 1 — Runner core
-- Ostacoli (5 tipi), salto, dash con i-frame.
-- Spawner con difficoltà crescente. Monete + magnete.
-- HUD: cuori, distanza, monete.
-- SFX procedurali base.
-
-### Fase 2 — Bullet hell
-- 5 nemici, 6 pattern proiettili. Object pool.
-- Primo boss (Sentinel), 3 fasi. Arena.
-- Screen shake, hit-stop, particelle.
-
-### Fase 3 — Roguelike
-- Item registry (~15 item), weapon che compone flag.
-- Scelta 1 di 3 post-boss. Shop.
-- 2-3 sinergie nominate con annuncio.
-- Musica procedurale con BPM dinamico.
-
-### Fase 4 — Meta
-- Save system versionato.
-- Achievement (~15), unlock item, unlock board.
-- Schermata meta: pool item, board, stats.
-- Board 3 iniziali.
-
-### Fase 5 — Polish e ship
-- Bilanciamento curve. Test su iPhone/Android reali.
-- PWA, icona, splash.
-- GitHub Actions + Pages. Link ad amici.
-
-### Dopo
-- Altri boss, altri item fino a 40, board 5, distretti visivi, daily seed, leaderboard locale, share screenshot run.
+Backlog:
+- Nemici: Hopper, Wall, Kamikaze, Tank.
+- Distretti visivi (palette che cambia ogni 1000 m).
+- Daily seed, condivisione screenshot della run.
+- Impostazioni: sensibilità swipe, vibrazione.
+- Bilanciamento prezzi e HP boss dopo test reali.
 
 ## 15. Rischi
 

@@ -168,6 +168,11 @@ function render(alpha) {
 setMusic('menu');
 startLoop({ update, render });
 
+// Offline + "Add to Home Screen". Only in production builds, so dev reloads stay fresh.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+}
+
 // Debug handle for testing: open with ?debug to reach run state from the console.
 if (new URLSearchParams(location.search).has('debug')) {
   window.__game = { get run() { return run; }, save };
