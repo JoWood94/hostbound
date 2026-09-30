@@ -1,7 +1,8 @@
 // Pooled bullets in typed arrays. No allocation in the hot loop.
 // Two pools: player bullets and enemy bullets.
-import { drawGlowDot } from '../render/draw.js';
+import { drawGlowDot, line } from '../render/draw.js';
 import { W, H } from '../core/canvas.js';
+import { LANE_W } from './world.js';
 import { COLOR_PLAYER_BULLET, COLOR_ENEMY_BULLET, COLOR_ENEMY_BULLET_ALT } from '../render/palette.js';
 
 function makePool(max) {
@@ -17,6 +18,9 @@ function makePool(max) {
     kind: new Uint8Array(max), // 0 normal, 1 alt colour
   };
 }
+
+// kind flags for enemy bullets
+export const LOW = 1; // low wave: can be jumped over
 
 export const playerBullets = makePool(256);
 export const enemyBullets = makePool(1024);
@@ -56,6 +60,13 @@ export function drawPlayerBullets() {
 export function drawEnemyBullets() {
   const p = enemyBullets;
   for (let i = 0; i < p.n; i++) {
-    drawGlowDot(p.x[i], p.y[i], p.kind[i] ? COLOR_ENEMY_BULLET_ALT : COLOR_ENEMY_BULLET, p.r[i]);
+    if (p.kind[i] === LOW) {
+      // Low wave: flat bar across the lane, reads as "jump over me"
+      const hw = LANE_W * 0.42;
+      line(p.x[i] - hw, p.y[i], p.x[i] + hw, p.y[i], COLOR_ENEMY_BULLET_ALT, 5, 0.9);
+      line(p.x[i] - hw, p.y[i], p.x[i] + hw, p.y[i], '#fff', 1.5, 0.8);
+    } else {
+      drawGlowDot(p.x[i], p.y[i], COLOR_ENEMY_BULLET, p.r[i]);
+    }
   }
 }

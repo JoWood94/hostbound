@@ -18,7 +18,7 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 ## 3. Vista e mondo
 
 - **Top-down 2D verticale**, portrait. Player nel terzo inferiore dello schermo, mondo scorre verso il basso.
-- **5 corsie** fisse. Il player è **sempre in una corsia** (snap animato). Nemici, proiettili, ostacoli e pickup vivono nelle corsie. Tutto è leggibile in termini di "quale corsia è sicura".
+- **5 corsie** fisse, stile Subway Surfers. Il player è **sempre in una corsia**: uno swipe = una corsia, scatto a durata fissa (~0,1 s). Mai movimento libero che segue il dito. Corsia del player illuminata. Nemici, proiettili, ostacoli e pickup vivono nelle corsie. Tutto è leggibile in termini di "quale corsia è sicura".
 - **Velocità di scroll** cresce con la distanza (curva logaritmica, cap per restare leggibile).
 - **Distretti**: ogni ~1000 m cambia palette e set nemici (solo cosmetico + mix spawn, non contenuto extra). Cicla.
 
@@ -58,16 +58,19 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 ### Nemici (bullet hell su corsie)
 Regola d'oro: **ogni nemico ha UN pattern fisso e un telegraph** (la corsia che sta per colpire si illumina prima dello sparo). Il giocatore impara il nemico, non il caso. La difficoltà scala cadenza/velocità, mai il pattern.
 
-- **Drone**: scende nella sua corsia, si ferma, spara **raffica di 3** dritta nella corsia. Safe: qualsiasi altra corsia.
-- **Sweeper**: spara **in sequenza** corsia sx → centro → dx (le 3 adiacenti). Safe: leggere la direzione, spostarsi contro.
-- **Fork**: spara **simultaneamente** nella sua corsia e nelle 2 adiacenti. Safe: 2 corsie di distanza.
-- **Hopper** (dopo): cambia corsia ogni sparo, colpi singoli.
-- **Wall** (dopo): muro di proiettili su 4 corsie, 1 buco. Safe: il buco, telegrafato.
-- **Kamikaze** (dopo): non spara, scende veloce nella corsia. Safe: cambiare corsia o ucciderlo.
-- **Tank** (dopo): lento, molti HP, ogni N secondi spara in tutte le corsie con proiettili **bassi** (saltabili).
+Ogni nemico insegna una mossa:
+
+| Nemico | Da | Pattern | Mossa insegnata |
+|---|---|---|---|
+| **Drone** | 0 m | raffica 3 nella sua corsia | cambia corsia |
+| **Sweeper** | 500 m | spazza 3 corsie adiacenti in sequenza, freccia mostra la direzione | entra nella corsia già spazzata |
+| **Crusher** | 1000 m | onda **bassa** su 3 corsie adiacenti | salta, o spostati di 2 corsie |
+| Hopper, Wall, Kamikaze, Tank | dopo | vedi backlog | — |
+
+Spawner: 1 nemico attivo fino a 800 m, 2 fino a 2000 m, poi 3. Nemici sempre ad almeno 2 corsie di distanza. Sweeper e Crusher solo se soli a schermo. Ogni nemico spara 2 volée e se ne va (max 4 in late game). Difficoltà scala al massimo +40% di cadenza.
 
 Proiettili viaggiano **dritti giù nella corsia** (vx = 0). Variante "bassa" (arancio) si può saltare; variante "alta" (magenta) no.
-Nuovi tipi sbloccati per distanza: Drone 0 m, Sweeper 300 m, Fork 600 m, poi gli altri.
+
 
 ### Boss
 Ogni **~500 m** (scala) un boss. Schermo si ferma di scrollare (o scroll lento), arena. 3 fasi, pattern che cambiano. Al boss 5, 10, 15... variante "élite" più dura.

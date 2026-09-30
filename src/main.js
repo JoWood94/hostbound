@@ -6,8 +6,8 @@ import { PAL } from './render/palette.js';
 import { text, line } from './render/draw.js';
 import { applyPost } from './render/post.js';
 import { updateFx, drawFx, updateShake, shakeOffset, consumeHitStop } from './render/fx.js';
-import { playerBullets, enemyBullets, updatePool, clearPool, kill, drawPlayerBullets, drawEnemyBullets } from './game/bullets.js';
-import { makePlayer, updatePlayer, hurtPlayer, drawPlayer, PLAYER_Y } from './game/player.js';
+import { LOW, playerBullets, enemyBullets, updatePool, clearPool, kill, drawPlayerBullets, drawEnemyBullets } from './game/bullets.js';
+import { makePlayer, updatePlayer, hurtPlayer, drawPlayer, isAirborne, PLAYER_Y } from './game/player.js';
 import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, drawEnemies, drawTelegraphs, clearEnemies } from './game/enemies.js';
 import { updateWorld, drawWorld, LANES, PX_PER_M } from './game/world.js';
 import { drawHud } from './ui/hud.js';
@@ -32,7 +32,7 @@ function newRun() {
     kills: 0,
     time: 0,
     speed: 220,        // px/s scroll
-    spawnT: 1.5,
+    spawnT: 2.0,
     deadT: 0,
   };
   clearPool(playerBullets);
@@ -90,17 +90,27 @@ function update(dt) {
 
   updatePlayer(p, input, dt);
 
-  // Spawner: one enemy at a time early on, never two in the same lane,
-  // and never more than 3 holding at once.
-  r.spawnT -= dt;
-  if (r.spawnT <= 0) {
-    r.spawnT = Math.max(1.0, 2.4 - d * 0.25);
-    const busy = busyLanes();
-    const maxActive = 1 + Math.min(2, Math.floor(d));
-    if (busy.size < maxActive) {
+  // Spawner. Base stats must be enough to survive: one enemy at a time until
+  // 800 m, 2 until 2000 m, then 3. A gap always follows once the screen clears.
+  const busy = busyLanes();
+  const maxActive = d < 2 ? 1 : d < 5 ? 2 : 3;
+  if (busy.size >= maxActive) {
+    r.spawnT = Math.max(r.spawnT, 0.8);
+  } else {
+    r.spawnT -= dt;
+    if (r.spawnT <= 0) {
+      r.spawnT = Math.max(1.2, 2.2 - d * 0.1);
+      // Keep enemies at least 2 lanes apart so there is always a readable safe lane.
       const free = [];
-      for (let l = 0; l < LANES; l++) if (!busy.has(l)) free.push(l);
-      if (free.length) spawnEnemy(pickType(r), r.rng.pick(free), d);
+      for (let l = 0; l < LANES; l++) {
+        let ok = true;
+        for (const b of busy) if (Math.abs(b - l) < 2) ok = false;
+        if (ok) free.push(l);
+      }
+      // Wide patterns (sweeper, crusher) only when alone on screen
+      let type = pickType(r);
+      if (busy.size > 0 && type !== 'drone') type = 'drone';
+      if (free.length) spawnEnemy(type, r.rng.pick(free), d, r.rng);
     }
   }
 
@@ -130,7 +140,9 @@ function update(dt) {
 
   // Enemy bullets vs player
   if (p.iframes <= 0) {
+    const air = isAirborne(p);
     for (let i = 0; i < enemyBullets.n; i++) {
+      if (air && enemyBullets.kind[i] === LOW) continue;
       const dx = enemyBullets.x[i] - p.x, dy = enemyBullets.y[i] - PLAYER_Y;
       const rr = enemyBullets.r[i] + p.r;
       if (dx * dx + dy * dy < rr * rr) {
@@ -175,7 +187,7 @@ function render(alpha) {
     drawMenu();
   } else {
     const r = run;
-    drawWorld(r.distance);
+    drawWorld(r.distance, r.player.lane);
     drawTelegraphs();
     drawFx();
     drawEnemies(alpha);
@@ -197,6 +209,7 @@ function drawMenu() {
   line(W * 0.2, H * 0.32 + 78, W * 0.8, H * 0.32 + 78, PAL.acid, 2);
   text('TAP TO RUN', W / 2, H * 0.62, { color: PAL.white, size: 16, align: 'center', alpha: pulse });
   text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE', W / 2, H * 0.68, { color: PAL.dim, size: 9, align: 'center' });
+  text('v0.3 · 5 LANES', W / 2, H - 16, { color: PAL.dim, size: 9, align: 'center' });
   if (best > 0) text(`BEST ${best}m`, W / 2, H * 0.9, { color: PAL.acid, size: 12, align: 'center' });
 }
 

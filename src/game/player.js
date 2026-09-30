@@ -7,7 +7,7 @@ import { LANES, laneX } from './world.js';
 
 export const PLAYER_Y = H * 0.78;
 const HALF_W = 12;
-const LANE_SNAP = 18;     // higher = snappier lane change
+const LANE_TIME = 0.11;   // seconds for a lane hop, fixed: discrete, never follows the finger
 const JUMP_TIME = 0.45;
 const PHASE_TIME = 0.25;
 const PHASE_CD = 2.0;
@@ -16,7 +16,10 @@ export function makePlayer() {
   const lane = Math.floor(LANES / 2);
   return {
     lane,
+    laneT: 1,             // 0..1 progress of current lane hop
     x: laneX(lane),
+    laneFromX: laneX(lane),
+    bump: 0,
     prevX: laneX(lane),
     r: 7,                 // hurt radius
     hearts: 3,
@@ -38,12 +41,27 @@ export function makePlayer() {
 export function updatePlayer(p, input, dt) {
   p.prevX = p.x;
 
-  // Lane change (queued inputs feel responsive on mobile)
-  if (input.left && p.lane > 0) p.lane--;
-  if (input.right && p.lane < LANES - 1) p.lane++;
-  const tx = laneX(p.lane);
-  p.x += (tx - p.x) * Math.min(1, LANE_SNAP * dt);
-  if (Math.abs(tx - p.x) < 0.3) p.x = tx;
+  // Lane change: one swipe = one lane, fixed-time hop with ease-out.
+  const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  if (dir !== 0) {
+    const next = Math.max(0, Math.min(LANES - 1, p.lane + dir));
+    if (next !== p.lane) {
+      p.laneFromX = p.x;
+      p.lane = next;
+      p.laneT = 0;
+    } else {
+      // Bumped the wall: small feedback
+      p.bump = 0.12 * dir;
+    }
+  }
+  if (p.laneT < 1) {
+    p.laneT = Math.min(1, p.laneT + dt / LANE_TIME);
+    const e = 1 - (1 - p.laneT) * (1 - p.laneT);
+    p.x = p.laneFromX + (laneX(p.lane) - p.laneFromX) * e;
+  } else {
+    p.x = laneX(p.lane);
+  }
+  if (p.bump) { p.bump *= 0.7; if (Math.abs(p.bump) < 0.005) p.bump = 0; }
 
   // Jump
   if (p.jumpT > 0) p.jumpT -= dt;
@@ -99,7 +117,7 @@ function boardPoly(x, y, w, h) {
 }
 
 export function drawPlayer(p, alpha) {
-  const x = p.prevX + (p.x - p.prevX) * alpha;
+  const x = p.prevX + (p.x - p.prevX) * alpha + p.bump * 40;
   const jh = jumpHeight(p);
   const y = PLAYER_Y - jh * 26;
   const blink = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 20) % 2 === 0;
