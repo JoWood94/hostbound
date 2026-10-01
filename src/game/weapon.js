@@ -126,6 +126,11 @@ function pattern(p, stats) {
   return out;
 }
 
+// SINE shape: sin^3 dwells near the centre (its own lane) and only flicks out
+// to the neighbours at the peaks. A pure sine spent most of its time on the
+// neighbouring lanes and merely crossed your own.
+const weave = (a) => { const s = Math.sin(a); return s * s * s; };
+
 // Polyline from the ship for beams and rails. `phase` animates SINE.
 // SEEKER for beams and rails: give each path its own target, the nearest enemy
 // within one lane of where that path would naturally go (lane rule), preferring
@@ -163,7 +168,7 @@ function buildPath(p, spec, wave, phase) {
       const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
       let x = a * x0 + b * cx + c * tx;
       const y = a * y0 + b * cy + c * ty;
-      if (wave) x += Math.sin(phase + t * 9) * LANE_W * 0.5 * Math.min(1, t * 3);
+      if (wave) x += weave(phase + t * 9) * LANE_W * 0.5 * Math.min(1, t * 3);
       pts.push(x, y);
     }
     for (let y = ty - 12; y > -10; y -= 12) pts.push(tx, y);
@@ -173,7 +178,7 @@ function buildPath(p, spec, wave, phase) {
     let x, y;
     if (spec.angle !== undefined) { x = x0 + Math.sin(spec.angle) * d; y = y0 - Math.cos(spec.angle) * d; }
     else { const k = Math.min(1, d / 110); x = x0 + (laneX(spec.lane) - x0) * k; y = y0 - d; }
-    if (wave) x += Math.sin(phase + d * 0.026) * LANE_W * Math.min(1, d / 70);
+    if (wave) x += weave(phase + d * 0.026) * LANE_W * Math.min(1, d / 70);
     pts.push(x, y);
     if (y < -10 || x < -10 || x > 370) break;
   }
@@ -344,7 +349,7 @@ export function updateModeBullets(stats, dt) {
       pb.ox[i] += pb.vx[i] * dt;
       const traveled = PLAYER_Y - 14 - pb.y[i];
       if (f & F_RANGE && traveled > reach) { kill(pb, i); i--; continue; }
-      const off = Math.sin(pb.aux[i] + traveled * 0.026 / stats.shotSpeed) * LANE_W * Math.min(1, traveled / 60);
+      const off = weave(pb.aux[i] + traveled * 0.026 / stats.shotSpeed) * LANE_W * Math.min(1, traveled / 60);
       pb.x[i] = pb.ox[i] + off - pb.vx[i] * dt;
     }
   }

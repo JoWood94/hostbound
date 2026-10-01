@@ -248,6 +248,6 @@ if (new URLSearchParams(location.search).has('debug')) {
     // Advance the simulation synchronously (background tabs pause rAF).
     tick: (frames = 1) => { for (let i = 0; i < frames; i++) update(1 / 60); },
     offer: (ids) => { run.pickChoices = ids.map((id) => ITEM_BY_ID[id]); run.mode = 'pick'; },
-    god: () => { run.player.hearts = 99; run.stats.maxHearts = 99; run.nextEvent = 1e9; run.spawnT = 1e9; },
+    god: () => { run.player.hearts = 99; run.stats.maxHearts = 99; run.nextEvent = 1e9; run.sec = null; run.secCalmUntil = 1e12; },
   };
 }

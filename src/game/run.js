@@ -7,7 +7,8 @@ import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
-import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look } from './enemies.js';
+import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC } from './enemies.js';
+import { SECTIONS, mirrorEvent } from './sections.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
@@ -46,7 +47,7 @@ export function createRun(save, opts = {}) {
     wasHit: false, leechKills: 0, slipCd: 0, railT: 0, railTick: 0,
     stacks: {}, stats: null, player: null,
     distance: 0, time: 0, speed: 220,
-    spawnT: 2.0, chunkT: 1.5,
+    chunkT: 1.5, sec: null, secCalmUntil: 0, recentSec: [],
     coins: 0, coinFrac: 0,
     rs: { distance: 0, kills: 0, bosses: 0, coins: 0, purchases: 0, phaseDodges: 0, lowJumps: 0,
       obstacles: 0, toxinKills: 0, phases: 0, defItems: 0, bossNoHit: false, boss1Heart: false,
@@ -194,13 +195,6 @@ function useActive(run) {
 // ---------------------------------------------------------------------------
 // Spawning
 // ---------------------------------------------------------------------------
-function pickType(run) {
-  const pool = Object.keys(TYPES).filter((k) => TYPES[k].unlockAt <= run.distance);
-  let t = run.rng.pick(pool);
-  if (t === run.lastType && pool.length > 1) t = run.rng.pick(pool);   // fewer repeats
-  return t;
-}
-
 // ---------------------------------------------------------------------------
 // Lane safety: never let the screen close every lane. A lane is "covered" if a
 // high bullet is in flight in it, an active enemy's pattern targets it, a
@@ -240,70 +234,73 @@ export function coveredLanes() {
   return c;
 }
 
-// Lanes a not-yet-spawned enemy would threaten.
-const candidateLanes = (type, lane) => threatLanes(type, lane);
+// ---------------------------------------------------------------------------
+// Director: plays authored sections (sections.js) back to back on the enemy
+// metronome. A section starts on a beat, its events fire at fixed beats, and
+// the next one waits until this one is over (enemies gone, rows passed) plus a
+// short breather. Nothing overlaps by accident, so every shape is learnable.
+// ---------------------------------------------------------------------------
+const BEAT = 2;            // ticks per beat
+// Big enemies pay one extra coin.
+const BIG_ENEMIES = new Set(['crusher', 'throb', 'weaver', 'wall', 'tank']);
+const BREATH = 2;          // beats of calm between sections
 
-const MIN_SAFE = 2;
-function safeToAdd(covered, type, lane) {
-  const u = new Set(covered);
-  for (const l of candidateLanes(type, lane)) if (l >= 0 && l < LANES) u.add(l);
-  // The Wall's whole point is the one safe lane under it: allowed only on an
-  // otherwise quiet screen.
-  const need = TYPES[type].solo && covered.size === 0 ? 1 : MIN_SAFE;
-  return LANES - u.size >= need ? u : null;
+function pickSection(run) {
+  const pool = SECTIONS.filter((x) => x.from <= run.distance && !run.recentSec.includes(x.id));
+  // Newer sections (unlocked in the last ~1500 m) come up twice as often.
+  const weighted = pool.flatMap((x) => (run.distance - x.from < 1500 ? [x, x] : [x]));
+  return run.rng.pick(weighted.length ? weighted : SECTIONS.filter((x) => x.from <= run.distance));
 }
 
-function spawnEnemies(run, dt, d) {
-  const busy = new Set();
-  for (const e of enemies) if (e.type !== 'boss' && e.state !== 'leave') busy.add(e.lane);
-  // A wide enemy was drawn: hold new spawns until the screen is clear, then it
-  // enters alone (a short duel). Without this, wide types almost never appear
-  // late in the run, when the screen is rarely empty.
-  if (run.queuedWide) {
-    if (busy.size > 0) { run.spawnT = Math.max(run.spawnT, 0.3); return; }
-    run.spawnT -= dt;
-    if (run.spawnT > 0) return;
-  }
-  if (busy.size >= B.maxActive(d)) { run.spawnT = Math.max(run.spawnT, 0.7); return; }
-  run.spawnT -= dt;
-  if (run.spawnT > 0) return;
-  run.spawnT = B.spawnGap(d);
-  const free = [];
-  for (let l = 0; l < LANES; l++) {
-    let ok = true;
-    for (const b of busy) if (Math.abs(b - l) < 2) ok = false;
-    if (ok) free.push(l);
-  }
-  if (!free.length) return;
+function startSection(run, d) {
+  const def = pickSection(run);
+  run.recentSec = [def.id, ...run.recentSec].slice(0, 3);
+  const mirror = run.rng.chance(0.5);
+  const now = beatClock();
+  const t0 = Math.ceil(now / BEAT) * BEAT + BEAT;          // on the next beat
+  const tickSec = TICK_SEC / B.timeMul(d);
+  const travelTicks = ((PLAYER_Y + 30) / Math.max(1, run.speed)) / tickSec;
+  const evs = def.events.map((ev) => {
+    const x = mirror ? mirrorEvent(ev) : { ...ev };
+    // rows and veils are timed by ARRIVAL; spawn them early by their travel time
+    x.at = t0 + x.beat * BEAT - (x.kind === 'row' || x.kind === 'veil' ? travelTicks : 0);
+    return x;
+  }).sort((p, q) => p.at - q.at);
+  run.sec = { id: def.id, evs, i: 0, enemyIds: [] };
+}
 
-  // Wide patterns only when alone on screen: queue them.
-  let type = run.queuedWide || pickType(run);
-  if (TYPES[type].wide && busy.size > 0) {
-    // Half the time wait for a clear screen (a duel), half the time swap for a
-    // narrow enemy so the pressure does not drop.
-    if (run.rng.chance(0.5)) { run.queuedWide = type; run.spawnT = 0.4; return; }
-    type = run.rng.pick(NARROW_TYPES.filter((k) => TYPES[k].unlockAt <= run.distance));
+function direct(run, d) {
+  const now = beatClock();
+  if (!run.sec) {
+    if (now < run.secCalmUntil) return;
+    startSection(run, d);
   }
-  run.queuedWide = null;
-  const opts = () => ({ power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
-
-  // Pick a lane that keeps at least MIN_SAFE lanes open; fall back to a drone; else wait.
-  let covered = coveredLanes();
-  const lanes = [...free].sort(() => run.rng.next() - 0.5);
-  let lane = -1;
-  for (const l of lanes) { const u = safeToAdd(covered, type, l); if (u) { lane = l; covered = u; break; } }
-  if (lane < 0 && type !== 'drone') {
-    type = 'drone';
-    for (const l of lanes) { const u = safeToAdd(covered, type, l); if (u) { lane = l; covered = u; break; } }
+  const sec = run.sec;
+  while (sec.i < sec.evs.length && sec.evs[sec.i].at <= now) {
+    const ev = sec.evs[sec.i++];
+    if (ev.kind === 'enemy') {
+      if (!TYPES[ev.type] || TYPES[ev.type].unlockAt > run.distance + 400) continue;
+      const en = spawnEnemy(ev.type, ev.lane, d, run.rng, { power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
+      if (en) sec.enemyIds.push(en.id);
+    } else if (ev.kind === 'row') {
+      [...ev.row].forEach((ch, l) => {
+        if (ch === 'B') spawnObstacle('wall', l);
+        else if (ch === 'T') spawnObstacle('low', l);
+      });
+    } else if (ev.kind === 'veil') {
+      spawnVeil();
+    } else if (ev.kind === 'coins') {
+      spawnCoinLine(ev.lane, ev.n);
+    }
   }
-  if (lane < 0) { run.spawnT = 0.5; return; }
-  spawnEnemy(type, lane, d, run.rng, opts());
-  run.lastType = type;
-
-  // Squads: from ~1000 m, sometimes a second narrow enemy joins, if still safe.
-  if (d >= 2.5 && !TYPES[type].wide && busy.size + 2 <= B.maxActive(d) && run.rng.chance(0.3)) {
-    const pair = lanes.filter((l) => Math.abs(l - lane) >= 2 && safeToAdd(covered, type, l));
-    if (pair.length) spawnEnemy(type, run.rng.pick(pair), d, run.rng, opts());
+  // Over when every event fired, its enemies are on their last volley (or
+  // gone), and its obstacles are past the middle of the screen. The next
+  // section's enemies need ~1.5 s to enter and telegraph, so it overlaps only
+  // with the tail of this one.
+  const busy = (en) => sec.enemyIds.includes(en.id) && !en.dead && en.state !== 'leave' && en.volleys < en.maxVolleys - 1;
+  if (sec.i >= sec.evs.length && !enemies.some(busy) && !obstacles.some((o) => !o.dead && o.y < H * 0.45)) {
+    run.sec = null;
+    run.secCalmUntil = now + BREATH * BEAT;
   }
 }
 
@@ -325,72 +322,8 @@ function spawnChunk(run, d) {
   if (p.hearts < run.stats.maxHearts && rng.chance(0.05 + 0.01 * luck)) { spawnPickup('heart', lane, -20); return; }
   if (rng.chance(0.03 + 0.005 * luck)) { spawnPickup('blue', lane, -20); return; }
 
-  if (d >= 0.8 && roll < 0.16 && enemies.length <= 1) {
-    spawnFormation(run, d, enemies.length === 0);
-  } else if (d >= 0.3 && roll < 0.4) {
-    spawnObstacle('low', lane);
-    spawnCoinLine(lane, 2, -50, 22);
-  } else if (d >= 0.15 && roll < 0.65 && LANES - new Set([...coveredLanes(), lane]).size >= MIN_SAFE) {
-    spawnObstacle('wall', lane);
-    const side = lane === 0 ? 1 : lane === LANES - 1 ? LANES - 2 : lane + (rng.chance(0.5) ? 1 : -1);
-    spawnCoinLine(side, B.COIN_LINE - 1);
-    if (d >= 1.5 && rng.chance(0.4)) {
-      const other = (lane + 2 + rng.int(0, 1)) % LANES;
-      if (Math.abs(other - lane) >= 2) {
-        const wantWall = rng.chance(0.5) && LANES - new Set([...coveredLanes(), lane, other]).size >= MIN_SAFE;
-        spawnObstacle(wantWall ? 'wall' : 'low', other, -60);
-      }
-    }
-  } else if (d >= 0.4 && roll < 0.72 && run.distance - (run.lastVeil ?? -1e9) > 140 && !obstacles.some((o) => o.y < 120)) {
-    // Rift veil: nothing else on that row, and never two close together
-    // (the phase cooldown must always be ready for it).
-    spawnVeil();
-    run.lastVeil = run.distance;
-  } else {
-    spawnCoinLine(lane, B.COIN_LINE);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Obstacle formations: several lanes at once, read as one shape.
-// Each row is a string over the 5 lanes: 'B' barrier (dodge), 'T' tripwire
-// (jump), '.' free. Rules (checked by construction): every row has a lane that
-// is not a barrier, and rows are spaced so a lane hop (0.11 s) plus a jump
-// always fit between them. Barrier-heavy shapes only on an empty screen.
-// ---------------------------------------------------------------------------
-const FORMATIONS = [
-  // name, min difficulty, needs empty screen, rows (top = first to arrive)
-  { min: 0.8, solo: false, rows: () => ['TTTTT'] },                                   // tripline: jump
-  { min: 1.2, solo: false, rows: (r) => [r.pick(['BTTTB', 'TBTBT', 'TTBTT'])] },      // pincer: dodge into a wire, jump
-  { min: 1.5, solo: true, rows: () => ['TBTBT', 'BTBTB'] },                           // zipper: jump, hop, jump
-  { min: 2, solo: true, rows: (r) => slalom(r, 3) },                                  // slalom: a gap that moves
-  { min: 3, solo: true, rows: (r) => { const g = r.int(0, LANES - 1); return [lanesRow((l) => (l === g ? 'T' : 'B'))]; } }, // gate with a wire in the gap
-  { min: 3.5, solo: true, rows: (r) => ['TTTTT', ...slalom(r, 2), 'TTTTT'] },         // drums: jump, weave, jump
-];
-const lanesRow = (f) => Array.from({ length: LANES }, (_, l) => f(l)).join('');
-function slalom(r, n) {
-  let g = r.int(0, LANES - 1);
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    out.push(lanesRow((l) => (l === g ? '.' : 'B')));
-    g = Math.max(0, Math.min(LANES - 1, g + (r.chance(0.5) ? 1 : -1)));
-  }
-  return out;
-}
-function spawnFormation(run, d, emptyScreen) {
-  const pool = FORMATIONS.filter((f) => d >= f.min && (emptyScreen || !f.solo));
-  const rows = run.rng.pick(pool).rows(run.rng);
-  const dy = Math.max(110, run.speed * 0.55);       // ~0.55 s between rows
-  rows.forEach((row, i) => {
-    const y = -30 - i * dy;
-    [...row].forEach((c, l) => {
-      if (c === 'B') spawnObstacle('wall', l, y);
-      else if (c === 'T') spawnObstacle('low', l, y);
-    });
-  });
-  // coins trace the way through the first row
-  const free = [...rows[0]].findIndex((c) => c !== 'B');
-  if (free >= 0) spawnCoinLine(free, 3, -60 - rows.length * dy);
+  // Everything dangerous comes from the director; chunks only add coins.
+  if (roll < 0.5) spawnCoinLine(lane, B.COIN_LINE);
 }
 
 // ---------------------------------------------------------------------------
@@ -578,6 +511,7 @@ export function updateRun(run, input, dt) {
   // Checkpoints
   if (!run.pending && !run.boss && run.distance >= run.nextEvent) {
     run.pending = run.eventIndex % 2 === 0 ? 'boss' : 'shop';
+    run.sec = null;                 // drop the rest of the section; the event takes over
     run.eventIndex++;
   }
   if (run.pending && !run.boss && run.warnT <= 0) {
@@ -594,7 +528,7 @@ export function updateRun(run, input, dt) {
   }
 
   if (!run.pending && !run.boss && run.pickDelay <= 0) {
-    spawnEnemies(run, edt, d);
+    direct(run, d);
     run.chunkT -= edt;
     if (run.chunkT <= 0 && run.distance > 40) {
       run.chunkT = Math.max(1.1, 2.0 - d * 0.08);
@@ -793,7 +727,7 @@ export function updateRun(run, input, dt) {
       if (run.leechKills >= need && p.hearts < st.maxHearts) { p.hearts++; run.leechKills = 0; sfx.heart(); toast(run, 'LEECH +1', '', PAL.red, 1.5); }
       else run.leechKills = Math.min(run.leechKills, need);
     }
-    const n = 1 + (st.toxinCoins && e.poisoned ? 1 : 0) + (TYPES[e.type].wide ? 1 : 0) + (e.elite ? 2 : 0);
+    const n = 1 + (st.toxinCoins && e.poisoned ? 1 : 0) + (BIG_ENEMIES.has(e.type) ? 1 : 0) + (e.elite ? 2 : 0);
     if (e.elite) run.rs.elites = (run.rs.elites || 0) + 1;
     dropCoins(e.x, e.y, n);
     if (run.active) {

@@ -21,10 +21,6 @@ export const timeMul = (d) => 1 + Math.min(0.65, Math.floor(d / 2.5) * 0.13);
 // leave upwards, so they never overtake their own bullets.
 export const bulletSpeed = (d) => 270 + Math.min(150, Math.floor(d / 2.5) * 30);
 
-// How many enemies may hold position at once, and how often new ones come.
-export const maxActive = (d) => (d < 1.5 ? 1 : d < 4 ? 2 : 3);
-export const spawnGap = (d) => Math.max(0.8, 2.1 - d * 0.14);
-export const maxVolleys = (base, d) => Math.min(base + 3, base + Math.floor(d / 2.5));
 
 // Elites: tougher, faster, one extra volley, more coins. Start around 1000 m.
 export const eliteChance = (d) => Math.max(0, Math.min(0.4, (d - 2.5) * 0.06));

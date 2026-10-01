@@ -47,7 +47,7 @@ export const newId = () => nextId++;
 
 export const enemies = [];
 
-import { bulletSpeed, timeMul, enemyHp, maxVolleys } from './balance.js';
+import { bulletSpeed, timeMul, enemyHp } from './balance.js';
 
 // The enemy's lane and its neighbours, clamped to the track.
 const around = (e) => [e.lane - 1, e.lane, e.lane + 1].filter((l) => l >= 0 && l < LANES);
@@ -57,7 +57,6 @@ const others = (e) => [0, 1, 2, 3, 4].filter((l) => l !== e.lane && l < LANES);
 // steps(e) returns the volley for the current cycle: [{ lanes, delay, low }].
 // It is re-evaluated before every telegraph, so patterns may depend on
 // e.lane (hopper moves) or e.volleys (tank alternates) and stay deterministic.
-//   wide: covers many lanes, only spawned when alone on screen.
 export const TYPES = {
   drone: {
     color: PAL.magenta, r: 11, hp: 2, holdY: 160, telegraph: 0.6, rest: 1.6, volleys: 2, unlockAt: 0,
@@ -78,7 +77,7 @@ export const TYPES = {
     },
   },
   crusher: {
-    color: PAL.acid, r: 12, hp: 6, holdY: 120, telegraph: 0.9, rest: 2.4, volleys: 2, unlockAt: 1000, wide: true,
+    color: PAL.acid, r: 12, hp: 6, holdY: 120, telegraph: 0.9, rest: 2.4, volleys: 2, unlockAt: 1000,
     steps: (e) => [{ lanes: around(e), delay: 0, low: true }],
   },
   // One shot, then hops one lane in its direction (bounces off the walls).
@@ -101,7 +100,7 @@ export const TYPES = {
   },
   // Fires every lane except its own. Teaches: get under it.
   wall: {
-    color: PAL.violet, r: 14, hp: 7, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2500, wide: true, solo: true,
+    color: PAL.violet, r: 14, hp: 7, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2500,
     // From ~1600 m it squeezes in rhythm: everything but its lane, then ONLY its
     // lane, then everything else again. Step under it, out, back in.
     steps: (e) => (e.d >= 4
@@ -110,7 +109,7 @@ export const TYPES = {
   },
   // Alternates a low wave on every lane (jump) and shots two lanes out.
   tank: {
-    color: PAL.mint, r: 16, hp: 14, holdY: 110, telegraph: 1.0, rest: 1.8, volleys: 4, unlockAt: 3000, wide: true,
+    color: PAL.mint, r: 16, hp: 14, holdY: 110, telegraph: 1.0, rest: 1.8, volleys: 4, unlockAt: 3000,
     // From ~2000 m the low waves come as a drum roll: jump, jump, jump.
     steps: (e) => (e.volleys % 2 === 0
       ? (e.d >= 5
@@ -138,7 +137,7 @@ TYPES.stalker = {
 // Heartbeat: its lane, then both neighbours, on a steady pulse. Dance in and
 // out of the gap, or stay two lanes away.
 TYPES.throb = {
-  color: PAL.blue, r: 13, hp: 7, holdY: 130, telegraph: 0.9, rest: 1.8, volleys: 2, unlockAt: 1800, wide: true,
+  color: PAL.blue, r: 13, hp: 7, holdY: 130, telegraph: 0.9, rest: 1.8, volleys: 2, unlockAt: 1800,
   steps: (e) => {
     const side = [e.lane - 1, e.lane + 1].filter((l) => l >= 0 && l < LANES);
     return [[e.lane], side, [e.lane], side].map((lanes, i) => ({ lanes, delay: i < 3 ? 0.4 : 0 }));
@@ -146,15 +145,13 @@ TYPES.throb = {
 };
 // Weaves a moving hole through its three lanes, one row per beat.
 TYPES.weaver = {
-  color: '#ff9cf0', r: 13, hp: 8, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2300, wide: true,
+  color: '#ff9cf0', r: 13, hp: 8, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2300,
   steps: (e) => {
     const win = around(e);
     const path = e.dir > 0 ? [e.lane - 1, e.lane, e.lane + 1, e.lane] : [e.lane + 1, e.lane, e.lane - 1, e.lane];
     return path.map((h, i) => ({ lanes: win.filter((l) => l !== h), delay: i < 3 ? 0.38 : 0 }));
   },
 };
-
-export const NARROW_TYPES = Object.keys(TYPES).filter((k) => !TYPES[k].wide);
 
 export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = false, minion = false } = {}) {
   const T = TYPES[type];
@@ -178,12 +175,14 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
     step: 0,
     steps: null,
     volleys: 0,
-    maxVolleys: minion ? 1 : maxVolleys(T.volleys, difficulty) + (elite ? 1 : 0),
+    // Fixed per type (elites +1): a section always lasts the same, so it can be learned.
+    maxVolleys: minion ? 1 : T.volleys + (elite ? 1 : 0),
     telegraphLanes: [],
     dead: false,
   };
   e.steps = T.steps(e);
   enemies.push(e);
+  return e;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +194,8 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
 const TICK = 0.21;
 let clock = 0;            // in ticks
 let simT = 0;             // seconds, for the danger glow
+export const beatClock = () => clock;   // ticks; the director schedules on it
+export const TICK_SEC = TICK;
 const ticksOf = (sec) => Math.max(1, Math.round(sec / TICK));
 // Lane -> { until, color }: lanes stay lit while a fired volley is still on its
 // way, so the light means "danger now", not "danger was announced".
