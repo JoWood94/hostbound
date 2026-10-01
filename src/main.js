@@ -7,7 +7,7 @@ import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset } from './render/fx.js';
 import { drawPlayerBullets, drawEnemyBullets } from './game/bullets.js';
 import { drawPlayer } from './game/player.js';
-import { drawEnemies, drawTelegraphs } from './game/enemies.js';
+import { drawEnemies, drawTelegraphs, spawnEnemy } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles } from './game/obstacles.js';
 import { drawPickups } from './game/pickups.js';
@@ -15,7 +15,7 @@ import { drawBoss, drawBossTelegraph, drawBossBar } from './game/boss.js';
 import { drawWeaponFx } from './game/weapon.js';
 import { BOARDS } from './game/boards.js';
 import { unlockedBoards } from './game/achievements.js';
-import { createRun, updateRun, updateDead, endRun, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
+import { createRun, updateRun, updateDead, endRun, acquire, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
 import { drawHud } from './ui/hud.js';
 import { drawMenu, drawArchive, drawPick, drawShop, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
@@ -147,8 +147,9 @@ function render(alpha) {
     drawEnemies(alpha);
     drawWeaponFx();
     drawPlayerBullets();
+    drawEnemyBullets('low');   // low waves under the board: you jump over them
     if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
-    drawEnemyBullets(); // enemy bullets always on top: readability rule
+    drawEnemyBullets('high');  // normal enemy bullets always on top: readability rule
     drawBossBar(r.boss);
     drawHud(r);
     if (r.mode === 'pick') drawPick(r);
@@ -175,5 +176,12 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
 // Debug handle for testing: open with ?debug to reach run state from the console.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__game = { get run() { return run; }, save };
+  window.__game = {
+    get run() { return run; },
+    save,
+    start: () => startRun(),
+    acquire: (id) => acquire(run, id),
+    spawn: (type, lane) => spawnEnemy(type, lane, 1, { chance: () => Math.random() < 0.5 }),
+    god: () => { run.player.hearts = 99; run.stats.maxHearts = 99; run.nextEvent = 1e9; run.spawnT = 1e9; },
+  };
 }

@@ -7,7 +7,7 @@ import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
-import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies } from './enemies.js';
+import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies } from './enemies.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M } from './world.js';
 import { obstacles, spawnObstacle, spawnGate, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
@@ -156,8 +156,12 @@ function spawnEnemies(run, dt, d) {
     for (const b of busy) if (Math.abs(b - l) < 2) ok = false;
     if (ok) free.push(l);
   }
+  // Wide patterns only when alone on screen, so a safe option always exists.
   let type = pickType(run);
-  if (busy.size > 0 && type !== 'drone') type = 'drone';
+  if (busy.size > 0 && TYPES[type].wide) {
+    const narrow = NARROW_TYPES.filter((k) => TYPES[k].unlockAt <= run.distance);
+    type = run.rng.pick(narrow);
+  }
   if (free.length) spawnEnemy(type, run.rng.pick(free), d, run.rng);
 }
 

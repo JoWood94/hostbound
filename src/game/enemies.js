@@ -25,7 +25,12 @@ const timeMul = (d) => 1 + Math.min(0.4, d * 0.05); // max 40% faster, ever
 // The enemy's lane and its neighbours, clamped to the track.
 const around = (e) => [e.lane - 1, e.lane, e.lane + 1].filter((l) => l >= 0 && l < LANES);
 
-// steps(e) returns the list of volleys: [{ lanes, delay, low }]
+const others = (e) => [0, 1, 2, 3, 4].filter((l) => l !== e.lane && l < LANES);
+
+// steps(e) returns the volley for the current cycle: [{ lanes, delay, low }].
+// It is re-evaluated before every telegraph, so patterns may depend on
+// e.lane (hopper moves) or e.volleys (tank alternates) and stay deterministic.
+//   wide: covers many lanes, only spawned when alone on screen.
 export const TYPES = {
   drone: {
     color: PAL.magenta, r: 11, hp: 2, holdY: 160, telegraph: 0.6, rest: 1.6, volleys: 2, unlockAt: 0,
@@ -44,10 +49,42 @@ export const TYPES = {
     },
   },
   crusher: {
-    color: PAL.acid, r: 12, hp: 6, holdY: 120, telegraph: 0.9, rest: 2.4, volleys: 2, unlockAt: 1000,
+    color: PAL.acid, r: 12, hp: 6, holdY: 120, telegraph: 0.9, rest: 2.4, volleys: 2, unlockAt: 1000, wide: true,
     steps: (e) => [{ lanes: around(e), delay: 0, low: true }],
   },
+  // One shot, then hops one lane in its direction (bounces off the walls).
+  // An arrow shows the next lane. Teaches: track it, do not follow it.
+  hopper: {
+    color: PAL.red, r: 11, hp: 3, holdY: 150, telegraph: 0.55, rest: 0.9, volleys: 4, unlockAt: 1500,
+    steps: (e) => [{ lanes: [e.lane], delay: 0.12 }, { lanes: [e.lane], delay: 0 }],
+    afterVolley: (e) => {
+      if (e.lane + e.dir < 0 || e.lane + e.dir >= LANES) e.dir = -e.dir;
+      e.hopFromX = e.x;
+      e.lane += e.dir;
+      e.hopT = 0;
+    },
+  },
+  // Lights its lane, then dives down it. Teaches: leave the lane or kill it first.
+  kamikaze: {
+    color: PAL.amber, r: 10, hp: 3, holdY: 110, telegraph: 1.0, rest: 0, volleys: 1, unlockAt: 2000,
+    dive: 520,
+    steps: (e) => [{ lanes: [e.lane], delay: 0 }],
+  },
+  // Fires every lane except its own. Teaches: get under it.
+  wall: {
+    color: PAL.violet, r: 14, hp: 7, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2500, wide: true,
+    steps: (e) => [{ lanes: others(e), delay: 0.16 }, { lanes: others(e), delay: 0 }],
+  },
+  // Alternates a low wave on every lane (jump) and shots two lanes out.
+  tank: {
+    color: PAL.mint, r: 16, hp: 14, holdY: 110, telegraph: 1.0, rest: 1.8, volleys: 4, unlockAt: 3000, wide: true,
+    steps: (e) => (e.volleys % 2 === 0
+      ? [{ lanes: [0, 1, 2, 3, 4], delay: 0, low: true }]
+      : [0, 1, 2].map((i) => ({ lanes: [e.lane - 2, e.lane + 2].filter((l) => l >= 0 && l < LANES), delay: i < 2 ? 0.14 : 0 }))),
+  },
 };
+
+export const NARROW_TYPES = Object.keys(TYPES).filter((k) => !TYPES[k].wide);
 
 export function spawnEnemy(type, lane, difficulty, rng) {
   const T = TYPES[type];
@@ -82,6 +119,14 @@ function fire(e, st, d) {
   }
 }
 
+function startTelegraph(e) {
+  e.steps = e.T.steps(e);
+  e.state = 'telegraph';
+  e.stateT = 0;
+  e.telegraphLanes = allSequenceLanes(e);
+  sfx.telegraph();
+}
+
 // Lanes lit during telegraph: the whole sequence, so the player can plan.
 function allSequenceLanes(e) {
   const set = new Set();
@@ -100,14 +145,22 @@ export function updateEnemies(dt, difficulty) {
     e.t += dt;
     e.stateT += dt;
     if (e.hitFlash > 0) e.hitFlash -= dt;
+    if (e.hopT !== undefined && e.hopT < 1) {
+      e.hopT = Math.min(1, e.hopT + dt / 0.18);
+      const k = 1 - (1 - e.hopT) * (1 - e.hopT);
+      e.x = e.hopFromX + (laneX(e.lane) - e.hopFromX) * k;
+    }
 
     switch (e.state) {
       case 'enter':
         e.y += 170 * dt;
-        if (e.y >= T.holdY) { e.y = T.holdY; e.state = 'telegraph'; e.stateT = 0; e.telegraphLanes = allSequenceLanes(e); sfx.telegraph(); }
+        if (e.y >= T.holdY) { e.y = T.holdY; startTelegraph(e); }
         break;
       case 'telegraph':
-        if (e.stateT >= T.telegraph / m) {
+        if (e.stateT >= T.telegraph / m && T.dive) {
+          e.state = 'dive'; e.stateT = 0; e.telegraphLanes = [e.lane];
+          sfx.dive();
+        } else if (e.stateT >= T.telegraph / m) {
           e.state = 'fire'; e.stateT = 0; e.step = 0;
           fire(e, e.steps[0], d);
           e.telegraphLanes = e.steps.slice(1).flatMap((s) => s.lanes);
@@ -122,6 +175,7 @@ export function updateEnemies(dt, difficulty) {
             e.volleys++;
             e.telegraphLanes = [];
             e.state = e.volleys >= e.maxVolleys ? 'leave' : 'rest';
+            if (e.state === 'rest' && T.afterVolley) T.afterVolley(e);
           } else {
             fire(e, e.steps[e.step], d);
             e.telegraphLanes = e.steps.slice(e.step + 1).flatMap((s) => s.lanes);
@@ -130,7 +184,11 @@ export function updateEnemies(dt, difficulty) {
         break;
       }
       case 'rest':
-        if (e.stateT >= T.rest / m) { e.state = 'telegraph'; e.stateT = 0; e.telegraphLanes = allSequenceLanes(e); sfx.telegraph(); }
+        if (e.stateT >= T.rest / m) startTelegraph(e);
+        break;
+      case 'dive':
+        e.y += T.dive * m * dt;
+        if (Math.random() < 0.6) burst(e.x, e.y - 8, T.color, 1, 40, 0.25, 1.5);
         break;
       case 'leave':
         e.y += 240 * dt;
@@ -163,8 +221,10 @@ export function drawTelegraphs() {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
     const prog = e.state === 'telegraph' ? Math.min(1, e.stateT / e.T.telegraph) : 1;
     const a = 0.12 + prog * 0.4;
-    const low = e.type === 'crusher';
+    const lowLanes = new Set();
+    for (const st of e.steps) if (st.low) for (const l of st.lanes) lowLanes.add(l);
     for (const l of e.telegraphLanes) {
+      const low = lowLanes.has(l);
       const x = laneX(l);
       const w = LANE_W - 8;
       // Soft lane fill
@@ -174,6 +234,16 @@ export function drawTelegraphs() {
       const cy = H - 22;
       if (low) strokePoly([x - 8, cy + 4, x, cy - 6, x + 8, cy + 4], e.T.color, 2.5, false);
       else strokePoly([x - 8, cy - 5, x, cy + 4, x + 8, cy - 5], e.T.color, 2.5, false);
+      if (e.T.dive) strokePoly([x - 8, cy - 13, x, cy - 4, x + 8, cy - 13], e.T.color, 2.5, false);
+    }
+    // Hopper: arrow toward the lane it will jump to next
+    if (e.type === 'hopper' && e.state !== 'leave') {
+      let next = e.lane + e.dir;
+      if (next < 0 || next >= LANES) next = e.lane - e.dir;
+      const y = e.y + 22, x0 = laneX(e.lane), x1 = laneX(next);
+      const d = Math.sign(x1 - x0);
+      line(x0 + d * 12, y, x1, y, e.T.color, 1.5, 0.7);
+      strokePoly([x1 - d * 6, y - 5, x1, y, x1 - d * 6, y + 5], e.T.color, 1.5, false);
     }
     // Sweeper: arrow showing sweep direction
     if (e.type === 'sweeper' && e.state === 'telegraph') {
@@ -213,6 +283,24 @@ export function drawEnemies(alpha) {
     } else if (e.type === 'sweeper') {
       strokePoly([x - r * 1.6, y - r * 0.6, x, y + r * 0.8, x + r * 1.6, y - r * 0.6, x, y - r * 0.1], col, 2);
       drawGlowDot(x, y, c, 3);
+    } else if (e.type === 'hopper') {
+      strokePoly([x, y - r, x + r, y, x, y + r, x - r, y], col, 2);
+      line(x - r, y + r * 0.2, x - r * 1.5, y + r, col, 2);
+      line(x + r, y + r * 0.2, x + r * 1.5, y + r, col, 2);
+      drawGlowDot(x, y, c, 3);
+    } else if (e.type === 'kamikaze') {
+      strokePoly([x, y + r * 1.4, x + r, y - r, x, y - r * 0.4, x - r, y - r], col, 2);
+      drawGlowDot(x, y, c, e.state === 'telegraph' ? 4 + Math.sin(e.t * 30) * 1.5 : 3);
+    } else if (e.type === 'wall') {
+      strokePoly([x - r * 2, y - r * 0.5, x + r * 2, y - r * 0.5, x + r * 2, y + r * 0.5, x - r * 2, y + r * 0.5], col, 2);
+      for (let k = -1.5; k <= 1.5; k += 1) line(x + k * r, y + r * 0.5, x + k * r, y + r * 0.9, col, 2);
+      drawGlowDot(x, y + r * 0.9, PAL.white, 2.5);   // the gap: right under it
+    } else if (e.type === 'tank') {
+      strokePoly([x - r, y - r, x + r, y - r, x + r, y + r, x - r, y + r], col, 2.5);
+      line(x - r * 1.3, y - r, x - r * 1.3, y + r, col, 3);
+      line(x + r * 1.3, y - r, x + r * 1.3, y + r, col, 3);
+      line(x, y, x, y + r * 1.4, col, 3);
+      drawGlowDot(x, y, c, 4);
     } else if (e.type === 'crusher') {
       // Heavy block with a slot: fires low waves
       strokePoly([x - r * 1.3, y - r * 0.8, x + r * 1.3, y - r * 0.8, x + r * 1.3, y + r * 0.8, x - r * 1.3, y + r * 0.8], col, 2);

@@ -68,9 +68,12 @@ export function drawPlayerBullets() {
   }
 }
 
-export function drawEnemyBullets() {
+// layer 'low' is drawn under the player (so you visibly jump over it),
+// layer 'high' on top of everything (readability rule).
+export function drawEnemyBullets(layer = 'high') {
   const p = enemyBullets;
   for (let i = 0; i < p.n; i++) {
+    if ((p.kind[i] === LOW) !== (layer === 'low')) continue;
     if (p.kind[i] === LOW) {
       // Low wave: flat bar across the lane, reads as "jump over me"
       const hw = LANE_W * 0.42;

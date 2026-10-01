@@ -123,6 +123,7 @@ export const sfx = {
     noise(1.4, { vol: 0.6, freq: 2500, sweep: 60 });
     tone(110, 1.2, { type: 'sawtooth', vol: 0.3, slide: 30 });
   },
+  dive() { tone(900, 0.5, { type: 'sawtooth', vol: 0.15, slide: 120 }); },
   explode() { if (limit('boom', 60)) noise(0.3, { vol: 0.3, freq: 1200, sweep: 90 }); },
   arc() { if (limit('arc', 60)) tone(2400, 0.06, { type: 'sawtooth', vol: 0.06, slide: 900 }); },
   emp() { noise(0.8, { vol: 0.5, freq: 300, sweep: 8000, type: 'bandpass', q: 3 }); tone(60, 0.8, { type: 'sine', vol: 0.5, slide: 30 }); },

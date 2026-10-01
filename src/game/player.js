@@ -1,4 +1,4 @@
-import { H } from '../core/canvas.js';
+import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, fillPoly, drawGlowDot, ring } from '../render/draw.js';
 import { burst, shake, hitStop } from '../render/fx.js';
@@ -29,6 +29,8 @@ export function makePlayer(stats, color = PAL.cyan) {
     shotCount: 0,
     jumpT: 0,
     jumpDur: stats.jumpTime,
+    jumpBuf: 0,           // swipe-up received shortly before landing: jump again on touchdown
+    squash: 0,            // >0 landing squash, <0 takeoff stretch
     phaseT: 0,
     phaseCd: 0,
     orbitA: 0,
@@ -65,15 +67,22 @@ export function updatePlayer(p, input, dt, stats) {
   }
   if (p.bump) { p.bump *= 0.7; if (Math.abs(p.bump) < 0.005) p.bump = 0; }
 
-  // Jump
+  // Jump, with a short input buffer so a swipe just before landing is not lost.
+  if (input.jump) p.jumpBuf = 0.18;
+  if (p.jumpBuf > 0) p.jumpBuf -= dt;
   if (p.jumpT > 0) {
     p.jumpT -= dt;
-    if (p.jumpT <= 0) { p.jumpT = 0; p.ev.land = true; }
-  } else if (input.jump && stats.canJump) {
+    if (p.jumpT <= 0) { p.jumpT = 0; p.ev.land = true; p.squash = 1; }
+  }
+  if (p.jumpT <= 0 && p.jumpBuf > 0 && stats.canJump) {
+    p.jumpBuf = 0;
     p.jumpDur = stats.jumpTime;
     p.jumpT = p.jumpDur;
     p.ev.jump = true;
+    p.squash = -1;
   }
+  if (p.squash > 0) p.squash = Math.max(0, p.squash - dt * 7);
+  else if (p.squash < 0) p.squash = Math.min(0, p.squash + dt * 6);
 
   // Phase: brief invulnerability in place
   if (p.phaseCd > 0) p.phaseCd -= dt;
@@ -138,10 +147,13 @@ export function hurtPlayer(p, stats) {
   return what;
 }
 
+// 0..1..0 with a fast rise, a long hang at the top and a fast drop:
+// reads as "I'm clearly in the air" for most of the jump.
 export function jumpHeight(p) {
   if (p.jumpT <= 0) return 0;
   const t = 1 - p.jumpT / p.jumpDur;
-  return Math.sin(t * Math.PI);
+  const u = 2 * t - 1;
+  return 1 - u * u * u * u;
 }
 
 function boardPoly(x, y, w, h) {
@@ -151,7 +163,7 @@ function boardPoly(x, y, w, h) {
 export function drawPlayer(p, alpha, stats) {
   const x = p.prevX + (p.x - p.prevX) * alpha + p.bump * 40;
   const jh = jumpHeight(p);
-  const y = PLAYER_Y - jh * 26;
+  const y = PLAYER_Y - jh * 12;
   const blink = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 20) % 2 === 0;
   const c = p.color;
 
@@ -173,11 +185,23 @@ export function drawPlayer(p, alpha, stats) {
   }
 
   if (blink) return;
-  if (jh > 0) ring(x, PLAYER_Y + 6, 10 * (1 - jh * 0.5), PAL.dim, 2, 0.6);
 
-  const scale = 1 + jh * 0.25;
-  const w = HALF_W * scale;
-  const h = 16 * scale;
+  // Ground shadow stays on the track while the board rises: the gap between
+  // them is what sells the jump in a top-down view.
+  if (jh > 0) {
+    ctx.globalAlpha = 0.55 - jh * 0.25;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(x, PLAYER_Y + 10, 14 * (1 - jh * 0.35), 6 * (1 - jh * 0.35), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ring(x, PLAYER_Y + 10, 12 * (1 - jh * 0.35), c, 1, 0.35 * jh);
+  }
+
+  const scale = 1 + jh * 0.45;
+  const sq = p.squash;
+  const w = HALF_W * scale * (1 + sq * 0.22);
+  const h = 16 * scale * (1 - sq * 0.22);
   const poly = boardPoly(x, y, w, h);
   if (p.phaseT > 0) {
     strokePoly(boardPoly(x - 4, y, w, h), PAL.magenta, 1);
