@@ -76,9 +76,7 @@ function itemCard(id, x, y, w, h, it, { price = null, sold = false, afford = tru
 // ---------------------------------------------------------------------------
 function drawLogo(t) {
   const gl = Math.random() < 0.03 ? (Math.random() - 0.5) * 6 : 0;
-  // horizon band
-  ctx.fillStyle = 'rgba(29,6,25,0.9)';
-  ctx.fillRect(0, 70, W, 110);
+  // horizon line only (no band behind the script)
   ctx.save();
   ctx.shadowColor = PAL.orange; ctx.shadowBlur = 12;
   ctx.fillStyle = PAL.orange; ctx.fillRect(0, 179, W, 2);
