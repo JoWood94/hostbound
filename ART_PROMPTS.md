@@ -357,28 +357,29 @@ stay readable. Mostly dark, low contrast except the inner filament.
 The top edge tiles perfectly with the bottom edge. No text.
 ```
 
-**Divisorio di corsia** (striscia 16×512, ripetibile)
-```
-A vertically seamless thin strip, 16x512 pixels, pixel art, flat pure black #000000
-background. A single thin magnetic field line of plasma running vertically, faint
-violet with a cyan #19f0ff core, small brighter knots every ~128 px. Very subtle, it
-separates two lanes. Top edge tiles with the bottom edge. No text.
-```
+**Divisorio di corsia**: fatto in codice (filo di campo sottile con un nodo
+luminoso), l'immagine generata non serviva.
 
-**Ostacoli** (foglio 512×256, 4 colonne × 2 righe, celle 128×128, visti dall'alto)
+**Ostacoli v2** (foglio 512×256, 4 colonne × 2 righe, celle 128×128)
+Allega la spritemap del simbionte come riferimento di stile: stesso pixel art sporco
+e scuro, non il look "icona da mobile game" pulito e saturo della prima prova.
+Gli ostacoli sono fenomeni del plasma, non oggetti: così stanno nella corrente.
 ```
-A sprite sheet of space obstacles seen from directly above, 512x256 pixels, a grid of 4
-columns and 2 rows of 128x128 cells, one obstacle centred per cell, pixel art, flat pure
-chroma green #00ff00 background. Debris caught in a cosmic plasma current, dark rock and
-crystal with glowing cracks. Each obstacle spans about 110 px wide.
-Row 1, LOW obstacles (jumped over), flat and wide, about 40 px tall, toxic orange
-#ff6a00 glow: 1 a flat ring of orbiting rubble, 2 a low ridge of cooling slag,
-3 a sheet of cracked ice with orange fire inside, 4 a line of small burning meteor shards.
-Row 2, WALL obstacles (must change lane), bulky, about 90 px tall, hot magenta #ff2bd6
-glow: 1 a jagged asteroid with magenta veins, 2 a cluster of plasma crystals,
-3 a dead satellite husk overgrown with crystal, 4 a black monolith shard with a pulsing
-magenta core. Strong dark outline, readable over a dark background.
-No green in the art, no text.
+Match the rendering style of the attached reference sheet exactly: dark gritty pixel
+art, limited palette, heavy shadows, dirty highlights, no clean cartoon shading.
+A sprite sheet of obstacles floating in a river of cosmic plasma, seen strictly from
+directly above (top-down, no side view, no perspective), 512x256 pixels, a grid of
+4 columns and 2 rows of 128x128 cells, one obstacle centred per cell, flat pure chroma
+green #00ff00 background, no grid lines.
+Row 1, LOW hazards to jump over: flat, wide (about 110 px) and thin (about 30 px),
+unstable toxic orange #ff6a00 plasma: 1 a horizontal ripple of boiling plasma,
+2 a thin arc of solar flare lying across the lane, 3 a flat crackling discharge line
+with sparks, 4 a ribbon of molten slag drifting sideways.
+Row 2, WALLS to avoid: compact and heavy (about 90x90 px), near-black dark matter with
+a hot magenta #ff2bd6 corona: 1 a clot of dark matter with a glowing magenta rim,
+2 a shard of a dead star, black with magenta cracks, 3 a knot of collapsed plasma
+spinning into itself, 4 a cluster of void crystals with one red #ff1f4b warning core.
+Very dark bodies, glow only on the edges. No green in the art, no text.
 ```
 
 ---
