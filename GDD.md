@@ -334,8 +334,22 @@ Fatto (v1.1–1.2) — SHOT SPEED e direzione artistica:
 - Logo: direzione B (script neon "Neon" su blocco cromato "OVERDRIFT", orizzonte arancione)
   anche nel menu. Canvas design: claude.ai/artifact/WAqL1KcuScZXjNKzidUSrR.
 
+## Direzione v2 (in definizione, 2026-10-01)
+
+Decisa con l'utente dopo aver scartato il "corridore con maschere" (esperimento in `git stash`):
+- **Tono**: wasteland cosmica, alieni visti in chiave horror, non sci-fi pulita.
+  Riferimenti: Astro Squid (Mac, 2002) come spirito, ma più cupo; Carrion per la creatura.
+- **Il giocatore**: un simbionte alieno che fluttua (NON un calamaro, NON un corridore).
+  Le armi sono suoi organi: giustifica qualsiasi item. Proposte sul canvas di design,
+  pagina "Symbiote": MASSA (alla Carrion), LANTERNA, SIFONOFORO, CUORE.
+- **Corsie**: 5 correnti cosmiche (flussi di plasma) che il simbionte cavalca.
+- **Nemici**: tante razze aliene (ben più di 5), una per settore, ognuna con boss proprio.
+- **Palette**: il neon attuale ma più sporco e acido, "Japan neon".
+- **Salto e phase**: meccaniche invariate, cambia solo la loro animazione.
+- **Logo**: direzione B (script neon + cromato).
+
 Backlog:
-- Icona PWA con la nuova navicella bio.
+- Icona PWA con il simbionte scelto.
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.
 - Più boss (uno per distretto).
