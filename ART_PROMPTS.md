@@ -217,38 +217,45 @@ a beating red heart in the middle, veins pulsing, pus at the joints.
 
 ## 4. Colpi, effetti, pickup
 
-**Colpi del giocatore** (celle 16×16, ciano/verde acido)
+Regola di colore: **tutto ciò che spari tu è verde acido** (#c6ff1a, nucleo #f4ffd8);
+**tutto ciò che ti fa male è magenta/arancio**. Mai mischiare: in pieno bullet hell
+si deve capire in un decimo di secondo cosa è tuo.
+
+**Colpi del giocatore — un unico foglio** (512×128, 8 colonne × 2 righe, celle 64×64)
 ```
-8 small projectile sprites in one row, 16x16 cells, organic alien ammunition:
-a cyan glob of spit, an acid green bone needle, a glowing larva, a cyan spore pod
-with a smoke tail, a small pellet of bile, a cyan ring of plasma, a big glowing
-cyan blob, a white-hot impact flash. Bioluminescent, transparent background.
+A sprite sheet of player projectiles, 512x128 pixels, a grid of 8 columns and 2 rows
+of 64x64 cells, each sprite centred in its cell and pointing UP, pixel art, flat pure
+black #000000 background (no checkerboard, no gradient). All projectiles are living
+bio-plasma spat by a symbiote: dirty acid green #c6ff1a with a pale hot core #f4ffd8,
+wet, organic, slightly translucent, a short glowing smear trailing downward.
+Row 1, idle shots, one per column:
+1 small glob of glowing spit (basic shot), 2 big heavy calcified glob (slug),
+3 tiny pellet of bile (scatter), 4 spore pod with a smoke trail (rocket),
+5 wavy larva (sine wave), 6 huge swollen glob ringed with veins (echo round),
+7 bone needle (piercer), 8 blank.
+Row 2, impacts and beams:
+1-3 impact splash in 3 frames (spit bursting into acid droplets),
+4-5 rocket spore bursting in 2 frames, 6 vertical slice of a living beam
+(twisted luminous nerve fibres, white-hot core, tileable top to bottom),
+7 rail streak (a thin blinding green line with a sheath of sparks), 8 blank.
+No text, no UI, no numbers.
 ```
 
-**Raggio laser** (tile verticale ripetibile 24×64)
+**Proiettili nemici** (256×64, 4 colonne di 64)
 ```
-A vertically tileable beam texture, 24x64, seamless top to bottom: a living
-cyan beam of light made of twisted luminous nerve fibers, white hot core, dirty glow.
-```
-
-**Proiettili nemici** (celle 16×16, SOLO magenta/arancio)
-```
-6 enemy projectile sprites in one row, 16x16 cells: hot magenta glowing spit orb
-with a white core (3 variants), toxic orange orb (2 variants), a magenta acid
-droplet. Must read clearly against a black background.
-```
-
-**Onda bassa** (64×20, da saltare)
-```
-A low curved shockwave of toxic orange bile skimming the ground, 64x20,
-crescent shape bulging downward, white-hot edge, dripping. Single frame.
+4 enemy projectile sprites in one row, 256x64 pixels, 64x64 cells, centred, pixel art,
+flat pure black #000000 background. Hostile alien venom: 1 hot magenta #ff2bd6 orb of
+spit with a white core, 2 toxic orange #ff6a00 orb with a white core, 3 big magenta
+acid droplet with a dripping tail, 4 a low curved crescent shockwave of orange bile
+skimming the ground (to be jumped). Must read clearly over a dark background.
+No green anywhere.
 ```
 
 **Esplosioni** (celle 48×48, 8 fotogrammi)
 ```
 Sprite sheet, 8 frames in one row, 48x48 cells: a gore explosion, flesh chunks,
 bone chips and ichor bursting outward then fading into dark smoke, hot pink and
-sickly yellow sparks.
+sickly yellow sparks. Flat pure black background.
 ```
 
 **Pickup** (celle 20×20)
@@ -256,7 +263,7 @@ sickly yellow sparks.
 5 pickup sprites in one row, 20x20 cells: a glowing acid green biomass cell
 (currency), a beating red organ (heart), a pale blue cyst (shield heart),
 a glitching corrupted egg with cyan and magenta split (mystery item),
-a small pink tumor (bonus). Bioluminescent.
+a small pink tumor (bonus). Bioluminescent. Flat pure black background.
 ```
 
 ---
@@ -295,25 +302,38 @@ from above: spores, bone chips, droplets of ichor, motes of dirty acid green #c6
 cyan #19f0ff light. Mostly empty transparent space. No text, no UI.
 ```
 
-**Corrente cosmica (una corsia), tile verticale 64×128**
+**Corrente cosmica (una corsia), tile verticale 72×144**
 ```
-A vertically seamless tile, 64x128 pixels, pixel art, transparent background. A narrow
+A vertically seamless tile, 72x144 pixels, pixel art, transparent background. A narrow
 river of cosmic plasma flowing downward, dirty hot pink #ff2bd6 and cyan #19f0ff streaks,
 tiny floating specks of organic debris, faint nerve-like filaments, edges fading to fully
 transparent on the left and right. Subtle, it sits under enemies and bullets.
 ```
 
-## 6. Icone degli item (celle 32×32)
+## 6. Icone degli item — un unico foglio
 
-Template, una richiesta per gruppo di 6–8 item:
+Un foglio solo con tutti i 44 item **nell'ordine del gioco** (512×384, 8 colonne ×
+6 righe, celle 64×64; le ultime 4 celle vuote). Colore dominante per categoria, come
+nelle carte: armi verde acido, difesa ciano, economia giallo, rischio rosso,
+modalità di sparo magenta, attivi arancio. Se il generatore sbaglia l'ordine o il
+numero di celle, rigeneralo a metà (righe 1–3, poi 4–6) con lo stesso prompt.
+
 ```
-[N] item icons in one row, 32x32 cells, grotesque alien organ trinkets on
-transparent background, each readable at small size: [LIST]
+A sprite sheet of item icons, 512x384 pixels, a grid of 8 columns and 6 rows of
+64x64 cells, one icon centred in each cell with some margin, pixel art, flat pure black
+#000000 background (no checkerboard, no grid lines, no text, no numbers, no labels).
+Every item is a grotesque bioluminescent alien organ or trinket, wet and fleshy, dark
+outline, readable at 32 px, seen in three-quarter view. Colour accents: weapons acid
+green #c6ff1a, defence cyan #19f0ff, economy dirty yellow #ffd23f, risk blood red
+#ff1f4b, fire modes hot magenta #ff2bd6, actives toxic orange #ff6a00.
+Read cells left to right, top to bottom:
+Row 1: 1 a forked split tongue, 2 a twitching coiled muscle, 3 a heavy calcified slug, 4 a ring of magnetised vertebrae, 5 a long bone needle, 6 a tracking eye on a stalk, 7 a cluster of spore grenades, 8 a crackling exposed nerve.
+Row 2: 1 a dripping poison gland, 2 an eye pierced by a crosshair of thorns, 3 a ribbed resonating shell, 4 a chitin armour plate, 5 a frozen pale blue cyst, 6 a translucent membrane bubble, 7 a small moon of flesh orbiting a core, 8 a flickering half-transparent heart.
+Row 3: 1 a shard of reflective scale, 2 a curled springy tendon, 3 a cluster of healing larvae, 4 a horseshoe of bone with sparks, 5 a fat gold-veined tumour, 6 a four-leafed fungus, 7 a gland venting green flame, 8 a bone die with eyes as pips.
+Row 4: 1 a bulging pulsing adrenal gland, 2 a cracked glass organ full of light, 3 a tiny symbiote larva companion, 4 a heavy clenched knuckle of bone, 5 a streaming wisp of ectoplasm, 6 a hidden mouth with teeth in shadow, 7 a string of linked swollen pods, 8 a fat red leech.
+Row 5: 1 a bleeding cut heart, 2 a stack of biomass cells growing, 3 a glowing eye shooting a beam, 4 an open spore pod fanning seeds, 5 a long spinal column charged with light, 6 a pod of three spore rockets, 7 a wriggling serpent larva, 8 a bursting nerve cluster.
+Row 6: 1 an hourglass of bone with green sand, 2 a heart overloaded with light, 3 a vertical bolt from an open eye, 4 a stitched flesh patch, 5 blank, 6 blank, 7 blank, 8 blank.
 ```
-Esempi di `[LIST]`: `a split forked tongue (SPLITTER), a twitching muscle coil
-(RAPID), a heavy calcified slug (SLUG), a bone needle (PIERCER), a tracking eye
-on a stalk (SEEKER), a cluster of spore grenades (FRAG), a crackling nerve (ARC),
-a dripping poison gland (TOXIN)`.
 
 ---
 
