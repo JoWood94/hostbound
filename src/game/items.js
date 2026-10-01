@@ -20,7 +20,7 @@ export function baseStats() {
   return {
     // weapon
     fireRate: 6, damage: 1, bulletSize: 3, bulletSpeed: 520,
-    split: 0, pierce: 0, homing: 0, frag: 0, arc: 0, toxin: 0, crit: 0, critMul: 3, echo: 0,
+    split: 0, sideDamage: 0.5, pierce: 0, homing: 0, frag: 0, arc: 0, toxin: 0, crit: 0, critMul: 3, echo: 0, echoMul: 2.5,
     // body
     maxHearts: 3, blueStart: 0, barrier: 0, barrierRegen: 6, orbitals: 0,
     phaseCd: 2, phaseTime: 0.25, mirror: false, kickflip: false, jumpTime: 0.45,
@@ -36,34 +36,34 @@ export function baseStats() {
 export const ITEMS = [
   // ---- weapon ----
   { id: 'split', name: 'SPLITTER', code: 'SPL', cat: 'weapon', rarity: 0, max: 2, unlock: null,
-    desc: 'Extra shots angle into neighbouring lanes. Stack: reach 2 lanes.',
+    desc: 'Half-damage side shots angle into neighbouring lanes. Stack: reach 2 lanes.',
     apply: (s, n) => { s.split += n; } },
   { id: 'rapid', name: 'RAPID COIL', code: 'RPD', cat: 'weapon', rarity: 0, max: 3, unlock: null,
-    desc: '+35% fire rate.',
-    apply: (s, n) => { s.fireRate *= 1 + 0.35 * n; } },
+    desc: '+25% fire rate.',
+    apply: (s, n) => { s.fireRate *= 1 + 0.25 * n; } },
   { id: 'slug', name: 'SLUG ROUNDS', code: 'SLG', cat: 'weapon', rarity: 0, max: 3, unlock: null,
-    desc: '+1 damage, bigger bullets, -15% fire rate.',
-    apply: (s, n) => { s.damage += n; s.bulletSize += 1.2 * n; s.fireRate *= Math.pow(0.85, n); } },
+    desc: '+50% damage, bigger bullets, -10% fire rate.',
+    apply: (s, n) => { s.damage += 0.5 * n; s.bulletSize += 1 * n; s.fireRate *= Math.pow(0.9, n); } },
   { id: 'pierce', name: 'PIERCER', code: 'PRC', cat: 'weapon', rarity: 0, max: 3, unlock: null,
     desc: 'Bullets pass through +1 enemy.',
     apply: (s, n) => { s.pierce += n; } },
   { id: 'homing', name: 'SEEKER CHIP', code: 'SEK', cat: 'weapon', rarity: 1, max: 2, unlock: 'dist_1000',
-    desc: 'Bullets curve toward enemies in other lanes.',
+    desc: 'Bullets bend toward enemies in the next lane. Stack: 2 lanes.',
     apply: (s, n) => { s.homing += n; } },
   { id: 'frag', name: 'FRAG TIPS', code: 'FRG', cat: 'weapon', rarity: 1, max: 2, unlock: 'kills_150',
-    desc: 'Hits explode, damaging nearby enemies.',
+    desc: 'Hits explode for 40% damage around the target.',
     apply: (s, n) => { s.frag += n; } },
   { id: 'arc', name: 'ARC RELAY', code: 'ARC', cat: 'weapon', rarity: 1, max: 3, unlock: 'kills_500',
-    desc: 'Hits jump to +1 nearby enemy for half damage.',
+    desc: 'Hits jump to +1 nearby enemy for 35% damage.',
     apply: (s, n) => { s.arc += n; } },
   { id: 'toxin', name: 'TOXIN', code: 'TOX', cat: 'weapon', rarity: 0, max: 3, unlock: 'runs_5',
     desc: 'Hits poison: 1 damage per second for 3s. Stacks.',
     apply: (s, n) => { s.toxin += n; } },
   { id: 'crit', name: 'HEADSHOT', code: 'HDS', cat: 'weapon', rarity: 1, max: 3, unlock: 'boss_nohit',
-    desc: '+15% chance to deal triple damage.',
-    apply: (s, n) => { s.crit += 0.15 * n; } },
+    desc: '+10% chance to deal triple damage.',
+    apply: (s, n) => { s.crit += 0.1 * n; } },
   { id: 'echo', name: 'ECHO CHAMBER', code: 'ECH', cat: 'weapon', rarity: 1, max: 2, unlock: 'dist_2000',
-    desc: 'Every 5th shot is a huge piercing round. Stack: every 4th.',
+    desc: 'Every 5th shot is a huge piercing round (x2.5). Stack: every 4th.',
     apply: (s, n) => { s.echo = n === 1 ? 5 : 4; } },
 
   // ---- defense ----
@@ -97,8 +97,8 @@ export const ITEMS = [
     desc: 'Pull coins from neighbouring lanes. Stack: 2 lanes.',
     apply: (s, n) => { s.magnet += n; } },
   { id: 'greed', name: 'GREED', code: 'GRD', cat: 'economy', rarity: 0, max: 2, unlock: null,
-    desc: '+50% coins.',
-    apply: (s, n) => { s.coinMul += 0.5 * n; } },
+    desc: '+35% coins.',
+    apply: (s, n) => { s.coinMul += 0.35 * n; } },
   { id: 'lucky', name: 'LUCKY CHIP', code: 'LCK', cat: 'economy', rarity: 1, max: 2, unlock: 'buy_5',
     desc: 'Rare items show up more. +5% crit.',
     apply: (s, n) => { s.luck += n; s.crit += 0.05 * n; } },
@@ -181,5 +181,19 @@ export function rollItems(rng, unlocked, stacks, n, luck = 0, exclude = []) {
   }
   return out;
 }
+
+// Expected single-target damage per second, as a multiple of a fresh STOCK board.
+// Used by the run to scale enemy HP partially with player power, and by
+// scripts/balance.mjs to print the balance report.
+export const BASE_DPS = 6;
+export function effectiveDps(s) {
+  const dmg = s.damage * s.damageMul;
+  const sideHit = s.homing > 0 ? Math.min(1, 0.5 + 0.25 * s.homing) : 0;
+  let perShot = dmg + 2 * s.split * dmg * s.sideDamage * sideHit;
+  if (s.echo) perShot += (dmg * s.echoMul - dmg) / s.echo;
+  perShot *= 1 + s.crit * (s.critMul - 1);
+  return s.fireRate * perShot + s.toxin;
+}
+export function powerRatio(s) { return Math.max(1, effectiveDps(s) / BASE_DPS); }
 
 export const STARTER_ITEMS = ITEMS.filter((i) => !i.unlock).map((i) => i.id);

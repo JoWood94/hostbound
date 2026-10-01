@@ -11,7 +11,7 @@ import { drawEnemies, drawTelegraphs, spawnEnemy } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles } from './game/obstacles.js';
 import { drawPickups } from './game/pickups.js';
-import { drawBoss, drawBossTelegraph, drawBossBar } from './game/boss.js';
+import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.js';
 import { drawWeaponFx } from './game/weapon.js';
 import { BOARDS } from './game/boards.js';
 import { unlockedBoards } from './game/achievements.js';
@@ -200,6 +200,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     start: () => startRun(),
     acquire: (id) => acquire(run, id),
     spawn: (type, lane) => spawnEnemy(type, lane, 1, { chance: () => Math.random() < 0.5 }),
+    boss: (def) => { run.boss = makeBoss(0, def, 1); run.nextEvent = 1e9; },
     god: () => { run.player.hearts = 99; run.stats.maxHearts = 99; run.nextEvent = 1e9; run.spawnT = 1e9; },
   };
 }

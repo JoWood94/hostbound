@@ -8,8 +8,8 @@ Design doc: [GDD.md](GDD.md)
 
 - **Swipe left/right**: change lane (5 lanes)
 - **Swipe up**: jump (low barriers, orange low waves)
-- **Swipe down**: phase (brief invulnerability)
-- **Tap**: use active item when charged
+- **Swipe down**: phase (brief invulnerability); in the air: fast fall
+- **Orange button** (bottom-left): use the active item when charged by kills
 - Desktop: A/D or arrows, W/Space, S/Shift, E for active, P/Esc pause
 
 ## Dev
@@ -20,6 +20,7 @@ npm run dev        # http://localhost:5173/neon-overdrift/ (also on LAN, --host 
 npm run build      # dist/
 npm run preview    # serve the production build
 node scripts/make-icons.mjs   # regenerate PWA icons
+node scripts/balance.mjs      # print the balance report (player DPS vs enemy/boss HP)
 ```
 
 Debug handle: open with `?debug` and use `window.__game.run` / `window.__game.save` in the console.

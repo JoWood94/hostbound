@@ -11,17 +11,18 @@ import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, c
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex } from './world.js';
 import { obstacles, spawnObstacle, spawnGate, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
-import { ITEMS, ITEM_BY_ID, computeStats, rollItems, activeSynergies, RARITY } from './items.js';
+import { ITEMS, ITEM_BY_ID, computeStats, rollItems, activeSynergies, RARITY, powerRatio } from './items.js';
+import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
-import { makeBoss, updateBoss } from './boss.js';
+import { makeBoss, updateBoss, BOSSES } from './boss.js';
 import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic } from '../audio/music.js';
 import { buzz } from '../core/haptics.js';
+import { ACTIVE_BTN } from '../ui/hud.js';
 
 export const EVENT_EVERY = 600;       // metres between boss / market checkpoints
-const PRICE = [18, 30, 45];
 
 // Daily run: same seed for everyone on the same local date, always STOCK board.
 export function todayKey() {
@@ -50,7 +51,7 @@ export function createRun(save, opts = {}) {
     mode: 'play',
     nextEvent: EVENT_EVERY, eventIndex: 0, pending: null, warnT: 0,
     boss: null, bossIndex: 0, bossHit: false, pickDelay: 0,
-    shopIndex: 0, shopSlots: [], rerollCost: 6, freeShop: !!board.freeShop,
+    shopIndex: 0, shopSlots: [], rerollCost: B.REROLL_BASE, freeShop: !!board.freeShop,
     pickChoices: [],
     active: null, overdriveT: 0, slowT: 0, flashT: 0,
     toasts: [], newUnlocks: [],
@@ -62,6 +63,12 @@ export function createRun(save, opts = {}) {
   };
   run.stats = computeStats(board, run.stacks);
   run.player = makePlayer(run.stats, board.color);
+  // Boss order is shuffled per run (Fisher-Yates on the run seed).
+  run.bossOrder = BOSSES.map((_, i) => i);
+  for (let i = run.bossOrder.length - 1; i > 0; i--) {
+    const j = run.rng.int(0, i);
+    [run.bossOrder[i], run.bossOrder[j]] = [run.bossOrder[j], run.bossOrder[i]];
+  }
 
   clearPool(playerBullets);
   clearPool(enemyBullets);
@@ -85,6 +92,15 @@ export function createRun(save, opts = {}) {
 
 export function difficulty(run) { return run.distance / 400; }
 
+// One-time contextual tutorial tips, remembered in the save.
+function tip(run, id, textStr, sub) {
+  if (!run.save.tips) run.save.tips = {};
+  if (run.save.tips[id]) return;
+  run.save.tips[id] = true;
+  writeSave(run.save);
+  toast(run, textStr, sub, PAL.white, 3.5);
+}
+
 function toast(run, textStr, sub = '', color = PAL.cyan, dur = 2.4) {
   run.toasts.push({ text: textStr, sub, color, t: dur, dur });
   if (run.toasts.length > 3) run.toasts.shift();
@@ -99,7 +115,7 @@ export function acquire(run, id, silent = false) {
   const p = run.player;
   if (it.cat === 'active') {
     if (run.active) delete run.stacks[run.active.id];
-    run.active = { id, charge: 0, max: it.active.charge };
+    run.active = { id, charge: 0, max: it.active.charge, told: false };
     run.stacks[id] = 1;
   } else {
     run.stacks[id] = (run.stacks[id] || 0) + 1;
@@ -113,7 +129,11 @@ export function acquire(run, id, silent = false) {
   if (!run.save.discovered.includes(id)) { run.save.discovered.push(id); writeSave(run.save); }
   run.rs.defItems = ITEMS.filter((x) => x.cat === 'defense' && run.stacks[x.id] > 0).length;
 
-  if (!silent) { sfx.pickup(); buzz(15); toast(run, it.name, it.desc.length < 44 ? it.desc : '', RARITY[it.rarity].color); }
+  if (!silent) {
+    sfx.pickup(); buzz(15);
+    toast(run, it.name, it.desc.length < 44 ? it.desc : '', RARITY[it.rarity].color);
+    if (it.cat === 'active') toast(run, 'ACTIVE ITEM', 'Kills fill the orange button: tap it when full', PAL.orange, 4.5);
+  }
 
   for (const sy of activeSynergies(run.stacks)) {
     if (run.synergies.has(sy.id)) continue;
@@ -160,11 +180,10 @@ function pickType(run) {
 function spawnEnemies(run, dt, d) {
   const busy = new Set();
   for (const e of enemies) if (e.type !== 'boss' && e.state !== 'leave') busy.add(e.lane);
-  const maxActive = d < 2 ? 1 : d < 5 ? 2 : 3;
-  if (busy.size >= maxActive) { run.spawnT = Math.max(run.spawnT, 0.8); return; }
+  if (busy.size >= B.maxActive(d)) { run.spawnT = Math.max(run.spawnT, 0.7); return; }
   run.spawnT -= dt;
   if (run.spawnT > 0) return;
-  run.spawnT = Math.max(1.2, 2.2 - d * 0.1);
+  run.spawnT = B.spawnGap(d);
   const free = [];
   for (let l = 0; l < LANES; l++) {
     let ok = true;
@@ -177,7 +196,17 @@ function spawnEnemies(run, dt, d) {
     const narrow = NARROW_TYPES.filter((k) => TYPES[k].unlockAt <= run.distance);
     type = run.rng.pick(narrow);
   }
-  if (free.length) spawnEnemy(type, run.rng.pick(free), d, run.rng);
+  const opts = () => ({ power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
+  if (!free.length) return;
+  const lane = run.rng.pick(free);
+  // Squads: from ~1000 m, sometimes two narrow enemies enter together.
+  const pairLanes = free.filter((l) => Math.abs(l - lane) >= 2);
+  if (d >= 2.5 && !TYPES[type].wide && pairLanes.length && busy.size + 2 <= B.maxActive(d) && run.rng.chance(0.3)) {
+    spawnEnemy(type, lane, d, run.rng, opts());
+    spawnEnemy(type, run.rng.pick(pairLanes), d, run.rng, opts());
+    return;
+  }
+  spawnEnemy(type, lane, d, run.rng, opts());
 }
 
 // Runner chunks: coin lines, barriers, walls, gates.
@@ -200,20 +229,20 @@ function spawnChunk(run, d) {
   if (d >= 3 && roll < 0.12 && enemies.length === 0) {
     const gap = rng.int(0, LANES - 1);
     spawnGate(gap);
-    spawnCoinLine(gap, 4, -60);
+    spawnCoinLine(gap, 3, -60);
   } else if (d >= 0.3 && roll < 0.4) {
     spawnObstacle('low', lane);
-    spawnCoinLine(lane, 3, -50, 22);
+    spawnCoinLine(lane, 2, -50, 22);
   } else if (d >= 0.15 && roll < 0.65) {
     spawnObstacle('wall', lane);
     const side = lane === 0 ? 1 : lane === LANES - 1 ? LANES - 2 : lane + (rng.chance(0.5) ? 1 : -1);
-    spawnCoinLine(side, 5);
+    spawnCoinLine(side, B.COIN_LINE - 1);
     if (d >= 1.5 && rng.chance(0.4)) {
       const other = (lane + 2 + rng.int(0, 1)) % LANES;
       if (Math.abs(other - lane) >= 2) spawnObstacle(rng.chance(0.5) ? 'wall' : 'low', other, -60);
     }
   } else {
-    spawnCoinLine(lane, 6);
+    spawnCoinLine(lane, B.COIN_LINE);
   }
 }
 
@@ -231,12 +260,12 @@ function openShop(run) {
   run.toasts = [];
   setMusic('shop');
   const items = rollItems(run.rng, unlockedItems(run.save), run.stacks, 3, run.stats.luck);
-  const mul = 1 + 0.25 * run.shopIndex;
   const free = run.freeShop;
+  const si = run.shopIndex;
   run.shopSlots = [
-    ...items.map((it) => ({ kind: 'item', id: it.id, price: free ? 0 : Math.round(PRICE[it.rarity] * mul), sold: false })),
-    { kind: 'heal', price: Math.round(10 * mul), sold: false },
-    { kind: 'blue', price: Math.round(14 * mul), sold: false },
+    ...items.map((it) => ({ kind: 'item', id: it.id, price: free ? 0 : B.itemPrice(it.rarity, si), sold: false })),
+    { kind: 'heal', price: B.healPrice(si), sold: false },
+    { kind: 'blue', price: B.bluePrice(si), sold: false },
   ];
   run.freeShop = false;
   run.shopIndex++;
@@ -260,11 +289,10 @@ export function shopBuy(run, i) {
 export function shopReroll(run) {
   if (run.coins < run.rerollCost) { sfx.deny(); return; }
   run.coins -= run.rerollCost;
-  run.rerollCost += 4;
+  run.rerollCost += B.REROLL_STEP;
   const items = rollItems(run.rng, unlockedItems(run.save), run.stacks, 3, run.stats.luck);
-  const mul = 1 + 0.25 * (run.shopIndex - 1);
   const rest = run.shopSlots.filter((s) => s.kind !== 'item');
-  run.shopSlots = [...items.map((it) => ({ kind: 'item', id: it.id, price: Math.round(PRICE[it.rarity] * mul), sold: false })), ...rest];
+  run.shopSlots = [...items.map((it) => ({ kind: 'item', id: it.id, price: B.itemPrice(it.rarity, run.shopIndex - 1), sold: false })), ...rest];
   sfx.select();
 }
 
@@ -285,7 +313,7 @@ export function pickItem(run, i) {
 }
 
 export function skipPick(run) {
-  addCoins(run, 10);
+  addCoins(run, B.SKIP_COINS);
   run.pickChoices = [];
   run.mode = 'play';
   sfx.coin();
@@ -356,7 +384,12 @@ export function updateRun(run, input, dt) {
     run.mode = 'pause';
     return;
   }
-  if ((input.tap && input.tapY >= 40) || input.active) useActive(run);
+  // Active item: only the button (or E on keyboard), never a stray tap.
+  const B_ = ACTIVE_BTN;
+  const onBtn = input.tap && input.tapX >= B_.x - 6 && input.tapX <= B_.x + B_.w + 6 && input.tapY >= B_.y - 6 && input.tapY <= B_.y + B_.h + 6;
+  if (onBtn || input.active) {
+    if (!useActive(run) && run.active) { sfx.deny(); toast(run, `${run.active.charge}/${run.active.max} KILLS`, 'Kill enemies to charge it', PAL.orange, 1.4); }
+  }
 
   if (run.pickDelay > 0) {
     run.pickDelay -= dt;
@@ -400,7 +433,7 @@ export function updateRun(run, input, dt) {
   }
   if (run.warnT > 0) {
     run.warnT -= dt;
-    if (run.warnT <= 0) { run.boss = makeBoss(run.bossIndex); run.bossHit = false; }
+    if (run.warnT <= 0) { run.boss = makeBoss(run.bossIndex, run.bossOrder[run.bossIndex % run.bossOrder.length], powerRatio(run.stats)); run.bossHit = false; }
   }
 
   if (!run.pending && !run.boss && run.pickDelay <= 0) {
@@ -413,6 +446,8 @@ export function updateRun(run, input, dt) {
   }
 
   // Player + weapon
+  if (run.time > 0.5) tip(run, 'lanes', 'SWIPE LEFT / RIGHT', 'Change lane. Lit lanes are about to be shot');
+  if (run.time > 8) tip(run, 'phase', 'SWIPE DOWN TO PHASE', 'Brief invulnerability. In the air: fast fall');
   updatePlayer(p, input, dt, st);
   if (p.ev.jump) sfx.jump();
   if (p.ev.lane) sfx.lane();
@@ -438,7 +473,7 @@ export function updateRun(run, input, dt) {
   updatePool(playerBullets, dt);
   updatePool(enemyBullets, edt);
   updateEnemies(edt, d);
-  if (run.boss) updateBoss(run.boss, edt, d);
+  if (run.boss) updateBoss(run.boss, edt, d, p.lane);
   updateObstacles(edt, run.speed);
   updateFx(dt, run.speed);
   updateWeaponFx(dt);
@@ -522,6 +557,21 @@ export function updateRun(run, input, dt) {
     }
   }
 
+  // Jump hint: a low wave or low barrier in my lane will arrive within ~0.6s.
+  run.jumpHint = false;
+  if (!air && st.canJump) {
+    for (let i = 0; i < eb.n && !run.jumpHint; i++) {
+      if (eb.kind[i] !== LOW || Math.abs(eb.x[i] - p.x) > LANE_W * 0.5 || eb.y[i] > PLAYER_Y) continue;
+      const t = (PLAYER_Y - eb.y[i]) / Math.max(1, eb.vy[i]);
+      if (t < 0.6) run.jumpHint = true;
+    }
+    for (const o of obstacles) {
+      if (o.type !== 'low' || o.dead || o.lane !== p.lane || o.y > PLAYER_Y) continue;
+      if ((PLAYER_Y - o.y) / Math.max(1, run.speed) < 0.6) run.jumpHint = true;
+    }
+  }
+  if (run.jumpHint) tip(run, 'jump', 'SWIPE UP TO JUMP', 'Jump clears orange low waves and barriers only');
+
   // Pickups
   const got = updatePickups(edt, run.speed, p, PLAYER_Y, st.magnet);
   for (const g of got) {
@@ -546,9 +596,17 @@ export function updateRun(run, input, dt) {
     if (e.noReward) continue;
     run.rs.kills++;
     if (e.poisoned) run.rs.toxinKills++;
-    const n = 1 + (st.toxinCoins && e.poisoned ? 1 : 0) + (e.type !== 'drone' ? 1 : 0);
+    const n = 1 + (st.toxinCoins && e.poisoned ? 1 : 0) + (TYPES[e.type].wide ? 1 : 0) + (e.elite ? 2 : 0);
+    if (e.elite) run.rs.elites = (run.rs.elites || 0) + 1;
     dropCoins(e.x, e.y, n);
-    if (run.active) run.active.charge = Math.min(run.active.max, run.active.charge + 1);
+    if (run.active) {
+      run.active.charge = Math.min(run.active.max, run.active.charge + 1);
+      if (run.active.charge === run.active.max && !run.active.told) {
+        run.active.told = true;
+        toast(run, `${ITEM_BY_ID[run.active.id].name} READY`, 'Tap the orange button', PAL.orange, 2.5);
+        sfx.select();
+      }
+    }
     sfx.kill();
   }
 

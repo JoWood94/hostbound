@@ -8,7 +8,7 @@
 //   crusher -> jump (low wave across 3 lanes) or move 2 lanes away
 import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { strokePoly, drawGlowDot, line } from '../render/draw.js';
+import { strokePoly, drawGlowDot, line, ring } from '../render/draw.js';
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
@@ -19,8 +19,7 @@ export const newId = () => nextId++;
 
 export const enemies = [];
 
-const bulletSpeed = (d) => 180 + Math.min(100, d * 10);
-const timeMul = (d) => 1 + Math.min(0.4, d * 0.05); // max 40% faster, ever
+import { bulletSpeed, timeMul, enemyHp, maxVolleys } from './balance.js';
 
 // The enemy's lane and its neighbours, clamped to the track.
 const around = (e) => [e.lane - 1, e.lane, e.lane + 1].filter((l) => l >= 0 && l < LANES);
@@ -86,7 +85,7 @@ export const TYPES = {
 
 export const NARROW_TYPES = Object.keys(TYPES).filter((k) => !TYPES[k].wide);
 
-export function spawnEnemy(type, lane, difficulty, rng) {
+export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = false } = {}) {
   const T = TYPES[type];
   const x = laneX(lane);
   const e = {
@@ -96,14 +95,15 @@ export function spawnEnemy(type, lane, difficulty, rng) {
     dir: rng.chance(0.5) ? 1 : -1,
     x, y: -24, prevX: x, prevY: -24,
     r: T.r,
-    hp: T.hp + Math.floor(difficulty * 0.5),
+    hp: enemyHp(T.hp, difficulty, power, elite),
+    elite,
     t: 0,
     state: 'enter',   // enter -> telegraph -> fire -> rest -> ... -> leave
     stateT: 0,
     step: 0,
     steps: null,
     volleys: 0,
-    maxVolleys: Math.min(4, T.volleys + Math.floor(difficulty / 3)),
+    maxVolleys: maxVolleys(T.volleys, difficulty) + (elite ? 1 : 0),
     telegraphLanes: [],
     dead: false,
   };
@@ -136,11 +136,11 @@ function allSequenceLanes(e) {
 
 export function updateEnemies(dt, difficulty) {
   const d = difficulty;
-  const m = timeMul(d);
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
     const T = e.T;
     if (e.type === 'boss') continue; // bosses drive themselves
+    const m = timeMul(d) * (e.elite ? 1.15 : 1);
     e.prevX = e.x; e.prevY = e.y;
     e.t += dt;
     e.stateT += dt;
@@ -273,6 +273,10 @@ export function drawEnemies(alpha) {
     const c = e.T.color;
     const flash = e.state === 'telegraph' && e.stateT > e.T.telegraph * 0.5 && Math.floor(e.stateT * 16) % 2 === 0;
     const col = flash || e.hitFlash > 0 ? PAL.white : c;
+    if (e.elite) {
+      ring(x, y, r + 7 + Math.sin(e.t * 6) * 1.5, PAL.amber, 2, 0.85);
+      ring(x, y, r + 11, PAL.amber, 1, 0.35);
+    }
     if (e.poison > 0) drawGlowDot(x, y - r - 5, PAL.acid, 2.5, 0.8);
     if (e.type === 'drone') {
       const spin = e.t * 3;

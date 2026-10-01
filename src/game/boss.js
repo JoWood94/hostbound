@@ -9,6 +9,7 @@ import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
 import { enemies, spawnEnemy, newId } from './enemies.js';
 import { sfx } from '../audio/audio.js';
+import { bossHp, bossSpeed } from './balance.js';
 
 const ALL = [0, 1, 2, 3, 4];
 const HOLD_Y = 140;
@@ -20,7 +21,14 @@ const sw = (lanes, gap = 0.22) => ({ kind: 'sweep', lanes, gap });
 const low = (lanes) => ({ kind: 'low', lanes });
 const beam = (lanes, dur = 0.7) => ({ kind: 'beam', lanes, dur });
 const summon = (lanes) => ({ kind: 'summon', lanes });
+const beamSweep = (lanes, gap = 0.3, dur = 0.25) => ({ kind: 'beamsweep', lanes, gap, dur });
 const atk = (parts, tele = 0.9, rest = 0.9) => ({ parts, tele, rest });
+
+// Lanes may be a function of the player's lane, resolved ONCE when the
+// telegraph starts ("target lock"): the pattern is still fixed and fair.
+const clampL = (ls) => [...new Set(ls.filter((l) => l >= 0 && l < LANES))];
+const at = (dl) => (pl) => clampL(dl.map((o) => pl + o));
+const except = (dl) => (pl) => ALL.filter((l) => !dl.map((o) => pl + o).includes(l));
 
 export const BOSSES = [
   {
@@ -41,6 +49,24 @@ export const BOSSES = [
     ],
   },
   {
+    // Locks onto your lane when the telegraph starts, then fires there.
+    id: 'hunter', name: 'HUNTER', color: PAL.red,
+    phases: [
+      [atk([v(at([0]), 4)], 0.8), atk([v(at([-1, 1]), 3)], 0.8)],
+      [atk([v(at([0]), 4)], 0.7), atk([low(at([-1, 0, 1]))], 0.9), atk([v(at([-2, 0, 2]), 3)], 0.8)],
+      [atk([beam(at([0]), 0.6), low(except([0]))], 1.0), atk([v(at([-1, 0, 1]), 3)], 0.7), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
+    ],
+  },
+  {
+    // Beams sweeping across 4 lanes; the 5th lane is always safe (telegraphed).
+    id: 'prism', name: 'PRISM', color: '#ff9cf0',
+    phases: [
+      [atk([beamSweep([0, 1, 2, 3])], 1.0), atk([beam([0, 2, 4], 0.5)], 0.9), atk([beamSweep([4, 3, 2, 1])], 1.0)],
+      [atk([beam([0, 2, 4], 0.45)], 0.8, 0.4), atk([beam([1, 3], 0.45)], 0.7, 0.6), atk([low(ALL)], 0.9), atk([beamSweep([1, 2, 3, 4], 0.26)], 0.9)],
+      [atk([beamSweep([0, 1, 2, 3], 0.24)], 0.9, 0.4), atk([beamSweep([4, 3, 2, 1], 0.24)], 0.8), atk([beam([1, 3], 0.5), low([0, 2, 4])], 1.0)],
+    ],
+  },
+  {
     id: 'warden', name: 'WARDEN', color: PAL.orange,
     phases: [
       [atk([beam([0, 1])], 1.0), atk([beam([3, 4])], 1.0)],
@@ -50,10 +76,11 @@ export const BOSSES = [
   },
 ];
 
-export function makeBoss(index) {
-  const def = BOSSES[index % BOSSES.length];
+// index: how many bosses this run has beaten; defIndex: which boss (run order).
+export function makeBoss(index, defIndex, power = 1) {
+  const def = BOSSES[defIndex % BOSSES.length];
   const loop = Math.floor(index / BOSSES.length);   // elite loops
-  const hp = Math.round(90 * (1 + 0.9 * index) * (loop > 0 ? 1.3 : 1));
+  const hp = bossHp(index, power);
   const b = {
     id: newId(),
     type: 'boss',
@@ -68,7 +95,8 @@ export function makeBoss(index) {
     atkIndex: 0,
     state: 'enter',
     stateT: 0,
-    speed: 1 + loop * 0.15,
+    speed: bossSpeed(index),
+    playerLane: 2,
     events: [],       // scheduled fire events for the current attack
     teleParts: [],
     t: 0,
@@ -86,14 +114,19 @@ function currentAttack(b) {
   return list[b.atkIndex % list.length];
 }
 
-function buildEvents(b, a) {
+function resolveParts(b, a) {
+  return a.parts.map((p) => ({ ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes }));
+}
+
+function buildEvents(b, parts) {
   const ev = [];
-  for (const p of a.parts) {
+  for (const p of parts) {
     if (p.kind === 'volley') for (let i = 0; i < p.shots; i++) ev.push({ t: i * 0.14, part: p, lanes: p.lanes });
     else if (p.kind === 'sweep') p.lanes.forEach((l, i) => { ev.push({ t: i * p.gap, part: p, lanes: [l] }); ev.push({ t: i * p.gap + 0.07, part: p, lanes: [l] }); });
     else if (p.kind === 'low') ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beam') for (let t = 0; t < p.dur; t += 0.045) ev.push({ t, part: p, lanes: p.lanes });
     else if (p.kind === 'summon') ev.push({ t: 0, part: p, lanes: p.lanes });
+    else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * p.gap + t, part: p, lanes: [l] }); });
   }
   ev.sort((x, y) => x.t - y.t);
   return ev;
@@ -105,14 +138,15 @@ function fireEvent(b, e, difficulty) {
   for (const l of e.lanes) {
     const x = laneX(l);
     if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 200, 10, 1, LOW);
-    else if (p.kind === 'beam') spawn(enemyBullets, x, y, 0, 460, 5, 1, 0);
+    else if (p.kind === 'beam' || p.kind === 'beamsweep') spawn(enemyBullets, x, y, 0, 460, 5, 1, 0);
     else if (p.kind === 'summon') spawnEnemy('drone', l, difficulty, { chance: () => false });
     else spawn(enemyBullets, x, y, 0, 230 + b.speed * 20, 5, 1, 0);
   }
 }
 
 // Returns true while the boss is alive and fighting.
-export function updateBoss(b, dt, difficulty) {
+export function updateBoss(b, dt, difficulty, playerLane = 2) {
+  b.playerLane = playerLane;
   b.prevX = b.x; b.prevY = b.y;
   b.t += dt;
   b.stateT += dt;
@@ -146,7 +180,7 @@ export function updateBoss(b, dt, difficulty) {
       if (b.stateT >= a.rest / m) {
         b.state = 'telegraph';
         b.stateT = 0;
-        b.teleParts = a.parts;
+        b.teleParts = resolveParts(b, a);   // target lock happens here
         sfx.telegraph();
       }
       break;
@@ -154,7 +188,7 @@ export function updateBoss(b, dt, difficulty) {
       if (b.stateT >= a.tele / m) {
         b.state = 'fire';
         b.stateT = 0;
-        b.events = buildEvents(b, a);
+        b.events = buildEvents(b, b.teleParts);
       }
       break;
     case 'fire':
@@ -188,7 +222,7 @@ export function drawBossTelegraph(b) {
       else if (p.kind === 'summon') { line(x - 6, cy, x + 6, cy, c, 2.5); line(x, cy - 6, x, cy + 6, c, 2.5); }
       else strokePoly([x - 8, cy - 5, x, cy + 4, x + 8, cy - 5], c, 2.5, false);
     }
-    if (p.kind === 'sweep') {
+    if (p.kind === 'sweep' || p.kind === 'beamsweep') {
       const y = b.y + 44;
       const x0 = laneX(p.lanes[0]), x1 = laneX(p.lanes[p.lanes.length - 1]);
       const dir = Math.sign(x1 - x0) || 1;
@@ -219,6 +253,24 @@ export function drawBoss(b, alpha) {
       strokePoly(pts, c, 2.5);
       drawGlowDot(cx, y, b.color, 4);
     }
+  } else if (b.def.id === 'hunter') {
+    // Crosshair body: it is looking at you
+    strokePoly([x - hw, y - hh * 0.4, x - hw * 0.4, y - hh, x + hw * 0.4, y - hh, x + hw, y - hh * 0.4, x + hw * 0.6, y + hh, x - hw * 0.6, y + hh], c, 3);
+    const tx = laneX(b.playerLane);
+    const aim = b.state === 'telegraph' ? 1 : 0.35;
+    ring(x, y, 14, c, 2);
+    line(x, y, tx, y + hh + 30, c, 1.5, aim);
+    line(x - 20, y, x + 20, y, c, 2);
+    line(x, y - 20, x, y + 20, c, 2);
+    drawGlowDot(x, y, PAL.red, 5);
+  } else if (b.def.id === 'prism') {
+    // Rotating triangle prism
+    const pts = [];
+    for (let i = 0; i < 3; i++) { const a = spin * 0.8 + (i / 3) * Math.PI * 2 - Math.PI / 2; pts.push(x + Math.cos(a) * 34, y + Math.sin(a) * 26); }
+    strokePoly(pts, c, 3);
+    strokePoly([x - hw, y + hh * 0.6, x + hw, y + hh * 0.6], c, 2, false);
+    for (let k = -2; k <= 2; k++) drawGlowDot(x + k * LANE_W * 0.55, y + hh * 0.6, PAL.white, 2.5);
+    drawGlowDot(x, y, b.color, 6);
   } else {
     strokePoly([x - hw, y - hh, x + hw, y - hh, x + hw * 0.8, y + hh, x - hw * 0.8, y + hh], c, 3);
     for (let k = -2; k <= 2; k++) {

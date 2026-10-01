@@ -84,10 +84,18 @@ export function updatePlayer(p, input, dt, stats) {
   if (p.squash > 0) p.squash = Math.max(0, p.squash - dt * 7);
   else if (p.squash < 0) p.squash = Math.min(0, p.squash + dt * 6);
 
+  // Swipe down in the air = fast fall (Subway Surfers style). On the ground = phase.
+  let phaseInput = input.phase;
+  if (input.phase && p.jumpT > 0.07) {
+    p.jumpT = 0.07;
+    phaseInput = false;
+    p.ev.slam = true;
+  }
+
   // Phase: brief invulnerability in place
   if (p.phaseCd > 0) p.phaseCd -= dt;
   if (p.phaseT > 0) p.phaseT -= dt;
-  else if (input.phase && p.phaseCd <= 0) {
+  else if (phaseInput && p.phaseCd <= 0) {
     p.phaseT = stats.phaseTime;
     p.phaseCd = stats.phaseCd;
     p.iframes = Math.max(p.iframes, stats.phaseTime);

@@ -249,8 +249,21 @@ Fatto (v0.5):
 - Daily run: stesso seed per tutti nella stessa data, board STOCK, best giornaliero.
 - Condividi risultato (share sheet su mobile, appunti su desktop), vibrazione (Android).
 
+Fatto (v0.6) — bilanciamento:
+- Tutte le curve in `src/game/balance.js`; report numerico con `node scripts/balance.mjs`.
+- Item ridimensionati: SLUG +50% danno (era +100%), RAPID +25%, side shot SPLITTER a 50%,
+  SEEKER curva solo verso la corsia vicina (2 con stack), HEADSHOT 10%, FRAG 40%, ARC 35%.
+- Vita nemici = base × (1 + 0.25·d) × √potenza del giocatore. Boss = 110 × (1 + 0.5·n) × √potenza.
+  Risultato: un drone muore sempre in ~0.35 s, un boss in ~15 s; la pressione sale con
+  più nemici, élite (dai ~1000 m, fino al 50%), squadre di 2, ritmo fino a +70%.
+- Economia più stretta: file da 4 monete, prezzi 22/36/55 +30% per negozio.
+- Boss nuovi: HUNTER (mira alla tua corsia all'inizio del telegraph), PRISM (sweep di raggi
+  su 4 corsie, la quinta è sempre sicura). Ordine dei boss casuale per run.
+- Attivo: bottone arancione dedicato, si carica con le uccisioni. Tutorial contestuale.
+- Salto: indicatore JUMP quando arriva qualcosa di basso; swipe giù in aria = caduta rapida.
+
 Backlog:
-- Bilanciamento prezzi e HP boss dopo test reali.
+- Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.
 - Più boss (uno per distretto).
 - Classifica condivisa tra amici (serve un backend: valutare).

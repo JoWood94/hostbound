@@ -3,6 +3,8 @@ import { PAL } from '../render/palette.js';
 import { text, fillPoly, strokePoly, ring } from '../render/draw.js';
 import { ITEM_BY_ID, CAT_COLOR } from '../game/items.js';
 
+export const ACTIVE_BTN = { x: 8, y: H - 82, w: 74, h: 46 };
+
 export function heart(x, y, color, filled, s = 1) {
   const pts = [x, y - 4 * s, x + 5 * s, y - 8 * s, x + 9 * s, y - 4 * s, x, y + 6 * s, x - 9 * s, y - 4 * s, x - 5 * s, y - 8 * s];
   if (filled) fillPoly(pts, color);
@@ -33,21 +35,32 @@ export function drawHud(run) {
   fillPoly([W / 2 - 6, 11, W / 2 - 2, 11, W / 2 - 2, 23, W / 2 - 6, 23], PAL.white);
   fillPoly([W / 2 + 2, 11, W / 2 + 6, 11, W / 2 + 6, 23, W / 2 + 2, 23], PAL.white);
 
-  // Active item: bottom-left pill with charge bar. Tap anywhere to use.
+  // Active item: a real button, bottom-left. Fills up with kills; tap it when full.
   if (run.active) {
     const it = ITEM_BY_ID[run.active.id];
     const ready = run.active.charge >= run.active.max;
-    const bx = 8, by = H - 62, bw = 58, bh = 26;
-    ctx.fillStyle = 'rgba(10,0,8,0.8)';
+    const { x: bx, y: by, w: bw, h: bh } = ACTIVE_BTN;
+    const pulse = ready ? 0.5 + Math.sin(run.time * 9) * 0.5 : 0;
+    ctx.fillStyle = 'rgba(10,0,8,0.88)';
     ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = PAL.orange;
-    ctx.globalAlpha = ready ? 0.35 + Math.sin(run.time * 8) * 0.15 : 0.25;
-    ctx.fillRect(bx, by, bw * (run.active.charge / run.active.max), bh);
+    ctx.globalAlpha = ready ? 0.3 + pulse * 0.3 : 0.22;
+    const fillH = bh * (run.active.charge / run.active.max);
+    ctx.fillRect(bx, by + bh - fillH, bw, fillH);
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = ready ? PAL.orange : PAL.dim;
+    ctx.strokeStyle = ready ? PAL.orange : PAL.mute;
+    ctx.lineWidth = ready ? 2.5 + pulse : 1.5;
     ctx.strokeRect(bx, by, bw, bh);
-    text(it.code, bx + bw / 2, by + 9, { color: ready ? PAL.white : PAL.orange, size: 10, align: 'center' });
-    text(ready ? 'TAP' : `${run.active.charge}/${run.active.max}`, bx + bw / 2, by + 19, { color: PAL.white, size: 8, align: 'center', alpha: 0.8 });
+    text(it.code, bx + bw / 2, by + 15, { color: ready ? PAL.white : PAL.orange, size: 13, align: 'center' });
+    text(ready ? 'TAP!' : `${run.active.charge}/${run.active.max} KILLS`, bx + bw / 2, by + 33, { color: ready ? PAL.orange : PAL.mute, size: ready ? 11 : 8, align: 'center' });
+  }
+
+  // Jump hint: something low is about to reach you in your lane.
+  if (run.jumpHint && !run.player.dead) {
+    const a = 0.55 + Math.sin(run.time * 20) * 0.45;
+    const px = run.player.x;
+    strokePoly([px - 9, 452, px, 442, px + 9, 452], PAL.orange, 3, false);
+    text('JUMP', px, 432, { color: PAL.orange, size: 10, align: 'center', alpha: a });
   }
 
   // Held items strip

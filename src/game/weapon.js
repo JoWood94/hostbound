@@ -32,7 +32,7 @@ export function updateWeapon(p, stats, dt, rateMul = 1) {
   const y = PLAYER_Y - 14;
 
   if (stats.echo && p.shotCount % stats.echo === 0) {
-    spawn(playerBullets, p.x, y, 0, -speed * 0.9, stats.bulletSize * 2.4, dmg * 3, BIG, stats.pierce + 3);
+    spawn(playerBullets, p.x, y, 0, -speed * 0.9, stats.bulletSize * 2.4, dmg * stats.echoMul, BIG, stats.pierce + 3);
   } else {
     spawn(playerBullets, p.x, y, 0, -speed, stats.bulletSize, dmg, 0, stats.pierce);
   }
@@ -42,7 +42,7 @@ export function updateWeapon(p, stats, dt, rateMul = 1) {
     const travel = (PLAYER_Y - 150) / speed;
     for (let k = 1; k <= stats.split; k++) {
       const vx = (LANE_W * k) / travel;
-      const sd = dmg * 0.75;
+      const sd = dmg * stats.sideDamage;
       spawn(playerBullets, p.x, y, -vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce);
       spawn(playerBullets, p.x, y, vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce);
     }
@@ -50,16 +50,19 @@ export function updateWeapon(p, stats, dt, rateMul = 1) {
   sfx.shoot();
 }
 
-// Homing: steer horizontal velocity toward the nearest living target above.
+// Homing: steer toward the nearest target above, but only within `homing`
+// lanes of the bullet. Position still matters: you cannot hide in a far lane.
 export function steerBullets(stats, dt) {
   if (stats.homing <= 0) return;
   const pb = playerBullets;
-  const k = 5 * stats.homing;
-  const maxVx = 260 + 80 * stats.homing;
+  const k = 3.5;
+  const maxVx = 200 + 60 * stats.homing;
+  const reach = LANE_W * (stats.homing + 0.5);
   for (let i = 0; i < pb.n; i++) {
     let best = null, bd = 1e9;
     for (const e of enemies) {
       if (e.dead || e.y > pb.y[i]) continue;
+      if (!e.hw && Math.abs(e.x - pb.x[i]) > reach) continue;
       const d = Math.abs(e.x - pb.x[i]) + (pb.y[i] - e.y) * 0.3;
       if (d < bd) { bd = d; best = e; }
     }
@@ -99,7 +102,7 @@ function onHit(e, dmg, stats, run, primary) {
     for (const o of enemies) {
       if (o === e || o.dead) continue;
       if (overlaps(o, e.x, e.y, radius)) {
-        damageEnemy(o, dmg * 0.5);
+        damageEnemy(o, dmg * 0.4);
         if (stats.toxin > 0) { o.poison = Math.max(o.poison, stats.toxin); o.poisonT = 3; o.poisoned = true; }
       }
     }
@@ -111,7 +114,7 @@ function onHit(e, dmg, stats, run, primary) {
     let from = e;
     for (const t of targets) {
       arcs.push({ x1: from.x, y1: from.y, x2: t.x, y2: t.y, t: 0.15 });
-      damageEnemy(t, dmg * 0.5);
+      damageEnemy(t, dmg * 0.35);
       if (stats.frag > 1) rings.push({ x: t.x, y: t.y, r: 20, t: 0.2 });
       from = t;
     }

@@ -9,8 +9,9 @@ import { BOARDS } from '../game/boards.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
 import { todayKey } from '../game/run.js';
+import { SKIP_COINS } from '../game/balance.js';
 
-const VERSION = 'v0.5';
+const VERSION = 'v0.6';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
@@ -78,7 +79,7 @@ export function drawMenu(save, t, boardIdx) {
   button('music', 68 + bw, 506, bw, 30, `MUSIC ${st.music ? 'ON' : 'OFF'}`, { color: st.music ? PAL.white : PAL.dim, size: 10 });
   button('haptics', 76 + bw * 2, 506, bw, 30, `BUZZ ${st.haptics ? 'ON' : 'OFF'}`, { color: st.haptics ? PAL.white : PAL.dim, size: 10 });
 
-  text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE · TAP ACTIVE', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
+  text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE / FAST FALL', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
   if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 582, { color: PAL.acid, size: 12, align: 'center' });
   text(VERSION, W / 2, H - 14, { color: PAL.dim, size: 8, align: 'center' });
 }
@@ -153,7 +154,7 @@ export function drawPick(run) {
   text('BOSS DOWN', W / 2, 62, { color: PAL.acid, size: 22, align: 'center' });
   text('CHOOSE ONE UPGRADE', W / 2, 88, { color: PAL.white, size: 11, align: 'center' });
   run.pickChoices.forEach((it, i) => itemCard(`pick:${i}`, 20, 112 + i * 120, W - 40, 108, it));
-  button('skip', 80, 486, W - 160, 40, 'SKIP', { color: PAL.dim, size: 12, sub: '+10 coins' });
+  button('skip', 80, 486, W - 160, 40, 'SKIP', { color: PAL.mute, size: 12, sub: `+${SKIP_COINS} coins` });
 }
 
 export function drawShop(run) {
