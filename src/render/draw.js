@@ -75,10 +75,14 @@ export function ring(x, y, r, color, width = 2, alpha = 1) {
   if (alpha !== 1) ctx.globalAlpha = 1;
 }
 
-export function text(str, x, y, { color = '#fff', size = 12, align = 'left', alpha = 1, weight = 'bold' } = {}) {
+// Type: DotGothic16 (Japanese pixel font) for body text, Russo One (the logo's
+// block letters) for display text. Pass { font: 'display' } for headings.
+export const FONT_BODY = '"DotGothic16", "Courier New", monospace';
+export const FONT_DISPLAY = '"Russo One", Impact, sans-serif';
+export function text(str, x, y, { color = '#fff', size = 12, align = 'left', alpha = 1, weight = 'normal', font = 'body' } = {}) {
   if (alpha !== 1) ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
-  ctx.font = `${weight} ${size}px "Courier New", monospace`;
+  ctx.font = font === 'display' ? `${size}px ${FONT_DISPLAY}` : `${weight} ${Math.round(size * 1.08)}px ${FONT_BODY}`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
   ctx.fillText(str, x, y);

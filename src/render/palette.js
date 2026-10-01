@@ -15,7 +15,10 @@ export const PAL = {
   mint: '#00ff9c',
 };
 
-// Reserved colours: enemy bullets are ALWAYS magenta/orange, player bullets ALWAYS cyan.
+// Reserved colours: enemy bullets are ALWAYS magenta/orange, player shots ALWAYS acid green.
 export const COLOR_ENEMY_BULLET = PAL.magenta;
 export const COLOR_ENEMY_BULLET_ALT = PAL.orange;
-export const COLOR_PLAYER_BULLET = PAL.cyan;
+// Player shots: acid bio-plasma. Distinct from the red symbiote and from the
+// magenta/orange enemy bullets.
+export const COLOR_PLAYER_BULLET = '#c6ff1a';
+export const COLOR_PLAYER_CORE = '#f4ffd8';

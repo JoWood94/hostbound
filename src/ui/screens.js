@@ -1,6 +1,9 @@
 // Menu, archive and in-run overlays. Drawing registers buttons (see core/ui.js);
 // main.js maps the returned button ids to actions.
-import { ctx, W, H } from '../core/canvas.js';
+import { ctx, W, H, UI_OFFSET } from '../core/canvas.js';
+
+// Screens are laid out for a 640-tall canvas and centred with UI_OFFSET.
+const LH = 640;
 import { PAL } from '../render/palette.js';
 import { text, line, strokePoly, ring } from '../render/draw.js';
 import { button, area, wrap } from '../core/ui.js';
@@ -19,7 +22,7 @@ const VERSION = 'v1.3';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, -UI_OFFSET, W, H);   // screens are drawn shifted by UI_OFFSET: cover the whole canvas
 }
 
 function itemCard(id, x, y, w, h, it, { price = null, sold = false, afford = true, run = null } = {}) {
@@ -155,7 +158,7 @@ export function drawMenu(save, t, boardIdx) {
 
   text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE / FAST FALL', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
   if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 582, { color: PAL.acid, size: 12, align: 'center' });
-  text(VERSION, W / 2, H - 14, { color: PAL.dim, size: 8, align: 'center' });
+  text(VERSION, W / 2, LH - 14, { color: PAL.dim, size: 8, align: 'center' });
 }
 
 // ---------------------------------------------------------------------------
@@ -185,9 +188,9 @@ export function drawArchive(save, tab, selected, page = 0) {
       text(c.desc, 14, y + 14, { color: PAL.white, size: 8, weight: 'normal' });
     });
     if (pages > 1) {
-      button('comboPrev', 14, H - 46, 70, 32, '◄', { color: PAL.white, size: 14, disabled: pg === 0 });
-      text(`${pg + 1}/${pages}`, W / 2, H - 30, { color: PAL.mute, size: 10, align: 'center' });
-      button('comboNext', W - 84, H - 46, 70, 32, '►', { color: PAL.white, size: 14, disabled: pg >= pages - 1 });
+      button('comboPrev', 14, LH - 46, 70, 32, '◄', { color: PAL.white, size: 14, disabled: pg === 0 });
+      text(`${pg + 1}/${pages}`, W / 2, LH - 30, { color: PAL.mute, size: 10, align: 'center' });
+      button('comboNext', W - 84, LH - 46, 70, 32, '►', { color: PAL.white, size: 14, disabled: pg >= pages - 1 });
     }
     return;
   }
@@ -211,7 +214,7 @@ export function drawArchive(save, tab, selected, page = 0) {
     const it = ITEM_BY_ID[selected];
     const py = 54 + Math.ceil(ITEMS.length / cols) * (ch + 4) + 6;
     ctx.strokeStyle = PAL.dim;
-    ctx.strokeRect(12, py, W - 24, H - py - 44);
+    ctx.strokeRect(12, py, W - 24, LH - py - 44);
     if (it) {
       const known = unl.includes(it.id);
       text(known ? it.name : '???', 22, py + 16, { color: known ? RARITY[it.rarity].color : PAL.dim, size: 14 });
@@ -231,7 +234,7 @@ export function drawArchive(save, tab, selected, page = 0) {
     } else {
       text('Tap an item for details', W / 2, py + 40, { color: PAL.mute, size: 10, align: 'center' });
     }
-    text(`DISCOVERED ${save.discovered.length}/${ITEMS.length}`, W / 2, H - 24, { color: PAL.mute, size: 9, align: 'center' });
+    text(`DISCOVERED ${save.discovered.length}/${ITEMS.length}`, W / 2, LH - 24, { color: PAL.mute, size: 9, align: 'center' });
   } else {
     let y = 62;
     for (const a of ACHIEVEMENTS) {

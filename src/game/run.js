@@ -1,6 +1,6 @@
 // One run: spawning, collisions, rewards, boss/shop events, actives, achievements.
 // Modes: play | pick (item after boss) | shop | pause | dead
-import { W, H } from '../core/canvas.js';
+import { W, H, SAFE_TOP } from '../core/canvas.js';
 import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
@@ -471,7 +471,7 @@ export function updateRun(run, input, dt) {
   const d = difficulty(run);
 
   // Pause button (top centre) and active item (tap anywhere else)
-  if (input.pause || input.blur || (input.tap && input.tapY >= 0 && input.tapY < 40 && Math.abs(input.tapX - W / 2) < 34)) {
+  if (input.pause || input.blur || (input.tap && input.tapY >= 0 && input.tapY < 40 + SAFE_TOP && Math.abs(input.tapX - W / 2) < 34)) {
     run.mode = 'pause';
     return;
   }

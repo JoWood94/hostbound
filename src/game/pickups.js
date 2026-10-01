@@ -1,6 +1,7 @@
 // Pickups: coins (lines in lanes, Subway style), hearts, blue hearts,
 // corrupted items (locked items that unlock if you survive to the next boss).
 import { PAL } from '../render/palette.js';
+import { H } from '../core/canvas.js';
 import { drawGlowDot, ring, text, strokePoly } from '../render/draw.js';
 import { laneX } from './world.js';
 import { coinSprite, heartSprite, drawSprite } from '../render/sprites.js';
@@ -51,7 +52,7 @@ export function updatePickups(dt, speed, player, playerY, magnetLanes) {
       pickups.splice(i, 1); i--;
       continue;
     }
-    if (p.y > 700) { pickups.splice(i, 1); i--; }
+    if (p.y > H + 60) { pickups.splice(i, 1); i--; }
   }
   return got;
 }

@@ -3,6 +3,7 @@
 //   wall : full-height block, change lane (magenta)
 // A "gate" is a row of walls with one open lane.
 import { PAL } from '../render/palette.js';
+import { H } from '../core/canvas.js';
 import { drawGlowDot } from '../render/draw.js';
 import { obstacleSprite, drawSprite } from '../render/sprites.js';
 import { LANES, LANE_W, laneX } from './world.js';
@@ -22,7 +23,7 @@ export function updateObstacles(dt, speed) {
     const o = obstacles[i];
     o.prevY = o.y;
     o.y += speed * dt;
-    if (o.y > 700 || o.dead) { obstacles.splice(i, 1); i--; }
+    if (o.y > H + 60 || o.dead) { obstacles.splice(i, 1); i--; }
   }
 }
 

@@ -280,7 +280,7 @@ function drawSymbiote(p, x, y, jh, stats) {
   drawCell(SYM, 0, Math.floor(t * fps) % 8, x, y + 2, size, { rot: p.bank });
   // Rail charge gathers in the maw
   if (stats.carrier === 'rail' && p.charge > 0.05) {
-    drawGlowDot(x, y - size * 0.28, PAL.cyan, 2 + p.charge * 5, 0.4 + p.charge * 0.6);
+    drawGlowDot(x, y - size * 0.28, '#c6ff1a', 2 + p.charge * 5, 0.4 + p.charge * 0.6);
     if (p.charge > 0.9) drawGlowDot(x, y - size * 0.28, '#ffffff', 2.5);
   }
   if (p.shield > 0) ring(x, y, size * 0.38, PAL.blue, 1.5 + p.shield, 0.35 + Math.sin(p.orbitA * 3) * 0.15);

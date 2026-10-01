@@ -1,15 +1,16 @@
 // Bosses. Same rules as regular enemies: every attack is a fixed, telegraphed
 // lane pattern cycled in order, so fights are learnable. Three phases each,
 // switched at 2/3 and 1/3 HP. A safe option (lane, jump or phase) always exists.
-import { ctx, W, H } from '../core/canvas.js';
+import { ctx, W, H, SAFE_TOP } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
 import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
 import { look } from './enemies.js';
 import { sheet, drawCell } from '../render/images.js';
 
-// Generated boss sheet: 4x5 cells of 256x114. Columns: 0-1 idle, 2 warning, 3 wounded.
-const BROOD_BOSSES = sheet('bosses_brood', 256, 114);
+// Generated boss sheet: 4x5 cells of 256x128, cropped to content by
+// import-sheet.py --fit (no cuts). Columns: 0-1 idle, 2 warning, 3 wounded.
+const BROOD_BOSSES = sheet('bosses_brood', 256, 128);
 const BOSS_ROW = { sentinel: 0, hive: 1, hunter: 2, prism: 3, warden: 4 };
 const PLAYER_ROW = H * 0.78;
 import { enemyBullets, spawn, LOW } from './bullets.js';
@@ -268,7 +269,7 @@ export function drawBoss(b, alpha) {
 
   if (BROOD_BOSSES.ready) {
     const col = b.state === 'telegraph' ? 2 : b.phase >= 2 ? 3 : Math.floor(t * 2) % 2;
-    drawCell(BROOD_BOSSES, BOSS_ROW[id], col, x, y, 236, { inset: 10, flash: b.hitFlash > 0 ? 0.6 : b.phaseFlash > 0 ? 0.9 : 0 });
+    drawCell(BROOD_BOSSES, BOSS_ROW[id], col, x, y, 236, { flash: b.hitFlash > 0 ? 0.6 : b.phaseFlash > 0 ? 0.9 : 0 });
     if (id === 'hunter') {   // keep the aim telegraph: it is gameplay information
       const tx = laneX(b.playerLane);
       const aim = b.state === 'telegraph' ? 0.9 : 0.25;
@@ -312,7 +313,7 @@ export function drawBoss(b, alpha) {
 
 export function drawBossBar(b) {
   if (!b || b.dead) return;
-  const x = 16, y = 60, w = W - 32;
+  const x = 16, y = 60 + SAFE_TOP, w = W - 32;
   text(b.name, W / 2, y - 6, { color: b.color, size: 10, align: 'center' });
   ctx.fillStyle = 'rgba(255,255,255,0.08)';
   ctx.fillRect(x, y, w, 5);

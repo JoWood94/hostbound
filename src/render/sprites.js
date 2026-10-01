@@ -610,11 +610,20 @@ export function heartSprite(color) {
   });
 }
 
+// Player shot: a glob of bio-plasma, round glowing head, tapering wet tail.
 export function boltSprite(color) {
-  return bake(`bolt:${color}`, 10, 22, (c) => {
-    rrect(c, -2.4, -9, 4.8, 18, 2.4);
+  return bake(`glob:${color}`, 12, 24, (c) => {
+    c.beginPath();
+    c.moveTo(0, 10);
+    c.quadraticCurveTo(-1.6, 2, -3.4, -5);
+    c.arc(0, -5.5, 3.5, Math.PI, 0);
+    c.quadraticCurveTo(1.6, 2, 0, 10);
+    c.closePath();
     c.save(); c.shadowColor = color; c.shadowBlur = 8; c.fillStyle = color; c.fill(); c.restore();
-    rrect(c, -1.1, -7, 2.2, 13, 1.1); c.fillStyle = '#ffffff'; c.fill();
+    c.fillStyle = shade(color, -0.35); c.globalAlpha = 0.6;
+    c.beginPath(); c.ellipse(0, 3, 1, 4, 0, 0, Math.PI * 2); c.fill(); c.globalAlpha = 1;
+    circle(c, 0, -5.5, 2); c.fillStyle = '#f4ffd8'; c.fill();
+    circle(c, -0.8, -6.4, 0.7); c.fillStyle = '#ffffff'; c.fill();
   });
 }
 
@@ -641,17 +650,17 @@ export function lowWaveSprite(w) {
 
 export function pelletSprite() {
   return bake('pellet', 10, 10, (c) => {
-    c.save(); c.shadowColor = PAL.cyan; c.shadowBlur = 6;
-    circle(c, 0, 0, 2.6); c.fillStyle = PAL.cyan; c.fill(); c.restore();
-    circle(c, 0, 0, 1.2); c.fillStyle = '#ffffff'; c.fill();
+    c.save(); c.shadowColor = '#c6ff1a'; c.shadowBlur = 6;
+    circle(c, 0, 0, 2.6); c.fillStyle = '#c6ff1a'; c.fill(); c.restore();
+    circle(c, 0, 0, 1.2); c.fillStyle = '#f4ffd8'; c.fill();
   });
 }
 
 export function rocketSprite() {
   return bake('rocket', 10, 20, (c) => {
     path(c, [0, -8, 2.4, -4, 2.4, 5, 4, 8, -4, 8, -2.4, 5, -2.4, -4]);
-    plate(c, '#dfe8f0', -8, 8, -0.5, 0.1);
-    c.strokeStyle = PAL.cyan; c.lineWidth = 0.8; c.stroke();
-    c.fillStyle = PAL.cyan; c.fillRect(-2.4, -2, 4.8, 1.4);
+    plate(c, '#8a6a5a', -8, 8, -0.5, 0.1);
+    c.strokeStyle = '#c6ff1a'; c.lineWidth = 0.8; c.stroke();
+    c.fillStyle = '#c6ff1a'; c.fillRect(-2.4, -2, 4.8, 1.4);
   });
 }

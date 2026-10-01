@@ -1,8 +1,8 @@
-import { ctx, W, H } from './core/canvas.js';
+import { ctx, W, H, UI_OFFSET } from './core/canvas.js';
 import { startLoop } from './core/loop.js';
 import { pollInput } from './core/input.js';
 import { loadSave, writeSave } from './core/save.js';
-import { beginUi, endUi, hitTest } from './core/ui.js';
+import { beginUi, endUi, hitTest, setUiOffset } from './core/ui.js';
 import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset } from './render/fx.js';
 import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/bullets.js';
@@ -41,7 +41,7 @@ let comboPage = 0;
 applySettings(save.settings);
 setHaptics(save.settings.haptics);
 // Logo fonts (direction B). Offline the canvas falls back to system fonts.
-if (document.fonts) { document.fonts.load('64px Yellowtail').catch(() => {}); document.fonts.load('48px "Russo One"').catch(() => {}); }
+if (document.fonts) { document.fonts.load('64px Yellowtail').catch(() => {}); document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
 
 function ensureAudio() {
   unlockAudio();
@@ -152,6 +152,16 @@ function update(dt) {
 // ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------
+// Screens designed for a 640-tall canvas, centred on taller screens.
+function centred(fn) {
+  setUiOffset(UI_OFFSET);
+  ctx.save();
+  ctx.translate(0, UI_OFFSET);
+  fn();
+  ctx.restore();
+  setUiOffset(0);
+}
+
 function render(alpha) {
   beginUi();
   const sh = shakeOffset();
@@ -160,9 +170,9 @@ function render(alpha) {
 
   if (screen === 'menu') {
     drawWorld(menuT * 6, -1);
-    drawMenu(save, menuT, boardIdx);
+    centred(() => drawMenu(save, menuT, boardIdx));
   } else if (screen === 'archive') {
-    drawArchive(save, archiveTab, archiveSel, comboPage);
+    centred(() => drawArchive(save, archiveTab, archiveSel, comboPage));
   } else {
     const r = run;
     look.x = r.player.x; look.y = PLAYER_Y;
@@ -190,10 +200,10 @@ function render(alpha) {
     drawEnemyBullets('high');  // normal enemy bullets always on top: readability rule
     drawBossBar(r.boss);
     drawHud(r);
-    if (r.mode === 'pick') drawPick(r);
-    else if (r.mode === 'shop') drawShop(r);
-    else if (r.mode === 'pause') drawPause(r);
-    else if (r.mode === 'dead') drawDead(r);
+    if (r.mode === 'pick') centred(() => drawPick(r));
+    else if (r.mode === 'shop') centred(() => drawShop(r));
+    else if (r.mode === 'pause') centred(() => drawPause(r));
+    else if (r.mode === 'dead') centred(() => drawDead(r));
   }
 
   ctx.restore();

@@ -6,7 +6,7 @@ import { LANE_W, LANES, laneX } from './world.js';
 import { ctx } from '../core/canvas.js';
 import { enemySprite, drawSprite } from '../render/sprites.js';
 import { PLAYER_Y } from './player.js';
-import { PAL } from '../render/palette.js';
+import { PAL, COLOR_PLAYER_BULLET as SHOT } from '../render/palette.js';
 import { burst, shake } from '../render/fx.js';
 import { line, ring, drawGlowDot } from '../render/draw.js';
 import { sfx } from '../audio/audio.js';
@@ -122,9 +122,48 @@ function pattern(p, stats) {
 }
 
 // Polyline from the ship for beams and rails. `phase` animates SINE.
+// SEEKER for beams and rails: give each path its own target, the nearest enemy
+// within one lane of where that path would naturally go (lane rule), preferring
+// targets no other path has taken yet.
+function lockTargets(p, stats, specs) {
+  if (stats.homing <= 0) return specs;
+  const taken = new Set();
+  for (const spec of specs) {
+    let lane;
+    if (spec.angle !== undefined) {
+      const reachX = p.x + Math.tan(spec.angle) * (PLAYER_Y - 150);
+      lane = Math.max(0, Math.min(LANES - 1, Math.round((reachX - laneX(0)) / LANE_W)));
+    } else lane = spec.lane;
+    let best = null, bd = 1e9;
+    for (const e of enemies) {
+      if (e.dead || e.y > PLAYER_Y - 30) continue;
+      const el = Math.round((e.x - laneX(0)) / LANE_W);
+      if (Math.abs(el - lane) > 1) continue;
+      const d = Math.abs(el - lane) * 200 + (PLAYER_Y - e.y) * 0.2 + (taken.has(e) ? 500 : 0);
+      if (d < bd) { bd = d; best = e; }
+    }
+    if (best) { spec.target = best; taken.add(best); }
+  }
+  return specs;
+}
+
 function buildPath(p, spec, wave, phase) {
   const x0 = p.x, y0 = PLAYER_Y - 22;
   const pts = [];
+  if (spec.target) {
+    // Curve onto the locked target, then carry on straight up (for pierce).
+    const tx = spec.target.x, ty = spec.target.y;
+    const cx = x0, cy = (y0 + ty) / 2;
+    for (let t = 0; t <= 1; t += 0.05) {
+      const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
+      let x = a * x0 + b * cx + c * tx;
+      const y = a * y0 + b * cy + c * ty;
+      if (wave) x += Math.sin(phase + t * 9) * LANE_W * 0.5 * Math.min(1, t * 3);
+      pts.push(x, y);
+    }
+    for (let y = ty - 12; y > -10; y -= 12) pts.push(tx, y);
+    return pts;
+  }
   for (let d = 0; d < 700; d += 12) {
     let x, y;
     if (spec.angle !== undefined) { x = x0 + Math.sin(spec.angle) * d; y = y0 - Math.cos(spec.angle) * d; }
@@ -223,7 +262,7 @@ function fireProjectiles(p, stats) {
 function fireRail(p, stats, hit) {
   if (!hit) return;
   const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * stats.pierce);
-  const specs = pattern(p, stats);
+  const specs = lockTargets(p, stats, pattern(p, stats));
   if (stats.overload && p.shotCount % 3 === 0) for (const o of [-1, 1]) specs.push({ lane: aimLane(p, stats) + o, mul: 1 });
   const phase = p.shotCount * 1.7;
   for (const spec of specs) {
@@ -265,7 +304,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
   if (tick) { p.laserTick += 0.1; p.laserCount = (p.laserCount || 0) + 1; }
   const width = (4 + stats.bulletSize * 0.9) * widthMul;
   const phase = p.beamT * 5;
-  for (const spec of pattern(p, stats)) {
+  for (const spec of lockTargets(p, stats, pattern(p, stats))) {
     const pts = buildPath(p, spec, stats.hasSine, phase);
     const { hits, end } = hitsAlong(pts, width * 0.5, 1 + stats.pierce);
     const shown = hits.length >= 1 + stats.pierce ? pts.slice(0, end) : pts;
@@ -274,7 +313,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
       for (const { e } of hits) onHit(e, dps * 0.1 * spec.mul, stats, hit, p.laserCount % 3 === 0);
       const last = hits[hits.length - 1];
       if (last) {
-        burst(last.e.x, last.e.y + 8, PAL.cyan, 2, 120, 0.2, 1.5);
+        burst(last.e.x, last.e.y + 8, SHOT, 2, 120, 0.2, 1.5);
         if (stats.hasRocket && p.laserCount % 4 === 0) blast(last.e.x, last.e.y, dps * 0.4 * spec.mul, stats, last.e);
       }
     }
@@ -449,14 +488,14 @@ function poly(pts, color, width, alpha) {
 export function drawWeaponFx() {
   for (const b of beams) {
     const flick = 0.85 + Math.random() * 0.15;
-    poly(b.pts, PAL.cyan, b.w * 2.2 * flick, 0.22 * b.a);
-    poly(b.pts, PAL.cyan, b.w * flick, 0.6 * b.a);
-    poly(b.pts, '#ffffff', Math.max(1, b.w * 0.35), 0.95 * b.a);
-    drawGlowDot(b.pts[0], b.pts[1], PAL.cyan, 4 + b.w * 0.4, 0.9 * b.a);
+    poly(b.pts, SHOT, b.w * 2.2 * flick, 0.22 * b.a);
+    poly(b.pts, SHOT, b.w * flick, 0.6 * b.a);
+    poly(b.pts, '#f4ffd8', Math.max(1, b.w * 0.35), 0.95 * b.a);
+    drawGlowDot(b.pts[0], b.pts[1], SHOT, 4 + b.w * 0.4, 0.9 * b.a);
   }
   for (const r of rails) {
     const a = r.t / 0.2;
-    poly(r.pts, PAL.cyan, 14 * a * (0.5 + r.w * 0.5), 0.3 * a);
+    poly(r.pts, SHOT, 14 * a * (0.5 + r.w * 0.5), 0.3 * a);
     poly(r.pts, '#ffffff', 3 * a + 1, a);
   }
   for (const a of arcs) {

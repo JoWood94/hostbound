@@ -1,9 +1,9 @@
-import { ctx, W, H } from '../core/canvas.js';
+import { ctx, W, H, SAFE_TOP, SAFE_BOTTOM } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { text, fillPoly, strokePoly, ring } from '../render/draw.js';
 import { ITEM_BY_ID, CAT_COLOR } from '../game/items.js';
 
-export const ACTIVE_BTN = { x: 8, y: H - 82, w: 74, h: 46 };
+export const ACTIVE_BTN = { x: 8, y: H - 82 - SAFE_BOTTOM, w: 74, h: 46 };
 
 export function heart(x, y, color, filled, s = 1) {
   const pts = [x, y - 4 * s, x + 5 * s, y - 8 * s, x + 9 * s, y - 4 * s, x, y + 6 * s, x - 9 * s, y - 4 * s, x - 5 * s, y - 8 * s];
@@ -14,7 +14,7 @@ export function heart(x, y, color, filled, s = 1) {
 export function drawHud(run) {
   const p = run.player;
   const st = run.stats;
-  const y = 18;
+  const y = 18 + SAFE_TOP;
   let hx = 14;
   for (let i = 0; i < st.maxHearts; i++) { heart(hx, y, PAL.red, i < p.hearts); hx += 20; }
   for (let i = 0; i < p.blueHearts; i++) { heart(hx, y, PAL.blue, true); hx += 20; }
@@ -31,9 +31,10 @@ export function drawHud(run) {
   // Pause button
   ctx.strokeStyle = PAL.dim;
   ctx.lineWidth = 2;
-  ctx.strokeRect(W / 2 - 14, 6, 28, 22);
-  fillPoly([W / 2 - 6, 11, W / 2 - 2, 11, W / 2 - 2, 23, W / 2 - 6, 23], PAL.white);
-  fillPoly([W / 2 + 2, 11, W / 2 + 6, 11, W / 2 + 6, 23, W / 2 + 2, 23], PAL.white);
+  const py = 6 + SAFE_TOP;
+  ctx.strokeRect(W / 2 - 14, py, 28, 22);
+  fillPoly([W / 2 - 6, py + 5, W / 2 - 2, py + 5, W / 2 - 2, py + 17, W / 2 - 6, py + 17], PAL.white);
+  fillPoly([W / 2 + 2, py + 5, W / 2 + 6, py + 5, W / 2 + 6, py + 17, W / 2 + 2, py + 17], PAL.white);
 
   // Active item: a real button, bottom-left. Fills up with kills; tap it when full.
   if (run.active) {
@@ -74,13 +75,13 @@ export function drawHud(run) {
     if (!it || it.cat === 'active') continue;
     const n = run.stacks[id];
     const label = n > 1 ? `${it.code}${n}` : it.code;
-    text(label, ix, H - 26, { color: CAT_COLOR[it.cat], size: 8, alpha: 0.75 });
+    text(label, ix, H - 26 - SAFE_BOTTOM, { color: CAT_COLOR[it.cat], size: 8, alpha: 0.75 });
     ix += label.length * 5.2 + 6;
     if (ix > W - 30) break;
   }
 
   // Toasts
-  let ty = 110;
+  let ty = 110 + SAFE_TOP;
   for (const t of run.toasts) {
     const a = Math.min(1, t.t * 3, (t.dur - t.t) * 6);
     text(t.text, W / 2, ty, { color: t.color, size: 14, align: 'center', alpha: a });

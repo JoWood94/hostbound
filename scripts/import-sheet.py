@@ -4,6 +4,10 @@ alpha) into a clean transparent PNG with uniform cells.
   python3 scripts/import-sheet.py <src> <dst.png> <cols> <rows> <cell_w> [cell_h] [--loose]
 
 cell_h defaults to keeping the source cell's aspect ratio (pass 0 for that).
+--fit:   sprites that overflow their grid cell (generated sheets often do) are
+         collected by connected piece, assigned to the cell holding their centre,
+         and each ROW is cropped to its real content (same crop and scale for every
+         frame of the row, so animation does not jitter). Nothing gets cut.
 --loose: treat every neutral grey between the two checker greys as background.
          Cleaner for sheets without grey-ish sprites (bosses); strict mode protects
          grey-green bodies (enemies).
@@ -24,6 +28,7 @@ src, dst = sys.argv[1], sys.argv[2]
 cols, rows, cell_w = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
 args = [a for a in sys.argv[6:] if not a.startswith('--')]
 loose = '--loose' in sys.argv
+fit = '--fit' in sys.argv
 cell_h_arg = (int(args[0]) or None) if args else None
 
 im = np.asarray(Image.open(src).convert('RGB')).astype(np.float32)
@@ -112,6 +117,72 @@ full = Image.fromarray(np.dstack([fg, alpha[:, :, None] * 255]).astype(np.uint8)
 
 cell_h = cell_h_arg or int(round(cell_w * ch / cw))
 out = Image.new('RGBA', (cols * cell_w, rows * cell_h), (0, 0, 0, 0))
+
+def paste_scaled(tile, dst_x, dst_y, scale, ox, oy):
+    """Resize `tile` by `scale` (premultiplied) and paste at dst + (ox, oy)."""
+    tw, th = max(1, round(tile.width * scale)), max(1, round(tile.height * scale))
+    arr = np.asarray(tile).astype(np.float32)
+    pm = arr.copy(); pm[:, :, :3] *= arr[:, :, 3:4] / 255
+    small = np.asarray(Image.fromarray(pm.astype(np.uint8), 'RGBA').resize((tw, th), Image.LANCZOS)).astype(np.float32)
+    a = small[:, :, 3:4] / 255
+    small[:, :, :3] = np.where(a > 0, small[:, :, :3] / np.maximum(a, 1e-3), 0)
+    out.alpha_composite(Image.fromarray(np.clip(small, 0, 255).astype(np.uint8), 'RGBA'), (dst_x + ox, dst_y + oy))
+
+if fit:
+    # Label opaque pieces; each goes to the cell that holds its centre.
+    solid = (alpha > 0.35)
+    work = Image.fromarray(np.where(solid, 255, 0).astype(np.uint8), 'L').copy()
+    owner = np.full((H, W), -1, dtype=np.int32)
+    ys, xs = np.nonzero(solid)
+    for y, x in zip(ys[::5], xs[::5]):
+        if owner[y, x] != -1:
+            continue
+        tmp = work.copy()
+        ImageDraw.floodfill(tmp, (int(x), int(y)), 77, thresh=0)
+        reg = np.asarray(tmp) == 77
+        if not reg.any():
+            continue
+        ry, rx = np.nonzero(reg)
+        if reg.sum() < 120:          # crumbs: belong to nobody (and do not stretch the crop)
+            owner[reg] = -2
+        else:
+            cr = min(rows - 1, int(ry.mean() // ch)); cc = min(cols - 1, int(rx.mean() // cw))
+            owner[reg] = cr * cols + cc
+        work.paste(0, mask=Image.fromarray((reg * 255).astype(np.uint8), 'L'))
+    # Soft edges belong to the nearest owned pixel's cell: grow ownership a little.
+    for r in range(rows):
+        # Row bbox relative to each cell origin, over all frames of the row.
+        x0s, y0s, x1s, y1s = [], [], [], []
+        for c in range(cols):
+            m = owner == r * cols + c
+            if not m.any():
+                continue
+            yy, xx = np.nonzero(m)
+            x0s.append(xx.min() - c * cw); x1s.append(xx.max() - c * cw)
+            y0s.append(yy.min() - r * ch); y1s.append(yy.max() - r * ch)
+        if not x0s:
+            continue
+        bx0, by0, bx1, by1 = min(x0s) - 2, min(y0s) - 2, max(x1s) + 3, max(y1s) + 3
+        bw, bh = bx1 - bx0, by1 - by0
+        scale = min((cell_w - 4) / bw, (cell_h - 4) / bh)
+        ox = int((cell_w - bw * scale) / 2); oy = int((cell_h - bh * scale) / 2)
+        for c in range(cols):
+            m = owner == r * cols + c
+            if not m.any():
+                continue
+            # this cell's pixels only (others transparent), soft edge kept via dilation
+            mm = Image.fromarray((m * 255).astype(np.uint8), 'L').filter(ImageFilter.MaxFilter(5))
+            piece = full.copy()
+            pa = np.asarray(piece).copy()
+            pa[:, :, 3] = (pa[:, :, 3].astype(np.float32) * (np.asarray(mm) / 255)).astype(np.uint8)
+            piece = Image.fromarray(pa, 'RGBA')
+            sx0, sy0 = round(c * cw + bx0), round(r * ch + by0)
+            tile = piece.crop((sx0, sy0, sx0 + round(bw), sy0 + round(bh)))
+            paste_scaled(tile, c * cell_w, r * cell_h, scale, ox, oy)
+    out.save(dst, optimize=True)
+    print(f'{src}: greys {g_dark:.0f}/{g_light:.0f}, FIT cells {cell_w}x{cell_h}, wrote {dst} {out.size}')
+    sys.exit(0)
+
 for r in range(rows):
     for c in range(cols):
         tile = full.crop((round(c * cw), round(r * ch), round((c + 1) * cw), round((r + 1) * ch)))
