@@ -6,7 +6,7 @@ import { beginUi, endUi, hitTest } from './core/ui.js';
 import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset } from './render/fx.js';
 import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/bullets.js';
-import { drawPlayer } from './game/player.js';
+import { drawPlayer, drawPlayerDeath } from './game/player.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles } from './game/obstacles.js';
@@ -185,6 +185,7 @@ function render(alpha) {
     drawWingmen();
     drawEnemyBullets('low');   // low waves under the board: you jump over them
     if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
+    else drawPlayerDeath(r.player, r.deadT);
     drawEnemyBullets('high');  // normal enemy bullets always on top: readability rule
     drawBossBar(r.boss);
     drawHud(r);

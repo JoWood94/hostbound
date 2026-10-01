@@ -3,6 +3,12 @@ import { PAL } from '../render/palette.js';
 import { fillPoly, drawGlowDot, ring } from '../render/draw.js';
 import { burst, shake, hitStop } from '../render/fx.js';
 import { shipSprite, SHIP_ENGINES, drawSprite } from '../render/sprites.js';
+import { sheet, drawCell } from '../render/images.js';
+
+// The symbiote sprite sheet: 8x4 cells of 128 px.
+//   row 0 fly loop · row 1 roll (jump) · row 2 phase 0-5, hit flash 6-7 · row 3 growth 0-2, death 3-7
+const SYM = sheet('symbiote', 128);
+const SYM_SIZE = 62;
 import { LANES, laneX } from './world.js';
 
 export const PLAYER_Y = H * 0.78;
@@ -203,6 +209,9 @@ export function drawPlayer(p, alpha, stats) {
     ring(x, PLAYER_Y + 10, 12 * (1 - jh * 0.35), c, 1, 0.35 * jh);
   }
 
+  // Generated symbiote art (falls back to the procedural ship until it loads).
+  if (SYM.ready) { drawSymbiote(p, x, y, jh, stats); return; }
+
   const scale = 1 + jh * 0.45;
   const sq = p.squash;
   // Lean into lane changes: bank angle from horizontal speed.
@@ -237,4 +246,51 @@ export function drawPlayer(p, alpha, stats) {
     if (p.charge > 0.9) drawGlowDot(x + Math.sin(p.bank) * 22, y - 24 * sys, '#ffffff', 2.5);
   }
   if (p.shield > 0) ring(x, y, 20, PAL.blue, 1.5 + p.shield, 0.35 + Math.sin(p.orbitA * 3) * 0.15);
+}
+
+// ---------------------------------------------------------------------------
+// Symbiote (sprite sheet)
+// ---------------------------------------------------------------------------
+function growth(p) { return Math.min(0.35, (p.items || 0) * 0.03); }
+
+function drawSymbiote(p, x, y, jh, stats) {
+  const t = performance.now() / 1000;
+  const size = SYM_SIZE * (1 + growth(p));
+  const vx = p.x - p.prevX;
+  p.bank = (p.bank || 0) + (Math.max(-0.3, Math.min(0.3, vx * 0.08)) - (p.bank || 0)) * 0.3;
+  const hit = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 18) % 2 === 0;
+
+  if (p.jumpT > 0) {
+    // Jump: curled ball spinning, afterimages, a pink halo
+    const k = 1 + jh * 0.35;
+    const f = Math.floor((1 - p.jumpT / p.jumpDur) * 16) % 8;
+    for (let i = 3; i >= 1; i--) drawCell(SYM, 1, (f + 8 - i) % 8, x, y + i * 6, size * k, { alpha: 0.12 * (4 - i) });
+    ring(x, y, size * 0.32 * k, PAL.magenta, 2, 0.3 + jh * 0.4);
+    drawCell(SYM, 1, f, x, y, size * k, { flash: hit ? 0.5 : 0 });
+    return;
+  }
+  if (p.phaseT > 0) {
+    const prog = 1 - p.phaseT / Math.max(0.01, stats.phaseTime);
+    drawCell(SYM, 2, Math.min(5, Math.floor(prog * 6)), x, y + 2, size, { rot: p.bank });
+    return;
+  }
+  if (hit) { drawCell(SYM, 2, 6, x, y + 2, size, { rot: p.bank }); return; }
+  // Fly loop, a touch faster while changing lanes
+  const fps = p.laneT < 1 ? 16 : 10;
+  drawCell(SYM, 0, Math.floor(t * fps) % 8, x, y + 2, size, { rot: p.bank });
+  // Rail charge gathers in the maw
+  if (stats.carrier === 'rail' && p.charge > 0.05) {
+    drawGlowDot(x, y - size * 0.28, PAL.cyan, 2 + p.charge * 5, 0.4 + p.charge * 0.6);
+    if (p.charge > 0.9) drawGlowDot(x, y - size * 0.28, '#ffffff', 2.5);
+  }
+  if (p.shield > 0) ring(x, y, size * 0.38, PAL.blue, 1.5 + p.shield, 0.35 + Math.sin(p.orbitA * 3) * 0.15);
+}
+
+// Death: the symbiote bursts (row 3, frames 3-7). Returns false when finished.
+export function drawPlayerDeath(p, deadT) {
+  if (!SYM.ready) return false;
+  const f = 3 + Math.floor(deadT / 0.09);
+  if (f > 7) return false;
+  drawCell(SYM, 3, f, p.x, PLAYER_Y + 2, SYM_SIZE * (1 + growth(p)) * 1.1);
+  return true;
 }

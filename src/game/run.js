@@ -135,6 +135,7 @@ export function acquire(run, id, silent = false) {
   if (run.stats.barrier > prevBarrier) p.shield = run.stats.barrier;
 
   if (!run.save.discovered.includes(id)) { run.save.discovered.push(id); writeSave(run.save); }
+  p.items = Object.values(run.stacks).reduce((n, k) => n + k, 0);
   run.rs.defItems = ITEMS.filter((x) => x.cat === 'defense' && run.stacks[x.id] > 0).length;
 
   if (!silent) {

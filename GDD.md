@@ -348,8 +348,14 @@ Decisa con l'utente dopo aver scartato il "corridore con maschere" (esperimento 
 - **Salto e phase**: meccaniche invariate, cambia solo la loro animazione.
 - **Logo**: direzione B (script neon + cromato).
 
+Fatto: simbionte MASSA generato esternamente (art/source/symbiote_sheet.jpg), pulito con
+scripts/import-sheet.py in public/sprites/symbiote.png (8×4 celle da 128). Usato per volo,
+salto (palla), phase, colpo subito, morte; cresce un po' a ogni item. Icone PWA dal suo
+primo fotogramma (scripts/icons-from-sheet.py).
+
 Backlog:
-- Icona PWA con il simbionte scelto.
+- Rinominare le 5 varianti (ora STOCK/GHOST/...) dentro il nuovo tema.
+- Razze aliene per settore (proposta da fare) e i loro sprite.
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.
 - Più boss (uno per distretto).

@@ -2,18 +2,20 @@
 // main.js maps the returned button ids to actions.
 import { ctx, W, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { text, line, strokePoly } from '../render/draw.js';
+import { text, line, strokePoly, ring } from '../render/draw.js';
 import { button, area, wrap } from '../core/ui.js';
 import { ITEMS, ITEM_BY_ID, RARITY, CAT_COLOR, SYNERGIES, STAT_DEFS, statDelta } from '../game/items.js';
 import { BOARDS } from '../game/boards.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
 import { shipSprite, drawSprite } from '../render/sprites.js';
+import { sheet, drawCell } from '../render/images.js';
+const MENU_SYM = sheet('symbiote', 128);
 import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
 import { SKIP_COINS } from '../game/balance.js';
 
-const VERSION = 'v1.2';
+const VERSION = 'v1.3';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
@@ -127,7 +129,11 @@ export function drawMenu(save, t, boardIdx) {
   ctx.strokeRect(66, 238, W - 132, 96);
   ctx.fillStyle = 'rgba(10,0,8,0.85)';
   ctx.fillRect(66, 238, W - 132, 96);
-  drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), 100, 288, { sx: 0.95, sy: 0.95, alpha: unlocked ? 1 : 0.45 });
+  // The symbiote (generated art); the procedural ship until the sheet loads.
+  ring(100, 288, 26, unlocked ? b.color : PAL.mute, 1.5, 0.5);
+  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, 100, 288, 58, { alpha: unlocked ? 1 : 0.4 })) {
+    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), 100, 288, { sx: 0.95, sy: 0.95, alpha: unlocked ? 1 : 0.45 });
+  }
   text('SHIP', 136, 250, { color: PAL.mute, size: 8 });
   text(unlocked ? b.name : `${b.name} [LOCKED]`, 136, 266, { color: unlocked ? b.color : PAL.mute, size: 15 });
   const ach = ACHIEVEMENTS.find((a) => a.id === b.unlock);
@@ -318,7 +324,7 @@ export function drawPause(run) {
 }
 
 export function drawDead(run) {
-  dim(0.8);
+  dim(Math.min(0.8, run.deadT * 1.4));   // fade in: let the death burst play first
   const jitter = run.deadT < 0.5 ? (Math.random() - 0.5) * 6 : 0;
   text('SIGNAL LOST', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center' });
   text(`${Math.floor(run.distance)}m`, W / 2, 158, { color: PAL.cyan, size: 30, align: 'center' });

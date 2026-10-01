@@ -256,7 +256,10 @@ a dripping poison gland (TOXIN)`.
 
 ## 7. Come esportare e consegnarmeli
 
-1. PNG trasparenti, fotogrammi in una riga, celle della dimensione indicata.
+1. PNG con **trasparenza vera**. Molti siti mostrano una scacchiera grigia ma esportano un
+   JPG con la scacchiera disegnata dentro: lo script la toglie
+   (`python3 scripts/import-sheet.py <sorgente> public/sprites/<nome>.png <colonne> <righe> 128`),
+   ma con un PNG trasparente i bordi e il fumo vengono più puliti.
 2. Nomi file: `symbiote_fly.png`, `symbiote_roll.png`, `symbiote_phase.png`,
    `enemy_drone.png`, `boss_sentinel.png`, `fx_explosion.png`,
    `bullets_player.png`, `bullets_enemy.png`, `pickups.png`, `lane_current.png`,
