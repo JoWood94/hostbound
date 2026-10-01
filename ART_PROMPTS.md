@@ -337,6 +337,50 @@ Row 6: 1 an hourglass of bone with green sand, 2 a heart overloaded with light, 
 
 ---
 
+## 8. Pista aliena: bordi, divisori, ostacoli
+
+Via il look Tron (pannelli, griglie, cartelli a strisce). La pista è il dorso di
+un leviatano morto che galleggia nel vuoto: le correnti scorrono sulla sua carne.
+Sfondo **verde chroma puro #00ff00** (lo tolgo io): quindi niente verde nell'arte.
+Regola colori che il gioco usa già: **arancio = si salta**, **magenta = si cambia corsia**.
+
+**Bordo laterale** (striscia verticale 64×1024, ripetibile; la specchio per il lato destro)
+```
+A vertically seamless border strip, 64x1024 pixels, pixel art, seen from directly above,
+flat pure chroma green #00ff00 background outside the strip. The left edge of a lane
+running along the spine of a colossal dead alien leviathan floating in space: a wall of
+exposed vertebrae and rib stubs, wet bruised purple #3a1a5a flesh, dark membrane
+stretched between bones, small bioluminescent hot pink #ff2bd6 nodules every ~200 px
+(they pulse like lights), thin cyan #19f0ff veins. The inner (right) edge is a clean
+vertical line of bone so lanes stay readable. Very dark overall, low contrast.
+The top edge tiles perfectly with the bottom edge. No green in the art, no text.
+```
+
+**Divisorio di corsia** (striscia 16×512, ripetibile)
+```
+A vertically seamless thin strip, 16x512 pixels, pixel art, flat pure chroma green
+#00ff00 background. A single taut alien nerve fibre stretched vertically, dark violet
+with a faint cyan #19f0ff glow, tiny knots of tissue every ~128 px. Thin and subtle,
+it separates two lanes. Top edge tiles with the bottom edge. No green in the art.
+```
+
+**Ostacoli** (foglio 512×256, 4 colonne × 2 righe, celle 128×128, visti dall'alto)
+```
+A sprite sheet of lane obstacles seen from directly above, 512x256 pixels, a grid of 4
+columns and 2 rows of 128x128 cells, one obstacle centred per cell, pixel art, flat pure
+chroma green #00ff00 background. Grotesque organic alien debris drifting on a cosmic
+current. Each obstacle spans about 110 px wide.
+Row 1, LOW obstacles (jumped over), flat and wide, about 40 px tall, toxic orange
+#ff6a00 glowing accents: 1 a fallen rib bone across the lane, 2 a low ridge of crusted
+egg sacs, 3 a coiled dead tentacle, 4 a strip of torn membrane with orange pustules.
+Row 2, WALL obstacles (must change lane), bulky, about 90 px tall, hot magenta #ff2bd6
+glowing accents and a single red warning eye: 1 a huge calcified tumour, 2 a jagged
+vertebra block, 3 a closed toothed maw, 4 a cluster of hardened cocoons.
+Strong dark outline, readable over a dark background. No green in the art, no text.
+```
+
+---
+
 ## 7. Come esportare e consegnarmeli
 
 1. PNG con **trasparenza vera**. Molti siti mostrano una scacchiera grigia ma esportano un
