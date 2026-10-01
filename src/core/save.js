@@ -8,11 +8,12 @@ function fresh() {
     best: 0,
     totals: {
       runs: 0, kills: 0, bosses: 0, distance: 0, coins: 0, purchases: 0,
-      phaseDodges: 0, lowJumps: 0, obstacles: 0, toxinKills: 0, elites: 0, dailies: 0,
+      phaseDodges: 0, lowJumps: 0, obstacles: 0, toxinKills: 0, elites: 0, dailies: 0, laserKills: 0,
     },
     achievements: {},      // id -> true
     discovered: [],        // item ids ever picked up
     extraItems: [],        // items unlocked by decrypting corrupted drops
+    modesUsed: [],         // fire modes ever equipped
     board: 'stock',
     settings: { sfx: true, music: true, haptics: true },
     daily: { date: '', best: 0 },
@@ -30,6 +31,7 @@ function migrate(data) {
   out.achievements = { ...(data.achievements || {}) };
   out.discovered = Array.isArray(data.discovered) ? data.discovered : [];
   out.extraItems = Array.isArray(data.extraItems) ? data.extraItems : [];
+  out.modesUsed = Array.isArray(data.modesUsed) ? data.modesUsed : [];
   out.v = VERSION;
   return out;
 }

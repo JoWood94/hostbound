@@ -231,5 +231,10 @@ export function drawPlayer(p, alpha, stats) {
     return;
   }
   drawSprite(spr, x, y, { rot: p.bank, sx: sxs, sy: sys, flash: p.iframes > 0 ? 0.25 : 0 });
+  // Railgun charge building on the nose
+  if (stats.fireMode === 'railgun' && p.charge > 0.05) {
+    drawGlowDot(x + Math.sin(p.bank) * 22, y - 24 * sys, PAL.cyan, 2 + p.charge * 5, 0.4 + p.charge * 0.6);
+    if (p.charge > 0.9) drawGlowDot(x + Math.sin(p.bank) * 22, y - 24 * sys, '#ffffff', 2.5);
+  }
   if (p.shield > 0) ring(x, y, 20, PAL.blue, 1.5 + p.shield, 0.35 + Math.sin(p.orbitA * 3) * 0.15);
 }

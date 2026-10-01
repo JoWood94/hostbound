@@ -8,14 +8,14 @@ import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies } from './enemies.js';
-import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex } from './world.js';
+import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnGate, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
 import { ITEMS, ITEM_BY_ID, computeStats, rollItems, activeSynergies, RARITY, powerRatio } from './items.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
-import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing } from './weapon.js';
+import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic } from '../audio/music.js';
@@ -116,6 +116,11 @@ export function acquire(run, id, silent = false) {
   const it = ITEM_BY_ID[id];
   if (!it) return;
   const p = run.player;
+  if (it.cat === 'mode') {
+    for (const m of ITEMS) if (m.cat === 'mode' && m.id !== id) delete run.stacks[m.id];
+    if (!run.save.modesUsed) run.save.modesUsed = [];
+    if (!run.save.modesUsed.includes(id)) run.save.modesUsed.push(id);
+  }
   if (it.cat === 'active') {
     if (run.active) delete run.stacks[run.active.id];
     run.active = { id, charge: 0, max: it.active.charge, told: false };
@@ -185,6 +190,55 @@ function pickType(run) {
   return run.rng.pick(pool);
 }
 
+// ---------------------------------------------------------------------------
+// Lane safety: never let the screen close every lane. A lane is "covered" if a
+// high bullet is in flight in it, an active enemy's pattern targets it, a
+// kamikaze or hopper is heading for it, or a wall is approaching in it.
+// Low waves do not count: they can always be jumped.
+// ---------------------------------------------------------------------------
+const laneOfX = (x) => Math.max(0, Math.min(LANES - 1, Math.round((x - laneX(0)) / LANE_W)));
+
+// Every lane an enemy can shoot over its whole cycle (all volleys, both sweep
+// directions), so alternating patterns like the tank's are fully accounted for.
+function threatLanes(type, lane, dir = null) {
+  const T = TYPES[type];
+  const out = new Set();
+  const probe = { lane, T, type, volleys: 0, dir: 1 };
+  for (const d of dir === null ? [1, -1] : [dir]) {
+    for (const v of [0, 1]) {
+      probe.dir = d; probe.volleys = v;
+      for (const st of T.steps(probe)) if (!st.low) for (const l of st.lanes) out.add(l);
+    }
+  }
+  if (T.dive) out.add(lane);
+  if (type === 'hopper') { out.add(lane - 1); out.add(lane + 1); }
+  return out;
+}
+function patternLanes(e) { return threatLanes(e.type, e.lane, e.type === 'sweeper' ? e.dir : null); }
+
+export function coveredLanes() {
+  const c = new Set();
+  for (const e of enemies) {
+    if (e.dead || e.type === 'boss' || e.state === 'leave') continue;
+    for (const l of patternLanes(e)) c.add(l);
+  }
+  const eb = enemyBullets;
+  for (let i = 0; i < eb.n; i++) if (eb.kind[i] !== LOW && eb.y[i] < PLAYER_Y - 30) c.add(laneOfX(eb.x[i]));
+  for (const o of obstacles) if (o.type === 'wall' && !o.dead && o.y > -60 && o.y < PLAYER_Y) c.add(o.lane);
+  for (const l of [...c]) if (l < 0 || l >= LANES) c.delete(l);
+  return c;
+}
+
+// Lanes a not-yet-spawned enemy would threaten.
+const candidateLanes = (type, lane) => threatLanes(type, lane);
+
+const MIN_SAFE = 2;
+function safeToAdd(covered, type, lane) {
+  const u = new Set(covered);
+  for (const l of candidateLanes(type, lane)) if (l >= 0 && l < LANES) u.add(l);
+  return LANES - u.size >= MIN_SAFE ? u : null;
+}
+
 function spawnEnemies(run, dt, d) {
   const busy = new Set();
   for (const e of enemies) if (e.type !== 'boss' && e.state !== 'leave') busy.add(e.lane);
@@ -198,23 +252,33 @@ function spawnEnemies(run, dt, d) {
     for (const b of busy) if (Math.abs(b - l) < 2) ok = false;
     if (ok) free.push(l);
   }
-  // Wide patterns only when alone on screen, so a safe option always exists.
+  if (!free.length) return;
+
+  // Wide patterns only when alone on screen.
   let type = pickType(run);
   if (busy.size > 0 && TYPES[type].wide) {
     const narrow = NARROW_TYPES.filter((k) => TYPES[k].unlockAt <= run.distance);
     type = run.rng.pick(narrow);
   }
   const opts = () => ({ power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
-  if (!free.length) return;
-  const lane = run.rng.pick(free);
-  // Squads: from ~1000 m, sometimes two narrow enemies enter together.
-  const pairLanes = free.filter((l) => Math.abs(l - lane) >= 2);
-  if (d >= 2.5 && !TYPES[type].wide && pairLanes.length && busy.size + 2 <= B.maxActive(d) && run.rng.chance(0.3)) {
-    spawnEnemy(type, lane, d, run.rng, opts());
-    spawnEnemy(type, run.rng.pick(pairLanes), d, run.rng, opts());
-    return;
+
+  // Pick a lane that keeps at least MIN_SAFE lanes open; fall back to a drone; else wait.
+  let covered = coveredLanes();
+  const lanes = [...free].sort(() => run.rng.next() - 0.5);
+  let lane = -1;
+  for (const l of lanes) { const u = safeToAdd(covered, type, l); if (u) { lane = l; covered = u; break; } }
+  if (lane < 0 && type !== 'drone') {
+    type = 'drone';
+    for (const l of lanes) { const u = safeToAdd(covered, type, l); if (u) { lane = l; covered = u; break; } }
   }
+  if (lane < 0) { run.spawnT = 0.5; return; }
   spawnEnemy(type, lane, d, run.rng, opts());
+
+  // Squads: from ~1000 m, sometimes a second narrow enemy joins, if still safe.
+  if (d >= 2.5 && !TYPES[type].wide && busy.size + 2 <= B.maxActive(d) && run.rng.chance(0.3)) {
+    const pair = lanes.filter((l) => Math.abs(l - lane) >= 2 && safeToAdd(covered, type, l));
+    if (pair.length) spawnEnemy(type, run.rng.pick(pair), d, run.rng, opts());
+  }
 }
 
 // Runner chunks: coin lines, barriers, walls, gates.
@@ -241,13 +305,16 @@ function spawnChunk(run, d) {
   } else if (d >= 0.3 && roll < 0.4) {
     spawnObstacle('low', lane);
     spawnCoinLine(lane, 2, -50, 22);
-  } else if (d >= 0.15 && roll < 0.65) {
+  } else if (d >= 0.15 && roll < 0.65 && LANES - new Set([...coveredLanes(), lane]).size >= MIN_SAFE) {
     spawnObstacle('wall', lane);
     const side = lane === 0 ? 1 : lane === LANES - 1 ? LANES - 2 : lane + (rng.chance(0.5) ? 1 : -1);
     spawnCoinLine(side, B.COIN_LINE - 1);
     if (d >= 1.5 && rng.chance(0.4)) {
       const other = (lane + 2 + rng.int(0, 1)) % LANES;
-      if (Math.abs(other - lane) >= 2) spawnObstacle(rng.chance(0.5) ? 'wall' : 'low', other, -60);
+      if (Math.abs(other - lane) >= 2) {
+        const wantWall = rng.chance(0.5) && LANES - new Set([...coveredLanes(), lane, other]).size >= MIN_SAFE;
+        spawnObstacle(wantWall ? 'wall' : 'low', other, -60);
+      }
     }
   } else {
     spawnCoinLine(lane, B.COIN_LINE);
@@ -333,6 +400,7 @@ export function skipPick(run) {
 
 function onBossKilled(run, b) {
   run.rs.bosses++;
+  if (run.stats.fireMode === 'scatter') run.rs.scatterBoss = true;
   if (!run.bossHit) run.rs.bossNoHit = true;
   if (run.player.hearts === 1) run.rs.boss1Heart = true;
   if (run.stats.repair && run.player.hearts < run.stats.maxHearts) run.player.hearts++;
@@ -487,7 +555,7 @@ export function updateRun(run, input, dt) {
       burst(p.x, PLAYER_Y, PAL.cyan, 14, 160, 0.3, 2);
     }
   }
-  updateWeapon(p, st, dt, run.overdriveT > 0 ? 3 : 1);
+  updateWeapon(p, st, dt, run.overdriveT > 0 ? 3 : 1, { rng: run.rng, onCrit: () => onCrit(run) });
   if (st.wingmen) updateWingmen(p, st, dt);
   if (run.railT > 0) {
     run.railT -= dt;
@@ -501,6 +569,7 @@ export function updateRun(run, input, dt) {
   steerBullets(st, dt);
 
   // World
+  updateModeBullets(st, dt);
   updatePool(playerBullets, dt);
   updatePool(enemyBullets, edt);
   updateEnemies(edt, d);
@@ -627,6 +696,7 @@ export function updateRun(run, input, dt) {
     if (e.noReward) continue;
     run.rs.kills++;
     if (e.poisoned) run.rs.toxinKills++;
+    if (st.fireMode === 'laser') run.rs.laserKills = (run.rs.laserKills || 0) + 1;
     if (st.chain) {
       const radius = (34 + 10 * st.chain) * (st.domino ? 1.5 : 1);
       const dmg = currentDamage(p, st) * 1.2 * st.chain;
@@ -686,7 +756,7 @@ export function endRun(run) {
     const rw = rewardOf(a.id);
     if (rw) run.newUnlocks.push(rw.name);
   }
-  for (const k of ['kills', 'bosses', 'coins', 'purchases', 'phaseDodges', 'lowJumps', 'obstacles', 'toxinKills', 'elites']) s.totals[k] += rs[k] || 0;
+  for (const k of ['kills', 'bosses', 'coins', 'purchases', 'phaseDodges', 'lowJumps', 'obstacles', 'toxinKills', 'elites', 'laserKills']) s.totals[k] += rs[k] || 0;
   if (run.daily) s.totals.dailies++;
   s.totals.distance += Math.floor(rs.distance);
   if (run.daily) {

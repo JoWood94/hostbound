@@ -5,7 +5,7 @@ import { loadSave, writeSave } from './core/save.js';
 import { beginUi, endUi, hitTest } from './core/ui.js';
 import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset } from './render/fx.js';
-import { drawPlayerBullets, drawEnemyBullets } from './game/bullets.js';
+import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/bullets.js';
 import { drawPlayer } from './game/player.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
@@ -18,7 +18,7 @@ import { PLAYER_Y } from './game/player.js';
 import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
 import { unlockedBoards } from './game/achievements.js';
-import { createRun, updateRun, updateDead, endRun, acquire, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
+import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
 import { drawHud } from './ui/hud.js';
 import { drawMenu, drawArchive, drawPick, drawShop, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
@@ -211,6 +211,20 @@ if (new URLSearchParams(location.search).has('debug')) {
     acquire: (id) => acquire(run, id),
     spawn: (type, lane) => spawnEnemy(type, lane, 1, { chance: () => Math.random() < 0.5 }),
     boss: (def) => { run.boss = makeBoss(0, def, 1); run.nextEvent = 1e9; },
+    covered: () => [...coveredLanes()],
+    // Lanes where a high bullet reaches the player row within 0.5 s.
+    hot: () => {
+      const hot = new Set();
+      const eb = enemyBullets;
+      for (let i = 0; i < eb.n; i++) {
+        if (eb.kind[i] === LOW || eb.y[i] > PLAYER_Y + 10) continue;
+        const t = (PLAYER_Y - eb.y[i]) / Math.max(1, eb.vy[i]);
+        if (t >= 0 && t < 0.5) hot.add(Math.round((eb.x[i] - 47.2) / 65.6));
+      }
+      return [...hot];
+    },
+    // Advance the simulation synchronously (background tabs pause rAF).
+    tick: (frames = 1) => { for (let i = 0; i < frames; i++) update(1 / 60); },
     god: () => { run.player.hearts = 99; run.stats.maxHearts = 99; run.nextEvent = 1e9; run.spawnT = 1e9; },
   };
 }

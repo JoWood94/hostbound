@@ -147,7 +147,12 @@ function fireEvent(b, e, difficulty) {
     const x = laneX(l);
     if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 230, 10, 1, LOW);
     else if (p.kind === 'beam' || p.kind === 'beamsweep') spawn(enemyBullets, x, y, 0, 460, 5, 1, 0);
-    else if (p.kind === 'summon') spawnEnemy('drone', l, difficulty, { chance: () => false });
+    else if (p.kind === 'summon') {
+      // Never stack minions: skip a lane that already has a living one.
+      if (!enemies.some((e) => e.minion && !e.dead && e.lane === l && e.state !== 'leave')) {
+        spawnEnemy('drone', l, difficulty, { chance: () => false }, { minion: true });
+      }
+    }
     else spawn(enemyBullets, x, y, 0, 270 + b.speed * 25, 5, 1, 0);
   }
 }

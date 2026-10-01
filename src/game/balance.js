@@ -14,10 +14,10 @@ export const bossHp = (index, power) => Math.round(110 * (1 + 0.5 * index) * Mat
 export const bossSpeed = (index) => Math.min(1.5, 1 + 0.08 * index);
 
 // Enemy timing: telegraph/rest shrink and bullets speed up, both capped.
-export const timeMul = (d) => 1 + Math.min(0.7, d * 0.06);
+export const timeMul = (d) => 1 + Math.min(0.55, d * 0.055);
 // Enemy bullets must always outrun enemies (enter 170, leave 140 px/s) and the
 // track scroll (220+), otherwise a shooter overtakes its own bullets.
-export const bulletSpeed = (d) => 260 + Math.min(140, d * 12);
+export const bulletSpeed = (d) => 260 + Math.min(120, d * 11);
 export const LEAVE_SPEED = 140;
 
 // How many enemies may hold position at once, and how often new ones come.
@@ -26,7 +26,7 @@ export const spawnGap = (d) => Math.max(0.9, 2.2 - d * 0.13);
 export const maxVolleys = (base, d) => Math.min(base + 3, base + Math.floor(d / 2.5));
 
 // Elites: tougher, faster, one extra volley, more coins. Start around 1000 m.
-export const eliteChance = (d) => Math.max(0, Math.min(0.5, (d - 2.5) * 0.07));
+export const eliteChance = (d) => Math.max(0, Math.min(0.4, (d - 2.5) * 0.06));
 
 // Economy
 export const COIN_LINE = 4;

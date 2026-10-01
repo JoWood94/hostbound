@@ -86,7 +86,7 @@ export const TYPES = {
 
 export const NARROW_TYPES = Object.keys(TYPES).filter((k) => !TYPES[k].wide);
 
-export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = false } = {}) {
+export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = false, minion = false } = {}) {
   const T = TYPES[type];
   const x = laneX(lane);
   const e = {
@@ -96,15 +96,18 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
     dir: rng.chance(0.5) ? 1 : -1,
     x, y: -24, prevX: x, prevY: -24,
     r: T.r,
-    hp: enemyHp(T.hp, difficulty, power, elite),
+    // Boss minions: fragile, one volley, sit lower so they are easy to reach.
+    hp: minion ? 2 : enemyHp(T.hp, difficulty, power, elite),
     elite,
+    minion,
+    holdY: minion ? 210 : T.holdY,
     t: 0,
     state: 'enter',   // enter -> telegraph -> fire -> rest -> ... -> leave
     stateT: 0,
     step: 0,
     steps: null,
     volleys: 0,
-    maxVolleys: maxVolleys(T.volleys, difficulty) + (elite ? 1 : 0),
+    maxVolleys: minion ? 1 : maxVolleys(T.volleys, difficulty) + (elite ? 1 : 0),
     telegraphLanes: [],
     dead: false,
   };
@@ -155,7 +158,7 @@ export function updateEnemies(dt, difficulty) {
     switch (e.state) {
       case 'enter':
         e.y += 170 * dt;
-        if (e.y >= T.holdY) { e.y = T.holdY; startTelegraph(e); }
+        if (e.y >= e.holdY) { e.y = e.holdY; startTelegraph(e); }
         break;
       case 'telegraph':
         if (e.stateT >= T.telegraph / m && T.dive) {
@@ -302,7 +305,7 @@ export function drawEnemies(alpha) {
       drawGlowDot(x, y - 14 - len, PAL.red, 3, 0.6);
     }
 
-    const scale = e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r));
+    const scale = (e.minion ? 0.8 : 1) * (e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r)));
     drawSprite(enemySprite(e.type, c), x, y, { sx: scale, sy: scale, flash });
 
     // Live parts over the body

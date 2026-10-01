@@ -32,6 +32,9 @@ export const ACHIEVEMENTS = [
   { id: 'boss_5', name: 'EXECUTIONER', desc: 'Defeat 5 bosses (total)', progress: (s, r) => [T(s, r, 'bosses'), 5] },
   { id: 'coins_run_150', name: 'PAYDAY', desc: 'Collect 150 coins in one run', progress: (s, r) => [r ? r.coins : 0, 150], runOnly: true },
   { id: 'daily_1', name: 'ROUTINE', desc: 'Play a daily run', progress: (s, r) => [s.totals.dailies + (r && r.daily ? 1 : 0), 1] },
+  { id: 'laser_100', name: 'BURN NOTICE', desc: 'Destroy 100 enemies while using LASER (total)', progress: (s, r) => [T(s, r, 'laserKills'), 100] },
+  { id: 'scatter_boss', name: 'CLOSE RANGE', desc: 'Defeat a boss with SCATTER', progress: (s, r) => [r && r.scatterBoss ? 1 : 0, 1], runOnly: true },
+  { id: 'modes_3', name: 'ARSENAL', desc: 'Use 3 different fire modes', progress: (s) => [(s.modesUsed || []).length, 3] },
   { id: 'discover_18', name: 'COLLECTOR', desc: 'Discover 18 different items', progress: (s) => [s.discovered.length, 18] },
 ];
 

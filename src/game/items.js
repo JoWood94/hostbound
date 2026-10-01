@@ -14,6 +14,7 @@ export const CAT_COLOR = {
   economy: PAL.acid,
   active: PAL.orange,
   risk: PAL.red,
+  mode: '#ffd27a',
 };
 
 export function baseStats() {
@@ -32,6 +33,8 @@ export function baseStats() {
     // movement-driven
     wingmen: 0, groundPound: 0, slipstream: 0, ambush: 0, chain: 0, leech: 0, bloodPact: 0, interest: 0,
     aftershock: false, squadron: false, driftKing: false, domino: false, counter: false,
+    // fire mode: one at a time
+    fireMode: 'bolt', smartRockets: false, buckshot: false, overload: false, helix: false,
   };
 }
 
@@ -140,6 +143,23 @@ export const ITEMS = [
     desc: 'Entering a market pays 15% of your coins (max 15).',
     apply: (s, n) => { s.interest += n; } },
 
+  // ---- fire modes (one at a time: a new one replaces the old) ----
+  { id: 'laser', name: 'LASER', code: 'LSR', cat: 'mode', rarity: 1, max: 1, unlock: null,
+    desc: 'FIRE MODE: continuous beam. Pierce = more targets, Splitter = side beams, Seeker bends it.',
+    apply: (s) => { s.fireMode = 'laser'; } },
+  { id: 'scatter', name: 'SCATTER', code: 'SCT', cat: 'mode', rarity: 0, max: 1, unlock: null,
+    desc: 'FIRE MODE: short-range cone of pellets. Splitter = more pellets.',
+    apply: (s) => { s.fireMode = 'scatter'; } },
+  { id: 'railgun', name: 'RAIL CANNON', code: 'RLG', cat: 'mode', rarity: 1, max: 1, unlock: 'laser_100',
+    desc: 'FIRE MODE: slow instant beam through every enemy in the lane. Pierce = +25% damage.',
+    apply: (s) => { s.fireMode = 'railgun'; } },
+  { id: 'rockets', name: 'ROCKET POD', code: 'RKT', cat: 'mode', rarity: 1, max: 1, unlock: 'scatter_boss',
+    desc: 'FIRE MODE: accelerating rockets that explode. With Seeker they hunt.',
+    apply: (s) => { s.fireMode = 'rockets'; } },
+  { id: 'sine', name: 'SINE WAVE', code: 'SIN', cat: 'mode', rarity: 1, max: 1, unlock: 'modes_3',
+    desc: 'FIRE MODE: two strands weaving across your lane and both neighbours.',
+    apply: (s) => { s.fireMode = 'sine'; } },
+
   // ---- actives (one slot, tap to use) ----
   { id: 'emp', name: 'EMP', code: 'EMP', cat: 'active', rarity: 0, max: 1, unlock: null,
     desc: 'ACTIVE: clear all enemy bullets, 8 damage to everything. 10 kills to charge.',
@@ -179,6 +199,16 @@ export const SYNERGIES = [
 ];
 
 SYNERGIES.push(
+  { id: 'smartrockets', name: 'SMART ROCKETS', req: ['rockets', 'homing'], desc: 'Rockets hunt harder, bigger blasts.',
+    apply: (s) => { s.smartRockets = true; s.homing += 1; } },
+  { id: 'meltdown', name: 'MELTDOWN', req: ['laser', 'toxin'], desc: 'The beam poisons twice as hard.',
+    apply: (s) => { s.toxin += 2; } },
+  { id: 'buckshot', name: 'BUCKSHOT', req: ['scatter', 'slug'], desc: '+2 pellets, pellets pierce.',
+    apply: (s) => { s.buckshot = true; } },
+  { id: 'overload', name: 'OVERLOAD', req: ['railgun', 'echo'], desc: 'Every 3rd rail hits 3 lanes.',
+    apply: (s) => { s.overload = true; } },
+  { id: 'helix', name: 'HELIX', req: ['sine', 'split'], desc: 'A third strand joins the wave.',
+    apply: (s) => { s.helix = true; } },
   { id: 'aftershock', name: 'AFTERSHOCK', req: ['pound', 'kickflip'], desc: 'Ground pound hits 3 lanes.',
     apply: (s) => { s.aftershock = true; } },
   { id: 'squadron', name: 'SQUADRON', req: ['wingman', 'split'], desc: 'Wingmen fire 50% faster.',
@@ -237,7 +267,8 @@ export function effectiveDps(s) {
   let perShot = dmg + 2 * s.split * dmg * s.sideDamage * sideHit;
   if (s.echo) perShot += (dmg * s.echoMul - dmg) / s.echo;
   perShot *= 1 + s.crit * (s.critMul - 1);
-  return s.fireRate * perShot + s.toxin;
+  const MODE_DPS = { bolt: 1, laser: 1.15, scatter: 0.85, railgun: 1.05, rockets: 1, sine: 0.9 };
+  return s.fireRate * perShot * (MODE_DPS[s.fireMode] ?? 1) + s.toxin;
 }
 export function powerRatio(s) { return Math.max(1, effectiveDps(s) / BASE_DPS); }
 

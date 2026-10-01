@@ -497,3 +497,20 @@ export function lowWaveSprite(w) {
     c.fillStyle = rgba(PAL.orange, 0.22); c.fill();
   });
 }
+
+export function pelletSprite() {
+  return bake('pellet', 10, 10, (c) => {
+    c.save(); c.shadowColor = PAL.cyan; c.shadowBlur = 6;
+    circle(c, 0, 0, 2.6); c.fillStyle = PAL.cyan; c.fill(); c.restore();
+    circle(c, 0, 0, 1.2); c.fillStyle = '#ffffff'; c.fill();
+  });
+}
+
+export function rocketSprite() {
+  return bake('rocket', 10, 20, (c) => {
+    path(c, [0, -8, 2.4, -4, 2.4, 5, 4, 8, -4, 8, -2.4, 5, -2.4, -4]);
+    plate(c, '#dfe8f0', -8, 8, -0.5, 0.1);
+    c.strokeStyle = PAL.cyan; c.lineWidth = 0.8; c.stroke();
+    c.fillStyle = PAL.cyan; c.fillRect(-2.4, -2, 4.8, 1.4);
+  });
+}

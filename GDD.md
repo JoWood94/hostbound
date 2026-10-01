@@ -281,6 +281,19 @@ Fatto (v0.8):
 - SEEKER: ogni proiettile insegue solo la corsia da cui parte e le due adiacenti;
   lo stack rende la curva più stretta, non allarga il raggio.
 
+Fatto (v0.9):
+- HIVE: i droni evocati sono gregari (2 HP, 1 raffica, più in basso) e non si accumulano.
+- Sicurezza corsie: un nemico (o un muro) compare solo se restano almeno 2 corsie libere,
+  contando proiettili in volo, l'intero ciclo di attacco dei nemici presenti e i muri.
+  Verificato in simulazione: corsie colpite entro 0.5 s mai più di 3 su 5 (fino a 10 km).
+- Modalità di fuoco (una alla volta, sostituisce la precedente): LASER, SCATTER,
+  RAIL CANNON, ROCKET POD, SINE WAVE. Tutte leggono le stesse statistiche, quindi gli
+  altri item cambiano comportamento invece di sparire (stile Isaac):
+  SPLITTER = raggi/pallini/razzi/filamenti extra, SEEKER = raggio che si piega,
+  mira automatica del rail, razzi a ricerca; PIERCER = più bersagli o +danno sul rail.
+- Sinergie: SMART ROCKETS, MELTDOWN, BUCKSHOT, OVERLOAD, HELIX.
+- I razzi NON inseguono da soli: lo fanno solo con SEEKER (niente item ridondanti).
+
 Backlog:
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.

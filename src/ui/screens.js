@@ -12,7 +12,7 @@ import { shipSprite, drawSprite } from '../render/sprites.js';
 import { todayKey } from '../game/run.js';
 import { SKIP_COINS } from '../game/balance.js';
 
-const VERSION = 'v0.8';
+const VERSION = 'v0.9';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
@@ -100,22 +100,22 @@ export function drawArchive(save, tab, selected) {
 
   const unl = unlockedItems(save);
   if (tab === 'items') {
-    const cols = 4, cw = 82, ch = 38, gx = 6;
+    const cols = 4, cw = 82, ch = 31, gx = 6;
     const x0 = (W - (cols * cw + (cols - 1) * gx)) / 2;
     ITEMS.forEach((it, i) => {
       const cx = x0 + (i % cols) * (cw + gx);
-      const cy = 56 + Math.floor(i / cols) * (ch + 5);
+      const cy = 54 + Math.floor(i / cols) * (ch + 4);
       const known = unl.includes(it.id);
       const seen = save.discovered.includes(it.id);
       area(`item:${it.id}`, cx, cy, cw, ch);
       ctx.strokeStyle = selected === it.id ? PAL.white : known ? CAT_COLOR[it.cat] : PAL.dim;
       ctx.lineWidth = selected === it.id ? 2.5 : 1.5;
       ctx.strokeRect(cx, cy, cw, ch);
-      text(known ? it.code : '???', cx + cw / 2, cy + 13, { color: known ? CAT_COLOR[it.cat] : PAL.dim, size: 11, align: 'center' });
-      text(known ? it.name : 'LOCKED', cx + cw / 2, cy + 27, { color: known ? PAL.white : PAL.dim, size: 7, align: 'center', alpha: seen ? 1 : 0.6 });
+      text(known ? it.code : '???', cx + cw / 2, cy + 10, { color: known ? CAT_COLOR[it.cat] : PAL.dim, size: 11, align: 'center' });
+      text(known ? it.name : 'LOCKED', cx + cw / 2, cy + 23, { color: known ? PAL.white : PAL.dim, size: 7, align: 'center', alpha: seen ? 1 : 0.6 });
     });
     const it = ITEM_BY_ID[selected];
-    const py = 56 + Math.ceil(ITEMS.length / cols) * (ch + 5) + 8;
+    const py = 54 + Math.ceil(ITEMS.length / cols) * (ch + 4) + 6;
     ctx.strokeStyle = PAL.dim;
     ctx.strokeRect(12, py, W - 24, H - py - 44);
     if (it) {
