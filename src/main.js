@@ -9,7 +9,7 @@ import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/b
 import { drawPlayer, drawPlayerDeath } from './game/player.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
-import { drawObstacles } from './game/obstacles.js';
+import { drawObstacles, spawnObstacle } from './game/obstacles.js';
 import { drawPickups } from './game/pickups.js';
 import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.js';
 import { drawWeaponFx, drawWingmen } from './game/weapon.js';
@@ -231,6 +231,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     acquire: (id) => acquire(run, id),
     spawn: (type, lane, elite = false) => spawnEnemy(type, lane, 1, { chance: () => Math.random() < 0.5 }, { elite }),
     get enemies() { return enemies; },
+    obstacle: (type, lane, y = 200) => spawnObstacle(type, lane, y),
     boss: (def) => { run.boss = makeBoss(0, def, 1); run.nextEvent = 1e9; },
     covered: () => [...coveredLanes()],
     // Lanes where a high bullet reaches the player row within 0.5 s.
