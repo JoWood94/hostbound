@@ -360,26 +360,28 @@ The top edge tiles perfectly with the bottom edge. No text.
 **Divisorio di corsia**: fatto in codice (filo di campo sottile con un nodo
 luminoso), l'immagine generata non serviva.
 
-**Ostacoli v2** (foglio 512×256, 4 colonne × 2 righe, celle 128×128)
-Allega la spritemap del simbionte come riferimento di stile: stesso pixel art sporco
-e scuro, non il look "icona da mobile game" pulito e saturo della prima prova.
-Gli ostacoli sono fenomeni del plasma, non oggetti: così stanno nella corrente.
+**Ostacoli v3** (foglio 512×256, 4 colonne × 2 righe, celle 128×128)
+Asteroidi e rocce vanno bene: il problema della prima prova era lo stile cartoon
+(contorni spessi colorati, ombre a blocchi pulite, colori saturi, ghiaccio azzurro).
+Allega la spritemap del simbionte come riferimento di stile.
 ```
-Match the rendering style of the attached reference sheet exactly: dark gritty pixel
-art, limited palette, heavy shadows, dirty highlights, no clean cartoon shading.
-A sprite sheet of obstacles floating in a river of cosmic plasma, seen strictly from
-directly above (top-down, no side view, no perspective), 512x256 pixels, a grid of
-4 columns and 2 rows of 128x128 cells, one obstacle centred per cell, flat pure chroma
-green #00ff00 background, no grid lines.
-Row 1, LOW hazards to jump over: flat, wide (about 110 px) and thin (about 30 px),
-unstable toxic orange #ff6a00 plasma: 1 a horizontal ripple of boiling plasma,
-2 a thin arc of solar flare lying across the lane, 3 a flat crackling discharge line
-with sparks, 4 a ribbon of molten slag drifting sideways.
-Row 2, WALLS to avoid: compact and heavy (about 90x90 px), near-black dark matter with
-a hot magenta #ff2bd6 corona: 1 a clot of dark matter with a glowing magenta rim,
-2 a shard of a dead star, black with magenta cracks, 3 a knot of collapsed plasma
-spinning into itself, 4 a cluster of void crystals with one red #ff1f4b warning core.
-Very dark bodies, glow only on the edges. No green in the art, no text.
+Match the rendering style of the attached reference sheet exactly. Gritty, dark,
+realistic pixel art, NOT cartoon: no thick coloured outlines, no flat cel shading, no
+saturated candy colours, no cute rounded shapes. Rough porous rock texture, dithered
+shading, deep black shadows, dust and pitting, small details, harsh rim light.
+A sprite sheet of space rocks drifting in a river of cosmic plasma, seen strictly from
+directly above (top-down, no perspective), 512x256 pixels, a grid of 4 columns and
+2 rows of 128x128 cells, one object centred per cell, flat pure chroma green #00ff00
+background, no grid lines, no borders.
+Row 1, LOW obstacles to jump over: flat and wide (about 110 px wide, 30-40 px tall),
+charcoal grey rock lit from inside by toxic orange #ff6a00 heat:
+1 a flat band of rubble and gravel, 2 a long low slab of cracked basalt with glowing
+seams, 3 a ring fragment of crushed rocks, 4 a trail of small smouldering meteor chips.
+Row 2, WALL obstacles to avoid: big and heavy (about 90x90 px), near-black pitted
+asteroid rock with a faint hot magenta #ff2bd6 glow only in deep cracks and on the rim:
+1 a jagged asteroid, 2 a split boulder with a magenta fissure, 3 an asteroid studded
+with dark crystal shards, 4 a dense iron meteorite with one red #ff1f4b glowing core.
+Desaturated rock, colour only from the glow. No green in the art, no text.
 ```
 
 ---
