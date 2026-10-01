@@ -26,7 +26,7 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 
 | Azione | Mobile | Desktop (debug) |
 |---|---|---|
-| Cambia corsia | Swipe sx / dx | ← → / A D |
+| Cambia corsia | Swipe sx / dx, oppure tap sulla metà sx / dx | ← → / A D |
 | Salto / hop | Swipe su | Spazio / W |
 | Phase (i-frame sul posto) | Swipe giù | Shift / S |
 | Sparo | Automatico, sempre | — |
@@ -54,6 +54,8 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 - **Buco nel pavimento**: salta.
 - **Laser gate**: si accende/spegne a ritmo, passa nel buio.
 - **Muro pieno con varco**: 1 corsia libera, si vede da lontano.
+- **Velo (squarcio)**: tenda ciano su tutte e 5 le corsie, non si schiva né si salta: solo **phase**. Mai due entro 140 m (il phase è sempre carico), suggerimento PHASE ▼ mezzo secondo prima.
+- Linguaggio colori: **arancio = salta**, **magenta = schiva**, **ciano = phase**. Arte: rocce/asteroidi generati, filtrati allo stile pixel del gioco; gli ostacoli bassi hanno un tubo neon arancio.
 
 ### Nemici (bullet hell su corsie)
 Regola d'oro: **ogni nemico ha UN pattern fisso e un telegraph** (la corsia che sta per colpire si illumina prima dello sparo). Il giocatore impara il nemico, non il caso. La difficoltà scala cadenza/velocità, mai il pattern.
@@ -78,6 +80,19 @@ Ogni **~500 m** (scala) un boss. Schermo si ferma di scrollare (o scroll lento),
 Boss lista MVP: **Sentinel** (torretta gigante centrale), **Hive** (spawna sciami), **Warden** (muri di laser + ventagli).
 
 Sconfitto → **scelta 1 di 3 item** dal pool sbloccato. Rarità pesata.
+
+**Ritmo dei boss.** Oltre a volée, sweep, beam e onde basse, ogni boss ha attacchi a **righe ritmiche**: una fila di colpi per battuta (`x` colpo, `L` onda da saltare, `.` libero), tutte alla stessa velocità, quindi sullo schermo arrivano alla cadenza con cui partono. Regola di equità, verificata da script su tutte le sequenze: ogni riga lascia almeno una corsia, e la corsia libera si sposta al massimo di 1 per battuta (un salto di corsia dura 0,11 s, la battuta minima è 0,3 s).
+
+Identità ritmica per boss:
+- **Sentinel — marcia**: `x.x.x` / `.x.x.` alternate, un passo laterale a ogni battuta; in fase 3 mescolate a salti.
+- **Hive — sciame**: droni sui bordi, un varco che vaga tra le corsie 1–3.
+- **Hunter — inseguimento**: aggancia la tua corsia, il varco parte sotto di te e scappa; devi stargli dietro.
+- **Prism — scala**: varchi a zig-zag su tutta la pista tra un raggio e l'altro.
+- **Warden — tamburi**: onde basse a tempo, cambi corsia in aria (`LxLxL` / `xLxLx`).
+
+Scala: la velocità dei boss cresce del 12% per boss battuto (max 1,75×), e accorcia battute, telegraph e pause, accelerando anche i proiettili. Dal boss 1 sono già più rapidi dei nemici normali: sono gli esami della run.
+
+**Nemici ritmici ad alta difficoltà**: Sweeper da ~1200 m va avanti e indietro (pendolo); Wall da ~1600 m stringe a tempo (tutto tranne la sua corsia → solo la sua → di nuovo tutto); Tank da ~2000 m fa un rullo di tre onde basse.
 
 ## 7. Item e sinergie (cuore del gioco)
 

@@ -68,10 +68,12 @@ export const TYPES = {
   },
   sweeper: {
     color: PAL.orange, r: 11, hp: 4, holdY: 140, telegraph: 0.8, rest: 2.0, volleys: 2, unlockAt: 500,
+    // From ~1200 m it sweeps there and back: a pendulum to dodge in time.
     steps: (e) => {
       const a = around(e);
-      const order = e.dir > 0 ? a : [...a].reverse();
-      return order.map((l, i) => ({ lanes: [l], delay: i < 2 ? 0.32 : 0 }));
+      let order = e.dir > 0 ? a : [...a].reverse();
+      if (e.d >= 3) order = [...order, ...[...order].reverse().slice(1)];
+      return order.map((l, i) => ({ lanes: [l], delay: i < order.length - 1 ? 0.3 : 0 }));
     },
   },
   crusher: {
@@ -99,13 +101,20 @@ export const TYPES = {
   // Fires every lane except its own. Teaches: get under it.
   wall: {
     color: PAL.violet, r: 14, hp: 7, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2500, wide: true,
-    steps: (e) => [{ lanes: others(e), delay: 0.16 }, { lanes: others(e), delay: 0 }],
+    // From ~1600 m it squeezes in rhythm: everything but its lane, then ONLY its
+    // lane, then everything else again. Step under it, out, back in.
+    steps: (e) => (e.d >= 4
+      ? [{ lanes: others(e), delay: 0.42 }, { lanes: [e.lane], delay: 0.42 }, { lanes: others(e), delay: 0 }]
+      : [{ lanes: others(e), delay: 0.16 }, { lanes: others(e), delay: 0 }]),
   },
   // Alternates a low wave on every lane (jump) and shots two lanes out.
   tank: {
     color: PAL.mint, r: 16, hp: 14, holdY: 110, telegraph: 1.0, rest: 1.8, volleys: 4, unlockAt: 3000, wide: true,
+    // From ~2000 m the low waves come as a drum roll: jump, jump, jump.
     steps: (e) => (e.volleys % 2 === 0
-      ? [{ lanes: [0, 1, 2, 3, 4], delay: 0, low: true }]
+      ? (e.d >= 5
+        ? [0, 1, 2].map((i) => ({ lanes: [0, 1, 2, 3, 4], delay: i < 2 ? 0.55 : 0, low: true }))
+        : [{ lanes: [0, 1, 2, 3, 4], delay: 0, low: true }])
       : [0, 1, 2].map((i) => ({ lanes: [e.lane - 2, e.lane + 2].filter((l) => l >= 0 && l < LANES), delay: i < 2 ? 0.14 : 0 }))),
   },
 };
@@ -119,6 +128,7 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
     id: newId(),
     poison: 0, poisonT: 0, poisonTick: 0, poisoned: false,
     type, T, lane,
+    d: difficulty,          // patterns gain rhythmic variants as the run goes on
     dir: rng.chance(0.5) ? 1 : -1,
     x, y: -24, prevX: x, prevY: -24,
     r: T.r,

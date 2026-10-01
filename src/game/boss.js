@@ -34,6 +34,30 @@ const summon = (lanes) => ({ kind: 'summon', lanes });
 const beamSweep = (lanes, gap = 0.3, dur = 0.25) => ({ kind: 'beamsweep', lanes, gap, dur });
 const atk = (parts, tele = 0.9, rest = 0.9) => ({ parts, tele, rest });
 
+// RHYTHM rows: one row of the track per beat, all moving at the same speed so
+// they arrive at the same cadence they were fired. 'x' = shot, 'L' = low wave
+// (jump), '.' = safe. Every row leaves at least one lane, and consecutive safe
+// lanes are at most one hop apart, so a beat is always enough to answer.
+const rows = (rs, beat = 0.5) => ({ kind: 'rows', rows: rs, beat });
+const R = (rs, beat = 0.5, tele = 0.8, rest = 0.7) => atk([rows(rs, beat)], tele, rest);
+const hole = (...safe) => ALL.map((l) => (safe.includes(l) ? '.' : 'x')).join('');
+const corridor = (path, w = 1) => path.map((l) => hole(...Array.from({ length: w }, (_, i) => l + i)));
+// Safe lane walking one lane per beat between lo and hi, bouncing at the ends.
+function bounce(start, dir, n, lo = 0, hi = 4) {
+  const out = [];
+  let l = Math.max(lo, Math.min(hi, start)), d = dir;
+  for (let i = 0; i < n; i++) {
+    out.push(l);
+    if (l + d < lo || l + d > hi) d = -d;
+    l += d;
+  }
+  return out;
+}
+// Alternating march: stand between two shots, step aside every beat.
+const MARCH = (n) => Array.from({ length: n }, (_, i) => (i % 2 ? '.x.x.' : 'x.x.x'));
+// Chase: the hole starts on your lane (target lock) and runs away from the centre.
+const chase = (n) => (pl) => corridor(bounce(pl, pl < 2 ? 1 : pl > 2 ? -1 : 1, n));
+
 // Lanes may be a function of the player's lane, resolved ONCE when the
 // telegraph starts ("target lock"): the pattern is still fixed and fair.
 const clampL = (ls) => [...new Set(ls.filter((l) => l >= 0 && l < LANES))];
@@ -42,51 +66,62 @@ const except = (dl) => (pl) => ALL.filter((l) => !dl.map((o) => pl + o).includes
 
 export const BOSSES = [
   {
+    // March: alternating rows on a steady beat, then sweeps. Learn to step.
     id: 'sentinel', name: 'SENTINEL', color: PAL.magenta,
     hit: [{ x: 0, y: 0, hw: 52, hh: 26 }, { x: -78, y: 0, hw: 26, hh: 13 }, { x: 78, y: 0, hw: 26, hh: 13 }],
     phases: [
-      [atk([v([0, 2, 4])]), atk([v([1, 3])])],
-      [atk([v([0, 2, 4])]), atk([sw([0, 1, 2, 3, 4])], 1.0), atk([v([1, 3])]), atk([sw([4, 3, 2, 1, 0])], 1.0)],
-      [atk([v([0, 1, 3, 4], 4)]), atk([low(ALL)], 1.0), atk([sw([0, 1, 2, 3, 4], 0.18)], 1.0), atk([v([0, 2, 4]), low([1, 3])], 1.1)],
+      [atk([v([0, 2, 4])]), R(MARCH(4), 0.6), atk([v([1, 3])])],
+      [R(MARCH(6), 0.5), atk([sw([0, 1, 2, 3, 4])], 0.9), atk([v([0, 1, 3, 4], 4)], 0.8), atk([sw([4, 3, 2, 1, 0])], 0.9)],
+      [R(MARCH(8), 0.42, 0.8, 0.5), atk([low(ALL)], 0.9, 0.4),
+        R(['x.x.x', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.', 'LLLLL', '.x.x.'], 0.5), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
     ],
   },
   {
+    // Swarm: drones on the edges, a wandering hole through spore walls inside.
     id: 'hive', name: 'HIVE', color: PAL.acid,
     hit: [{ x: -62, y: 0, r: 23 }, { x: 0, y: 0, r: 27 }, { x: 62, y: 0, r: 23 }],
     phases: [
-      // Drones always land in the outer lanes, so lane 2 stays readable as the safe spot.
-      [atk([summon([0, 4])], 0.6, 1.8), atk([v([1, 3])])],
-      [atk([summon([0, 4])], 0.6, 1.2), atk([v([2]), low([0, 1, 3, 4])], 1.0), atk([sw([1, 2, 3])])],
-      [atk([summon([0, 4])], 0.6, 1.2), atk([low(ALL)], 1.0), atk([v([1, 3], 4)]), atk([sw([3, 2, 1], 0.18)], 1.0)],
+      // Drones always land in the outer lanes, so corridors stay in lanes 1-3.
+      [atk([summon([0, 4])], 0.6, 1.4), R(corridor([1, 1, 2, 2, 1, 1], 2), 0.55), atk([v([1, 3])])],
+      [atk([summon([0, 4])], 0.6, 1.0), R(corridor(bounce(2, 1, 8, 1, 3)), 0.5), atk([v([2]), low([0, 1, 3, 4])], 0.9), atk([sw([1, 2, 3])])],
+      [atk([summon([0, 4])], 0.6, 0.8), R(corridor(bounce(1, 1, 11, 1, 3)), 0.4, 0.8, 0.5), atk([low(ALL)], 0.9),
+        atk([v([1, 3], 4)], 0.7), atk([sw([3, 2, 1], 0.18)], 0.9)],
     ],
   },
   {
-    // Locks onto your lane when the telegraph starts, then fires there.
+    // Chase: locks onto your lane when the telegraph starts. Its corridors begin
+    // under you and run, so you must keep moving with it.
     id: 'hunter', name: 'HUNTER', color: PAL.red,
     hit: [{ x: 0, y: -2, hw: 40, hh: 22 }, { x: -65, y: 2, hw: 9, hh: 18 }, { x: 65, y: 2, hw: 9, hh: 18 }],
     phases: [
-      [atk([v(at([0]), 4)], 0.8), atk([v(at([-1, 1]), 3)], 0.8)],
-      [atk([v(at([0]), 4)], 0.7), atk([low(at([-1, 0, 1]))], 0.9), atk([v(at([-2, 0, 2]), 3)], 0.8)],
-      [atk([beam(at([0]), 0.6), low(except([0]))], 1.0), atk([v(at([-1, 0, 1]), 3)], 0.7), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
+      [atk([v(at([0]), 4)], 0.8), R(chase(5), 0.55), atk([v(at([-1, 1]), 3)], 0.8)],
+      [atk([v(at([0]), 4)], 0.7), R(chase(8), 0.45), atk([low(at([-1, 0, 1]))], 0.8), atk([v(at([-2, 0, 2]), 3)], 0.7)],
+      [R(chase(10), 0.38, 0.7, 0.4), atk([beam(at([0]), 0.6), low(except([0]))], 0.9), atk([v(at([-1, 0, 1]), 3)], 0.6),
+        R(chase(10), 0.36, 0.7, 0.4), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
     ],
   },
   {
-    // Beams sweeping across 4 lanes; the 5th lane is always safe (telegraphed).
+    // Staircase: beams plus zigzag holes that climb across the whole track.
     id: 'prism', name: 'PRISM', color: '#ff9cf0',
     hit: [{ x: 0, y: -2, hw: 22, hh: 22 }],
     phases: [
-      [atk([beamSweep([0, 1, 2, 3])], 1.0), atk([beam([0, 2, 4], 0.5)], 0.9), atk([beamSweep([4, 3, 2, 1])], 1.0)],
-      [atk([beam([0, 2, 4], 0.45)], 0.8, 0.4), atk([beam([1, 3], 0.45)], 0.7, 0.6), atk([low(ALL)], 0.9), atk([beamSweep([1, 2, 3, 4], 0.26)], 0.9)],
-      [atk([beamSweep([0, 1, 2, 3], 0.24)], 0.9, 0.4), atk([beamSweep([4, 3, 2, 1], 0.24)], 0.8), atk([beam([1, 3], 0.5), low([0, 2, 4])], 1.0)],
+      [atk([beamSweep([0, 1, 2, 3])], 1.0), R(corridor([0, 1, 2, 3, 4]), 0.55), atk([beam([0, 2, 4], 0.5)], 0.9), atk([beamSweep([4, 3, 2, 1])], 1.0)],
+      [atk([beam([0, 2, 4], 0.45)], 0.8, 0.4), R(corridor(bounce(0, 1, 9)), 0.42), atk([beam([1, 3], 0.45)], 0.7, 0.6),
+        atk([low(ALL)], 0.9), atk([beamSweep([1, 2, 3, 4], 0.26)], 0.9)],
+      [atk([beamSweep([0, 1, 2, 3], 0.24)], 0.9, 0.4), R(corridor(bounce(4, -1, 13)), 0.34, 0.8, 0.4),
+        atk([beamSweep([4, 3, 2, 1], 0.24)], 0.8), atk([beam([1, 3], 0.5), low([0, 2, 4])], 1.0)],
     ],
   },
   {
+    // Drums: low waves on the beat. Jump in time, shift lanes in the air.
     id: 'warden', name: 'WARDEN', color: PAL.orange,
     hit: [{ x: 0, y: 0, hw: 88, hh: 24 }],
     phases: [
-      [atk([beam([0, 1])], 1.0), atk([beam([3, 4])], 1.0)],
-      [atk([beam([2]), low([0, 1, 3, 4])], 1.1), atk([beam([0, 4]), v([2])], 1.0), atk([beam([1, 3])], 1.0)],
-      [atk([beam([0, 2, 4])], 1.0, 0.6), atk([beam([1, 3])], 0.8, 0.6), atk([low(ALL), beam([2], 0.5)], 1.1), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.9)],
+      [atk([beam([0, 1])], 1.0), R(['LLLLL', 'LLLLL', 'LLLLL'], 0.75), atk([beam([3, 4])], 1.0)],
+      [atk([beam([2]), low([0, 1, 3, 4])], 1.0), R(['LxLxL', 'LLLLL', 'xLxLx', 'LLLLL', 'LxLxL'], 0.6),
+        atk([beam([0, 4]), v([2])], 0.9), atk([beam([1, 3])], 0.9)],
+      [atk([beam([0, 2, 4])], 0.9, 0.5), R(['LxLxL', 'xLxLx', 'LxLxL', 'xLxLx', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.'], 0.56, 0.8, 0.5),
+        atk([low(ALL), beam([2], 0.5)], 1.0), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
     ],
   },
 ];
@@ -131,29 +166,55 @@ function currentAttack(b) {
 }
 
 function resolveParts(b, a) {
-  return a.parts.map((p) => ({ ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes }));
+  return a.parts.flatMap((p) => {
+    if (p.kind !== 'rows') return [{ ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes }];
+    const rs = typeof p.rows === 'function' ? p.rows(b.playerLane) : p.rows;
+    // Telegraph shows the first row: shots in the boss colour, lows in orange.
+    const first = [...rs[0]];
+    const shots = first.flatMap((c, l) => (c === 'x' ? [l] : []));
+    const lows = first.flatMap((c, l) => (c === 'L' ? [l] : []));
+    const out = [{ ...p, rows: rs, lanes: shots }];
+    if (lows.length) out.push({ kind: 'low', lanes: lows, tele: true });
+    return out;
+  });
 }
+
+const ROW_SHOT = { kind: 'rowshot' }, ROW_LOW = { kind: 'rowlow' };
 
 function buildEvents(b, parts) {
   const ev = [];
   for (const p of parts) {
     if (p.kind === 'volley') for (let i = 0; i < p.shots; i++) ev.push({ t: i * 0.14, part: p, lanes: p.lanes });
     else if (p.kind === 'sweep') p.lanes.forEach((l, i) => { ev.push({ t: i * p.gap, part: p, lanes: [l] }); ev.push({ t: i * p.gap + 0.07, part: p, lanes: [l] }); });
-    else if (p.kind === 'low') ev.push({ t: 0, part: p, lanes: p.lanes });
+    else if (p.kind === 'low' && !p.tele) ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beam') for (let t = 0; t < p.dur; t += 0.045) ev.push({ t, part: p, lanes: p.lanes });
     else if (p.kind === 'summon') ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * p.gap + t, part: p, lanes: [l] }); });
+    else if (p.kind === 'rows') {
+      const beat = Math.max(0.3, p.beat / b.speed);
+      p.rows.forEach((r, i) => {
+        const shots = [], lows = [];
+        [...r].forEach((c, l) => { if (c === 'x') shots.push(l); else if (c === 'L') lows.push(l); });
+        if (shots.length) ev.push({ t: i * beat, part: ROW_SHOT, lanes: shots });
+        if (lows.length) ev.push({ t: i * beat, part: ROW_LOW, lanes: lows });
+      });
+    }
   }
   ev.sort((x, y) => x.t - y.t);
   return ev;
 }
+
+const rowSpeed = (b) => 270 + (b.speed - 1) * 90;
 
 function fireEvent(b, e, difficulty) {
   const p = e.part;
   const y = b.y + b.hh;
   for (const l of e.lanes) {
     const x = laneX(l);
-    if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 230, 10, 1, LOW);
+    // Row parts share one speed so their spacing on screen is the beat itself.
+    if (p.kind === 'rowshot') spawn(enemyBullets, x, y, 0, rowSpeed(b), 5, 1, 0);
+    else if (p.kind === 'rowlow') spawn(enemyBullets, x, y, 0, rowSpeed(b), 10, 1, LOW);
+    else if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 230 + (b.speed - 1) * 70, 10, 1, LOW);
     else if (p.kind === 'beam' || p.kind === 'beamsweep') spawn(enemyBullets, x, y, 0, 460, 5, 1, 0);
     else if (p.kind === 'summon') {
       // Never stack minions: skip a lane that already has a living one.
@@ -161,7 +222,7 @@ function fireEvent(b, e, difficulty) {
         spawnEnemy('drone', l, difficulty, { chance: () => false }, { minion: true });
       }
     }
-    else spawn(enemyBullets, x, y, 0, 270 + b.speed * 25, 5, 1, 0);
+    else spawn(enemyBullets, x, y, 0, 270 + (b.speed - 1) * 110, 5, 1, 0);
   }
 }
 
@@ -230,6 +291,9 @@ export function drawBossTelegraph(b) {
   const prog = b.state === 'telegraph' ? Math.min(1, b.stateT / (currentAttack(b).tele / b.speed)) : 1;
   for (const p of b.teleParts) {
     const c = p.kind === 'low' ? PAL.orange : p.kind === 'summon' ? PAL.magenta : b.color;
+    if (!p.lanes.length) continue;
+    // Rhythm rows: once firing, the bullets themselves are the read; drop the glow.
+    if (b.state === 'fire' && (p.kind === 'rows' || p.tele)) continue;
     for (const l of p.lanes) {
       const x = laneX(l);
       glowLane(l, c, (0.25 + prog * 0.75) * (p.kind === 'beam' ? 1.3 : 1));
