@@ -6,6 +6,11 @@ import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
 import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
 import { look } from './enemies.js';
+import { sheet, drawCell } from '../render/images.js';
+
+// Generated boss sheet: 4x5 cells of 256x114. Columns: 0-1 idle, 2 warning, 3 wounded.
+const BROOD_BOSSES = sheet('bosses_brood', 256, 114);
+const BOSS_ROW = { sentinel: 0, hive: 1, hunter: 2, prism: 3, warden: 4 };
 const PLAYER_ROW = H * 0.78;
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
@@ -261,6 +266,18 @@ export function drawBoss(b, alpha) {
   ctx.beginPath(); ctx.ellipse(x + 6, y + hh + 14, hw * 0.8, 9, 0, 0, Math.PI * 2); ctx.fill();
   ctx.globalAlpha = 1;
 
+  if (BROOD_BOSSES.ready) {
+    const col = b.state === 'telegraph' ? 2 : b.phase >= 2 ? 3 : Math.floor(t * 2) % 2;
+    drawCell(BROOD_BOSSES, BOSS_ROW[id], col, x, y, 236, { inset: 10, flash: b.hitFlash > 0 ? 0.6 : b.phaseFlash > 0 ? 0.9 : 0 });
+    if (id === 'hunter') {   // keep the aim telegraph: it is gameplay information
+      const tx = laneX(b.playerLane);
+      const aim = b.state === 'telegraph' ? 0.9 : 0.25;
+      line(x + 30, y, tx, H - 30, b.color, 1.2, aim * 0.6);
+      ring(tx, PLAYER_ROW, 16 + Math.sin(t * 10) * 2, b.color, 1.5, aim);
+    }
+    if (b.poison > 0) drawGlowDot(x + hw * 0.8, y - hh - 6, PAL.acid, 3);
+    return;
+  }
   if (id === 'prism') {
     drawSprite(prismEmitterSprite(b.color, hw), x, y + hh * 0.6, { flash });
     drawSprite(bossSprite(id, b.color, hw, hh), x, y - 2, { rot: Math.sin(t * 0.9) * 0.25, flash });

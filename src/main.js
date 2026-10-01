@@ -7,7 +7,7 @@ import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset } from './render/fx.js';
 import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/bullets.js';
 import { drawPlayer, drawPlayerDeath } from './game/player.js';
-import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look } from './game/enemies.js';
+import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles } from './game/obstacles.js';
 import { drawPickups } from './game/pickups.js';
@@ -172,6 +172,7 @@ function render(alpha) {
     drawObstacles(alpha);
     drawPickups(alpha, r.time);
     drawFx();
+    drawCorpses();
     drawBoss(r.boss, alpha);
     drawEnemies(alpha);
     drawWeaponFx();

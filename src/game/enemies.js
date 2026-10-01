@@ -10,6 +10,29 @@ import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, ring } from '../render/draw.js';
 import { enemySprite, drawSprite, drawEye, EYES } from '../render/sprites.js';
+import { sheet, drawCell } from '../render/images.js';
+
+// Generated Brood sheet: 8x7 cells of 128 px. Rows in TYPES order below;
+// columns 0-3 idle, 4-5 warning, 6-7 death.
+const BROOD = sheet('enemies_brood', 128);
+const BROOD_ROW = { drone: 0, sweeper: 1, crusher: 2, hopper: 3, kamikaze: 4, wall: 5, tank: 6 };
+const BROOD_SIZE = 64;
+// Death animations left behind by killed enemies.
+const corpses = [];
+export function updateCorpses(dt, scroll) {
+  for (let i = 0; i < corpses.length; i++) {
+    const c = corpses[i];
+    c.t += dt; c.y += scroll * 0.35 * dt;
+    if (c.t > 0.5) { corpses.splice(i, 1); i--; }
+  }
+}
+export function drawCorpses() {
+  if (!BROOD.ready) return;
+  for (const c of corpses) {
+    const col = c.t < 0.14 ? 6 : 7;
+    drawCell(BROOD, BROOD_ROW[c.type], col, c.x, c.y, BROOD_SIZE * c.k, { alpha: c.t < 0.14 ? 1 : Math.max(0, 1 - (c.t - 0.14) / 0.36) });
+  }
+}
 
 // Where creature eyes look (the player's ship), set each frame by main.js.
 export const look = { x: 180, y: 500 };
@@ -231,6 +254,7 @@ export function damageEnemy(e, dmg) {
   burst(e.x, e.y, e.T.color, 3, 90, 0.25, 1.5);
   if (e.hp <= 0) {
     e.dead = true;
+    if (BROOD_ROW[e.type] !== undefined) corpses.push({ type: e.type, x: e.x, y: e.y, t: 0, k: e.minion ? 0.8 : 1 });
     burst(e.x, e.y, e.T.color, 18, 180, 0.5, 2.5);
     burst(e.x, e.y, PAL.white, 6, 90, 0.3, 2);
     shake(3, 0.1);
@@ -336,6 +360,18 @@ export function drawEnemies(alpha) {
 
     // Bio-creatures breathe.
     const breathe = 1 + Math.sin(t * 3.2 + e.id) * 0.035;
+
+    // Generated sprite sheet when available
+    if (BROOD.ready && BROOD_ROW[e.type] !== undefined) {
+      const warn = e.state === 'telegraph' && e.stateT > e.T.telegraph * 0.35;
+      const col = warn ? 4 + (Math.floor(e.stateT * 12) % 2) : Math.floor(t * 6 + e.id) % 4;
+      if (e.type === 'kamikaze' && e.state === 'dive') {
+        drawGlowDot(x, y - 18, PAL.amber, 4, 0.9);
+      }
+      drawCell(BROOD, BROOD_ROW[e.type], col, x, y, BROOD_SIZE * breathe * (e.minion ? 0.8 : 1), { flash: e.hitFlash > 0 ? 0.7 : 0 });
+      if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
+      continue;
+    }
     const scale = breathe * (e.minion ? 0.8 : 1) * (e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r)));
     drawSprite(enemySprite(e.type, c), x, y, { sx: scale, sy: scale, flash });
 
@@ -350,4 +386,4 @@ export function drawEnemies(alpha) {
   }
 }
 
-export function clearEnemies() { enemies.length = 0; }
+export function clearEnemies() { enemies.length = 0; corpses.length = 0; }

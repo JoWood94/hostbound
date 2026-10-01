@@ -353,9 +353,15 @@ scripts/import-sheet.py in public/sprites/symbiote.png (8×4 celle da 128). Usat
 salto (palla), phase, colpo subito, morte; cresce un po' a ogni item. Icone PWA dal suo
 primo fotogramma (scripts/icons-from-sheet.py).
 
+Fatto: razza BROOD (settore 1) generata: public/sprites/enemies_brood.png (8×7, celle 128:
+riposo 0-3, avviso 4-5, morte 6-7) e bosses_brood.png (4×5, celle 256×114: riposo 0-1,
+avviso 2, ferito 3). import-sheet.py ora trova da solo i grigi della scacchiera, toglie solo
+lo sfondo connesso ai bordi (con --loose per fogli senza corpi grigi).
+
 Backlog:
 - Rinominare le 5 varianti (ora STOCK/GHOST/...) dentro il nuovo tema.
-- Razze aliene per settore (proposta da fare) e i loro sprite.
+- Altre razze aliene per i settori successivi.
+- Sfondi in parallasse (prompt pronti in ART_PROMPTS.md, sezione 5).
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.
 - Più boss (uno per distretto).
