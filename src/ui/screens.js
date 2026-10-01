@@ -156,7 +156,7 @@ export function drawMenu(save, t, boardIdx) {
   button('music', 68 + bw, 506, bw, 30, `MUSIC ${st.music ? 'ON' : 'OFF'}`, { color: st.music ? PAL.white : PAL.dim, size: 10 });
   button('haptics', 76 + bw * 2, 506, bw, 30, `BUZZ ${st.haptics ? 'ON' : 'OFF'}`, { color: st.haptics ? PAL.white : PAL.dim, size: 10 });
 
-  text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE / FAST FALL', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
+  text('SWIPE OR TAP ◄ ► LANE · ▲ JUMP · ▼ PHASE', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
   if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 582, { color: PAL.acid, size: 12, align: 'center' });
   text(VERSION, W / 2, LH - 14, { color: PAL.dim, size: 8, align: 'center' });
 }

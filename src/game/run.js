@@ -481,6 +481,10 @@ export function updateRun(run, input, dt) {
   if (onBtn || input.active) {
     if (!useActive(run) && run.active) { sfx.deny(); toast(run, `${run.active.charge}/${run.active.max} KILLS`, 'Kill enemies to charge it', PAL.orange, 1.4); }
   }
+  // Tap left/right half of the screen = one lane, same as a swipe.
+  else if (input.tap && input.tapX >= 0) {
+    if (input.tapX < W / 2) input.left = true; else input.right = true;
+  }
 
   if (run.pickDelay > 0) {
     run.pickDelay -= dt;
@@ -537,7 +541,7 @@ export function updateRun(run, input, dt) {
   }
 
   // Player + weapon
-  if (run.time > 0.5) tip(run, 'lanes', 'SWIPE LEFT / RIGHT', 'Change lane. Lit lanes are about to be shot');
+  if (run.time > 0.5) tip(run, 'lanes', 'SWIPE OR TAP LEFT / RIGHT', 'Change lane. Lit lanes are about to be shot');
   if (run.time > 8) tip(run, 'phase', 'SWIPE DOWN TO PHASE', 'Brief invulnerability. In the air: fast fall');
   updatePlayer(p, input, dt, st);
   if (p.ev.jump) sfx.jump();
