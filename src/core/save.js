@@ -14,6 +14,7 @@ function fresh() {
     discovered: [],        // item ids ever picked up
     extraItems: [],        // items unlocked by decrypting corrupted drops
     modesUsed: [],         // fire modes ever equipped
+    combos: {},            // combo id -> true once discovered
     board: 'stock',
     settings: { sfx: true, music: true, haptics: true },
     daily: { date: '', best: 0 },
@@ -32,6 +33,7 @@ function migrate(data) {
   out.discovered = Array.isArray(data.discovered) ? data.discovered : [];
   out.extraItems = Array.isArray(data.extraItems) ? data.extraItems : [];
   out.modesUsed = Array.isArray(data.modesUsed) ? data.modesUsed : [];
+  out.combos = { ...(data.combos || {}) };
   out.v = VERSION;
   return out;
 }

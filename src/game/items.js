@@ -28,13 +28,17 @@ export function baseStats() {
     iframeTime: 1, canJump: true, breakLow: false,
     // economy
     magnet: 0, coinMul: 1, luck: 0,
+    // SPEED: lane-hop speed and phase recharge (the track scrolls on its own)
+    speed: 1,
     // misc
     adrenaline: 0, repair: false, damageMul: 1, toxinCoins: false,
     // movement-driven
     wingmen: 0, groundPound: 0, slipstream: 0, ambush: 0, chain: 0, leech: 0, bloodPact: 0, interest: 0,
     aftershock: false, squadron: false, driftKing: false, domino: false, counter: false,
-    // fire mode: one at a time
-    fireMode: 'bolt', smartRockets: false, buckshot: false, overload: false, helix: false,
+    // Shot engine: shot modifiers COMPOSE. The carrier is what you fire
+    // (beam > rail > rocket > bolt); the rest reshape it.
+    hasBeam: false, hasRail: false, hasRocket: false, hasScatter: false, hasSine: false,
+    carrier: 'bolt', smartRockets: false, buckshot: false, overload: false, helix: false,
   };
 }
 
@@ -86,8 +90,8 @@ export const ITEMS = [
     desc: 'A sphere orbits you and eats enemy bullets.',
     apply: (s, n) => { s.orbitals += n; } },
   { id: 'blink', name: 'BLINK DRIVE', code: 'BLK', cat: 'defense', rarity: 0, max: 2, unlock: null,
-    desc: 'Phase cooldown -40%, phase lasts longer.',
-    apply: (s, n) => { s.phaseCd *= Math.pow(0.6, n); s.phaseTime += 0.1 * n; } },
+    desc: 'SPEED up. Phase cooldown -25%, phase lasts longer.',
+    apply: (s, n) => { s.speed += 0.15 * n; s.phaseCd *= Math.pow(0.75, n); s.phaseTime += 0.1 * n; } },
   { id: 'mirror', name: 'MIRROR SKIN', code: 'MIR', cat: 'defense', rarity: 2, max: 1, unlock: 'phase_50',
     desc: 'Bullets you phase through are reflected back.',
     apply: (s) => { s.mirror = true; } },
@@ -106,8 +110,14 @@ export const ITEMS = [
     desc: '+35% coins.',
     apply: (s, n) => { s.coinMul += 0.35 * n; } },
   { id: 'lucky', name: 'LUCKY CHIP', code: 'LCK', cat: 'economy', rarity: 1, max: 2, unlock: 'buy_5',
-    desc: 'Rare items show up more. +5% crit.',
-    apply: (s, n) => { s.luck += n; s.crit += 0.05 * n; } },
+    desc: 'LUCK +2.',
+    apply: (s, n) => { s.luck += 2 * n; } },
+  { id: 'thrusters', name: 'AFTERBURNER', code: 'AFB', cat: 'defense', rarity: 0, max: 3, unlock: null,
+    desc: 'SPEED up: faster lane changes and phase recharge.',
+    apply: (s, n) => { s.speed += 0.25 * n; } },
+  { id: 'dice', name: 'LOADED DICE', code: 'DCE', cat: 'economy', rarity: 0, max: 3, unlock: null,
+    desc: 'LUCK +1.',
+    apply: (s, n) => { s.luck += n; } },
 
   // ---- risk ----
   { id: 'adrenaline', name: 'ADRENALINE', code: 'ADR', cat: 'risk', rarity: 1, max: 1, unlock: 'boss_1heart',
@@ -143,22 +153,22 @@ export const ITEMS = [
     desc: 'Entering a market pays 15% of your coins (max 15).',
     apply: (s, n) => { s.interest += n; } },
 
-  // ---- fire modes (one at a time: a new one replaces the old) ----
+  // ---- shot modifiers: they all combine with each other ----
   { id: 'laser', name: 'LASER', code: 'LSR', cat: 'mode', rarity: 1, max: 1, unlock: null,
-    desc: 'FIRE MODE: continuous beam. Pierce = more targets, Splitter = side beams, Seeker bends it.',
-    apply: (s) => { s.fireMode = 'laser'; } },
+    desc: 'Your shots become a continuous beam.',
+    apply: (s) => { s.hasBeam = true; } },
   { id: 'scatter', name: 'SCATTER', code: 'SCT', cat: 'mode', rarity: 0, max: 1, unlock: null,
-    desc: 'FIRE MODE: short-range cone of pellets. Splitter = more pellets.',
-    apply: (s) => { s.fireMode = 'scatter'; } },
+    desc: 'Your shots fan out in a cone. Fewer volleys, more of them.',
+    apply: (s) => { s.hasScatter = true; } },
   { id: 'railgun', name: 'RAIL CANNON', code: 'RLG', cat: 'mode', rarity: 1, max: 1, unlock: 'laser_100',
-    desc: 'FIRE MODE: slow instant beam through every enemy in the lane. Pierce = +25% damage.',
-    apply: (s) => { s.fireMode = 'railgun'; } },
+    desc: 'Your shots charge up and strike instantly through everything.',
+    apply: (s) => { s.hasRail = true; } },
   { id: 'rockets', name: 'ROCKET POD', code: 'RKT', cat: 'mode', rarity: 1, max: 1, unlock: 'scatter_boss',
-    desc: 'FIRE MODE: accelerating rockets that explode. With Seeker they hunt.',
-    apply: (s) => { s.fireMode = 'rockets'; } },
+    desc: 'Your shots become rockets, or explode if they are something else.',
+    apply: (s) => { s.hasRocket = true; } },
   { id: 'sine', name: 'SINE WAVE', code: 'SIN', cat: 'mode', rarity: 1, max: 1, unlock: 'modes_3',
-    desc: 'FIRE MODE: two strands weaving across your lane and both neighbours.',
-    apply: (s) => { s.fireMode = 'sine'; } },
+    desc: 'Your shots weave across your lane and both neighbours.',
+    apply: (s) => { s.hasSine = true; } },
 
   // ---- actives (one slot, tap to use) ----
   { id: 'emp', name: 'EMP', code: 'EMP', cat: 'active', rarity: 0, max: 1, unlock: null,
@@ -233,6 +243,11 @@ export function computeStats(board, stacks) {
     if (it && it.apply && stacks[id] > 0) it.apply(s, stacks[id]);
   }
   for (const sy of activeSynergies(stacks)) sy.apply(s);
+  s.carrier = s.hasBeam ? 'beam' : s.hasRail ? 'rail' : s.hasRocket ? 'rocket' : 'bolt';
+  // Derived from SPEED and LUCK, so every source of them counts.
+  s.speed = Math.max(0.6, Math.min(2.2, s.speed));
+  s.phaseCd /= s.speed;
+  s.crit += 0.03 * s.luck;
   s.maxHearts = Math.max(1, s.maxHearts);
   s.fireRate = Math.min(20, s.fireRate);
   s.crit = Math.min(0.75, s.crit);
@@ -246,7 +261,7 @@ export function rollItems(rng, unlocked, stacks, n, luck = 0, exclude = []) {
     && !exclude.includes(it.id));
   const out = [];
   while (out.length < n && pool.length) {
-    const weights = pool.map((it) => RARITY[it.rarity].weight * (it.rarity > 0 ? 1 + luck * 0.6 : 1));
+    const weights = pool.map((it) => RARITY[it.rarity].weight * (it.rarity > 0 ? 1 + luck * 0.3 : 1));
     let total = weights.reduce((a, b) => a + b, 0);
     let r = rng.next() * total;
     let idx = 0;
@@ -267,9 +282,35 @@ export function effectiveDps(s) {
   let perShot = dmg + 2 * s.split * dmg * s.sideDamage * sideHit;
   if (s.echo) perShot += (dmg * s.echoMul - dmg) / s.echo;
   perShot *= 1 + s.crit * (s.critMul - 1);
-  const MODE_DPS = { bolt: 1, laser: 1.15, scatter: 0.85, railgun: 1.05, rockets: 1, sine: 0.9 };
-  return s.fireRate * perShot * (MODE_DPS[s.fireMode] ?? 1) + s.toxin;
+  const CARRIER_DPS = { bolt: 1, beam: 1.15, rail: 1.05, rocket: 1 };
+  let m = CARRIER_DPS[s.carrier] ?? 1;
+  if (s.hasScatter) m *= 0.85;
+  if (s.hasSine) m *= 0.9;
+  if (s.hasRocket && s.carrier !== 'rocket') m *= 1.1;
+  return s.fireRate * perShot * m + s.toxin;
 }
 export function powerRatio(s) { return Math.max(1, effectiveDps(s) / BASE_DPS); }
+
+// The four stats shown to the player (pause panel, arrows on item cards).
+export const STAT_DEFS = [
+  { id: 'dmg', label: 'DMG', get: (s) => s.damage * s.damageMul, fmt: (v) => v.toFixed(2) },
+  { id: 'rate', label: 'RATE', get: (s) => s.fireRate, fmt: (v) => v.toFixed(1) },
+  { id: 'speed', label: 'SPEED', get: (s) => s.speed, fmt: (v) => v.toFixed(2) },
+  { id: 'luck', label: 'LUCK', get: (s) => s.luck, fmt: (v) => String(Math.round(v)) },
+  { id: 'hearts', label: 'HP', get: (s) => s.maxHearts, fmt: (v) => String(v) },
+];
+
+// Which stats an item would change for this build: [{label, dir: 1|-1}]
+export function statDelta(board, stacks, id) {
+  const before = computeStats(board, stacks);
+  const next = { ...stacks, [id]: (stacks[id] || 0) + 1 };
+  const after = computeStats(board, next);
+  const out = [];
+  for (const d of STAT_DEFS) {
+    const a = d.get(before), b = d.get(after);
+    if (Math.abs(b - a) > 1e-6) out.push({ label: d.label, dir: b > a ? 1 : -1 });
+  }
+  return out;
+}
 
 export const STARTER_ITEMS = ITEMS.filter((i) => !i.unlock).map((i) => i.id);

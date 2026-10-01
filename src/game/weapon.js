@@ -1,8 +1,9 @@
 // Player weapon. Reads the final stats object only, so every item combination
 // composes without special cases. Also resolves on-hit effects.
-import { playerBullets, spawn, kill, BIG, PELLET, ROCKET, SINE } from './bullets.js';
+import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
+import { ctx } from '../core/canvas.js';
 import { enemySprite, drawSprite } from '../render/sprites.js';
 import { PLAYER_Y } from './player.js';
 import { PAL } from '../render/palette.js';
@@ -68,56 +69,21 @@ export function slipBurst(p, stats) {
 }
 export function addRing(x, y, r) { rings.push({ x, y, r, t: 0.25 }); }
 
-// Shots per second relative to stats.fireRate, per fire mode.
-const MODE_RATE = { bolt: 1, scatter: 0.35, railgun: 0.16, rockets: 0.6, sine: 1 };
-
-// Fires if the timer allows. `rateMul` is used by OVERDRIVE. `hit` = {rng, onCrit}.
-export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
-  const mode = stats.fireMode;
-  if (mode === 'laser') { updateLaser(p, stats, dt, rateMul, hit); return; }
-  const rate = stats.fireRate * rateMul * (MODE_RATE[mode] ?? 1);
-  p.fireTimer -= dt;
-  p.charge = Math.max(0, Math.min(1, 1 - p.fireTimer * rate));
-  if (p.fireTimer > 0) return;
-  p.fireTimer += 1 / rate;
-  if (p.fireTimer < 0) p.fireTimer = 0;
-  p.shotCount++;
-  if (mode === 'scatter') { fireScatter(p, stats); return; }
-  if (mode === 'railgun') { fireRail(p, stats, hit); return; }
-  if (mode === 'rockets') { fireRocket(p, stats); return; }
-  if (mode === 'sine') { fireSine(p, stats); return; }
-
-  const dmg = currentDamage(p, stats);
-  const speed = stats.bulletSpeed;
-  const y = PLAYER_Y - 14;
-
-  const tag = (i) => { if (i >= 0) playerBullets.lane[i] = p.lane; };
-  if (stats.echo && p.shotCount % stats.echo === 0) {
-    tag(spawn(playerBullets, p.x, y, 0, -speed * 0.9, stats.bulletSize * 2.4, dmg * stats.echoMul, BIG, stats.pierce + 3));
-  } else {
-    tag(spawn(playerBullets, p.x, y, 0, -speed, stats.bulletSize, dmg, 0, stats.pierce));
-  }
-
-  // Split: side shots reach k lanes over by the time they are at enemy height.
-  if (stats.split > 0) {
-    const travel = (PLAYER_Y - 150) / speed;
-    for (let k = 1; k <= stats.split; k++) {
-      const vx = (LANE_W * k) / travel;
-      const sd = dmg * stats.sideDamage;
-      tag(spawn(playerBullets, p.x, y, -vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce));
-      tag(spawn(playerBullets, p.x, y, vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce));
-    }
-  }
-  sfx.shoot();
-}
-
-// ---------------------------------------------------------------------------
-// Fire modes. All read the same stats (damage, rate, split, pierce, homing...)
-// so every other item keeps working, just expressed differently.
-// ---------------------------------------------------------------------------
-const beams = [];   // laser segments drawn this frame
-const rails = [];   // railgun flashes
+// ===========================================================================
+// SHOT ENGINE
+// Every shot modifier is a trait, and traits compose:
+//   carrier  : bolt | rocket | rail | beam   (priority beam > rail > rocket > bolt)
+//   SCATTER  : the carrier fans out in a cone (bolts->pellets, rails->trident, beam->prism fan)
+//   SINE     : the carrier weaves across neighbour lanes (projectiles weave, beams/rails zigzag)
+//   ROCKET   : the carrier explodes on impact (if rocket is not already the carrier)
+//   RAIL     : a beam carrier pulses with charged surges
+//   SPLITTER : extra side lanes; SEEKER bends toward a neighbour lane; PIERCER more targets
+// No combination is special-cased: LASER + SCATTER is simply a beam with a fan.
+// ===========================================================================
+const beams = [];   // beam paths drawn this frame: { pts, w, a }
+const rails = [];   // rail flashes: { pts, t, w }
 const tagLane = (i, lane) => { if (i >= 0) playerBullets.lane[i] = lane; };
+const CARRIER_RATE = { bolt: 1, rocket: 0.6, rail: 0.16 };
 
 // Enemies whose body crosses lane `l`, nearest to the player first.
 function enemiesInLane(l) {
@@ -137,114 +103,203 @@ function aimLane(p, stats) {
   return p.lane;
 }
 
-// LASER: continuous beam. Damage ticks 10x/s. Pierce = more enemies per beam,
-// SPLITTER = side beams, SEEKER = bends into a neighbour lane, ECHO = surges.
-function updateLaser(p, stats, dt, rateMul, hit) {
-  beams.length = 0;
-  p.laserTick = (p.laserTick || 0) - dt;
-  p.surgeT = Math.max(0, (p.surgeT || 0) - dt);
-  if (stats.echo) {
-    p.surgeCd = (p.surgeCd || 0) - dt;
-    if (p.surgeCd <= 0) { p.surgeCd = 0.3 * stats.echo; p.surgeT = 0.22; }
+// Shot pattern shared by every carrier: a list of "lanes" (straight up a lane,
+// bending over from the ship) or "angles" (a cone), each with a damage share.
+function pattern(p, stats) {
+  const out = [];
+  if (stats.hasScatter) {
+    const n = (stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 5 : 3) + 2 * stats.split + (stats.buckshot ? 2 : 0);
+    const spread = (stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 0.32 : 0.26) + 0.05 * stats.split;
+    const share = stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 0.75 : 0.6;
+    for (let i = 0; i < n; i++) out.push({ angle: -spread + (2 * spread * i) / (n - 1), mul: share });
+    return out;
   }
-  const surge = p.surgeT > 0 ? stats.echoMul : 1;
-  const dps = stats.fireRate * rateMul * currentDamage(p, stats) * 1.15 * surge;
-  const tick = p.laserTick <= 0;
-  if (tick) { p.laserTick += 0.1; p.laserCount = (p.laserCount || 0) + 1; }
-  const width = (4 + stats.bulletSize * 0.9) * (surge > 1 ? 1.8 : 1);
-  const fire = (lane, mul, w) => {
-    const targets = enemiesInLane(lane).slice(0, 1 + stats.pierce);
-    const x0 = p.x, y0 = PLAYER_Y - 22;
-    const last = targets[targets.length - 1];
-    const tx = lane === p.lane ? p.x : laneX(lane);
-    const y1 = last ? last.y : -10;
-    // Off-lane beams bend: angle over into the lane, then run straight up it.
-    const ym = lane === p.lane ? y0 : Math.max(y1, PLAYER_Y - 120);
-    beams.push({ x0, y0, xm: tx, ym, x1: tx, y1, w, a: mul });
-    if (tick && hit) {
-      for (const e of targets) onHit(e, dps * 0.1 * mul, stats, hit, p.laserCount % 3 === 0);
-      if (last) burst(tx, last.y + 8, PAL.cyan, 2, 120, 0.2, 1.5);
-    }
-  };
-  fire(aimLane(p, stats), 1, width);
+  out.push({ lane: aimLane(p, stats), mul: 1 });
   for (let k = 1; k <= stats.split; k++) {
-    for (const o of [-k, k]) { const l = p.lane + o; if (l >= 0 && l < LANES) fire(l, 0.4, width * 0.45); }
+    for (const o of [-k, k]) { const l = p.lane + o; if (l >= 0 && l < LANES) out.push({ lane: l, mul: stats.sideDamage * (stats.carrier === 'bolt' ? 1.5 : 0.8) }); }
   }
-  if (tick) sfx.shoot();
+  return out;
 }
 
-// SCATTER: a cone of short-range pellets.
-function fireScatter(p, stats) {
-  const n = 5 + 2 * stats.split + (stats.buckshot ? 2 : 0);
-  const spread = 0.32 + 0.06 * stats.split;
-  const dmg = currentDamage(p, stats) * 0.75;
-  for (let i = 0; i < n; i++) {
-    const a = -spread + (2 * spread * i) / (n - 1);
-    const sp = stats.bulletSpeed * (0.92 + Math.random() * 0.16);
-    const bi = spawn(playerBullets, p.x, PLAYER_Y - 16, Math.sin(a) * sp, -Math.cos(a) * sp, 2.4 + stats.bulletSize * 0.25, dmg, PELLET, stats.pierce + (stats.buckshot ? 1 : 0));
-    if (bi >= 0) { tagLane(bi, p.lane); playerBullets.ox[bi] = PLAYER_Y - 16; }
+// Polyline from the ship for beams and rails. `phase` animates SINE.
+function buildPath(p, spec, wave, phase) {
+  const x0 = p.x, y0 = PLAYER_Y - 22;
+  const pts = [];
+  for (let d = 0; d < 700; d += 12) {
+    let x, y;
+    if (spec.angle !== undefined) { x = x0 + Math.sin(spec.angle) * d; y = y0 - Math.cos(spec.angle) * d; }
+    else { const k = Math.min(1, d / 110); x = x0 + (laneX(spec.lane) - x0) * k; y = y0 - d; }
+    if (wave) x += Math.sin(phase + d * 0.026) * LANE_W * Math.min(1, d / 70);
+    pts.push(x, y);
+    if (y < -10 || x < -10 || x > 370) break;
   }
-  sfx.shoot();
+  return pts;
 }
 
-// RAILGUN: periodic instant beam through EVERY enemy in the lane.
-// Pierce adds damage (it already pierces), SPLITTER adds side lanes,
-// SEEKER auto-aims a neighbour lane, OVERLOAD (with ECHO) hits 3 lanes every 3rd shot.
+// Walk a path and collect enemies it touches, in order. `limit` stops the walk
+// (beams stop at their last pierced target; rails never stop).
+function hitsAlong(pts, halfW, limit) {
+  const hits = [];
+  const seen = new Set();
+  for (let i = 0; i < pts.length; i += 2) {
+    for (const e of enemies) {
+      if (e.dead || seen.has(e)) continue;
+      if (overlaps(e, pts[i], pts[i + 1], halfW)) {
+        seen.add(e);
+        hits.push({ e, at: i });
+        if (hits.length >= limit) return { hits, end: i + 2 };
+      }
+    }
+  }
+  return { hits, end: pts.length };
+}
+
+function blast(x, y, dmg, stats, skip) {
+  const radius = 24 + 8 * stats.frag + (stats.smartRockets ? 10 : 0);
+  rings.push({ x, y, r: radius, t: 0.25 });
+  sfx.explode();
+  for (const o of enemies) if (o !== skip && !o.dead && overlaps(o, x, y, radius)) damageEnemy(o, dmg * 0.45);
+}
+
+// Fires if the timer allows. `rateMul` is used by OVERDRIVE. `hit` = {rng, onCrit}.
+export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
+  if (stats.carrier === 'beam') { updateBeam(p, stats, dt, rateMul, hit); return; }
+  beams.length = 0;
+  let rate = stats.fireRate * rateMul * CARRIER_RATE[stats.carrier];
+  if (stats.hasScatter) rate *= stats.carrier === 'rail' ? 0.85 : 0.4;
+  p.fireTimer -= dt;
+  p.charge = Math.max(0, Math.min(1, 1 - p.fireTimer * rate));
+  if (p.fireTimer > 0) return;
+  p.fireTimer += 1 / rate;
+  if (p.fireTimer < 0) p.fireTimer = 0;
+  p.shotCount++;
+  if (stats.carrier === 'rail') fireRail(p, stats, hit);
+  else fireProjectiles(p, stats);
+}
+
+// ---- projectiles (bolt / rocket carriers) ---------------------------------
+function fireProjectiles(p, stats) {
+  const rocket = stats.carrier === 'rocket';
+  const dmg = currentDamage(p, stats) * (rocket ? 1.4 : 1);
+  const speed = rocket ? 180 : stats.bulletSpeed;
+  const y = PLAYER_Y - 14;
+  let flags = 0;
+  if (stats.hasRocket) flags |= F_EXPLODE;
+  if (rocket) flags |= F_ROCKET;
+  if (stats.hasScatter && !rocket) flags |= F_RANGE;
+  if (stats.hasSine) flags |= F_WAVE;
+
+  // ECHO: every Nth volley is one huge piercing round.
+  if (!stats.hasScatter && stats.echo && p.shotCount % stats.echo === 0) {
+    const bi = spawn(playerBullets, p.x, y, 0, -stats.bulletSpeed * 0.9, stats.bulletSize * 2.4, dmg * stats.echoMul, BIG, stats.pierce + 3);
+    if (bi >= 0) { tagLane(bi, p.lane); playerBullets.flags[bi] = flags & ~F_ROCKET; }
+    sfx.shoot();
+    return;
+  }
+
+  const travel = (PLAYER_Y - 150) / speed;
+  const strands = stats.hasSine && !stats.hasScatter ? (stats.helix ? 3 : 2) : 1;
+  const side = rocket ? (p.shotCount % 2 === 0 ? -8 : 8) : 0;
+  pattern(p, stats).forEach((pt, idx) => {
+    let vx, vy;
+    if (pt.angle !== undefined) { vx = Math.sin(pt.angle) * speed; vy = -Math.cos(pt.angle) * speed; }
+    else { vx = (laneX(pt.lane) - p.x) / travel; vy = -speed; }
+    const size = (stats.hasScatter ? 2.4 + stats.bulletSize * 0.25 : stats.bulletSize) * (idx === 0 || stats.hasScatter ? 1 : 0.85);
+    const pierce = stats.pierce + (stats.buckshot ? 1 : 0);
+    for (let k = 0; k < strands; k++) {
+      const bi = spawn(playerBullets, p.x + side, y, vx, vy, rocket ? 4 : size, dmg * pt.mul / (strands > 1 ? strands * 0.8 : 1), 0, pierce);
+      if (bi < 0) continue;
+      tagLane(bi, p.lane);
+      playerBullets.flags[bi] = flags;
+      playerBullets.ox[bi] = flags & F_WAVE ? p.x + side : y;
+      playerBullets.aux[bi] = stats.hasScatter ? idx * Math.PI : (k / strands) * Math.PI * 2;
+      if (flags & F_RANGE) playerBullets.aux[bi] = y;   // pellets remember where they started
+    }
+  });
+  if (!rocket) sfx.shoot();
+}
+
+// ---- rail carrier: instant strikes along every path -----------------------
 function fireRail(p, stats, hit) {
   if (!hit) return;
   const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * stats.pierce);
-  const main = aimLane(p, stats);
-  const lanes = [[main, 1]];
-  for (let k = 1; k <= stats.split; k++) for (const o of [-k, k]) lanes.push([p.lane + o, 0.4]);
-  if (stats.overload && p.shotCount % 3 === 0) for (const o of [-1, 1]) lanes.push([main + o, 1]);
-  for (const [l, mul] of lanes) {
-    if (l < 0 || l >= LANES) continue;
-    for (const e of enemiesInLane(l)) onHit(e, dmg * mul, stats, hit, true);
-    rails.push({ x0: p.x, x1: laneX(l), t: 0.2, w: mul });
+  const specs = pattern(p, stats);
+  if (stats.overload && p.shotCount % 3 === 0) for (const o of [-1, 1]) specs.push({ lane: aimLane(p, stats) + o, mul: 1 });
+  const phase = p.shotCount * 1.7;
+  for (const spec of specs) {
+    if (spec.lane !== undefined && (spec.lane < 0 || spec.lane >= LANES)) continue;
+    const pts = buildPath(p, spec, stats.hasSine, phase);
+    const { hits } = hitsAlong(pts, 6, 99);
+    for (const { e } of hits) {
+      onHit(e, dmg * spec.mul, stats, hit, true);
+      if (stats.hasRocket) blast(e.x, e.y, dmg * spec.mul, stats, e);
+    }
+    rails.push({ pts, t: 0.2, w: spec.mul });
   }
   sfx.rail();
   shake(2, 0.06);
 }
 
-// ROCKET POD: alternating rockets that accelerate and explode. They only home
-// with SEEKER (SMART ROCKETS synergy makes them home harder).
-function fireRocket(p, stats) {
-  const side = p.shotCount % 2 === 0 ? -1 : 1;
-  const dmg = currentDamage(p, stats) * 1.4;
-  const shots = [[side * 8, 0]];
-  for (let k = 1; k <= stats.split; k++) shots.push([side * 8, -side * 70 * k]);
-  for (const [ox, vx] of shots) {
-    const bi = spawn(playerBullets, p.x + ox, PLAYER_Y - 10, vx, -180, 4, dmg, ROCKET, stats.pierce);
-    tagLane(bi, p.lane);
+// ---- beam carrier: continuous, ticks 10x/s ---------------------------------
+function updateBeam(p, stats, dt, rateMul, hit) {
+  beams.length = 0;
+  p.laserTick = (p.laserTick || 0) - dt;
+  p.beamT = (p.beamT || 0) + dt;
+  // Surges: ECHO and/or RAIL turn the beam into charged pulses.
+  let surge = 1, widthMul = 1;
+  if (stats.hasRail) {
+    const cyc = p.beamT % 0.9;
+    const on = cyc < 0.28;
+    surge = on ? 2.6 : 0.65;
+    widthMul = on ? 2 : 0.6;
+    if (on && cyc < dt * 1.5) { sfx.rail(); shake(1.5, 0.05); }
   }
+  if (stats.echo) {
+    p.surgeCd = (p.surgeCd || 0) - dt;
+    if (p.surgeCd <= 0) { p.surgeCd = 0.3 * stats.echo; p.surgeT = 0.22; }
+    p.surgeT = Math.max(0, (p.surgeT || 0) - dt);
+    if (p.surgeT > 0) { surge *= stats.echoMul; widthMul *= 1.8; }
+  }
+  const dps = stats.fireRate * rateMul * currentDamage(p, stats) * 1.15 * surge;
+  const tick = p.laserTick <= 0;
+  if (tick) { p.laserTick += 0.1; p.laserCount = (p.laserCount || 0) + 1; }
+  const width = (4 + stats.bulletSize * 0.9) * widthMul;
+  const phase = p.beamT * 5;
+  for (const spec of pattern(p, stats)) {
+    const pts = buildPath(p, spec, stats.hasSine, phase);
+    const { hits, end } = hitsAlong(pts, width * 0.5, 1 + stats.pierce);
+    const shown = hits.length >= 1 + stats.pierce ? pts.slice(0, end) : pts;
+    beams.push({ pts: shown, w: width * (spec.mul < 1 ? 0.55 : 1), a: Math.min(1, spec.mul + 0.3) });
+    if (tick && hit) {
+      for (const { e } of hits) onHit(e, dps * 0.1 * spec.mul, stats, hit, p.laserCount % 3 === 0);
+      const last = hits[hits.length - 1];
+      if (last) {
+        burst(last.e.x, last.e.y + 8, PAL.cyan, 2, 120, 0.2, 1.5);
+        if (stats.hasRocket && p.laserCount % 4 === 0) blast(last.e.x, last.e.y, dps * 0.4 * spec.mul, stats, last.e);
+      }
+    }
+  }
+  if (tick) sfx.shoot();
 }
 
-// SINE WAVE: two strands (three with HELIX) weaving across your lane and its
-// neighbours.
-function fireSine(p, stats) {
-  const strands = stats.helix ? 3 : 2;
-  const dmg = currentDamage(p, stats) * (stats.helix ? 0.42 : 0.5);
-  for (let k = 0; k < strands; k++) {
-    const bi = spawn(playerBullets, p.x, PLAYER_Y - 14, 0, -stats.bulletSpeed * 0.85, 2.6, dmg, SINE, stats.pierce);
-    if (bi >= 0) { playerBullets.ox[bi] = p.x; playerBullets.aux[bi] = (k / strands) * Math.PI * 2; }
-  }
-  sfx.shoot();
-}
-
-// Per-frame behaviour of special bullets.
+// Per-frame behaviour of trait-carrying bullets.
 export function updateModeBullets(stats, dt) {
   const pb = playerBullets;
   for (let i = 0; i < pb.n; i++) {
-    const kind = pb.kind[i];
-    if (kind === SINE) {
-      const traveled = PLAYER_Y - 14 - pb.y[i];
-      pb.x[i] = pb.ox[i] + Math.sin(pb.aux[i] + traveled * 0.026) * LANE_W * Math.min(1, traveled / 60);
-    } else if (kind === PELLET) {
-      if (pb.ox[i] - pb.y[i] > 440) { kill(pb, i); i--; }
-    } else if (kind === ROCKET) {
+    const f = pb.flags[i];
+    if (f & F_RANGE && pb.aux[i] - pb.y[i] > 440 && !(f & F_WAVE)) { kill(pb, i); i--; continue; }
+    if (f & F_ROCKET) {
       const sp = Math.hypot(pb.vx[i], pb.vy[i]);
       if (sp < 720) { const k = 1 + dt * 2.4; pb.vx[i] *= k; pb.vy[i] *= k; }
       if (Math.random() < 0.5) burst(pb.x[i], pb.y[i] + 6, '#8aa0b0', 1, 20, 0.35, 1.5);
+    }
+    if (f & F_WAVE) {
+      // ox carries the un-weaved path; x = ox + offset (pre-compensated for updatePool).
+      pb.ox[i] += pb.vx[i] * dt;
+      const traveled = PLAYER_Y - 14 - pb.y[i];
+      if (f & F_RANGE && traveled > 440) { kill(pb, i); i--; continue; }
+      const off = Math.sin(pb.aux[i] + traveled * 0.026) * LANE_W * Math.min(1, traveled / 60);
+      pb.x[i] = pb.ox[i] + off - pb.vx[i] * dt;
     }
   }
 }
@@ -258,7 +313,7 @@ export function steerBullets(stats, dt) {
   const maxVx = 200 + 60 * stats.homing;
   for (let i = 0; i < pb.n; i++) {
     const lane = pb.lane[i];
-    if (lane < 0 || pb.kind[i] === SINE) continue;
+    if (lane < 0 || pb.flags[i] & F_WAVE) continue;
     const xMin = laneX(Math.max(0, lane - 1)) - LANE_W * 0.5;
     const xMax = laneX(Math.min(LANES - 1, lane + 1)) + LANE_W * 0.5;
     let bestX = 0, bd = 1e9, found = false;
@@ -294,7 +349,7 @@ function overlaps(e, x, y, r) {
 }
 
 // Applies all on-hit effects. `ctx` gives access to rng and run callbacks.
-function onHit(e, dmg, stats, run, primary, kind = 0) {
+function onHit(e, dmg, stats, run, primary, flags = 0) {
   let d = dmg;
   if (primary && stats.crit > 0 && run.rng.next() < stats.crit) {
     d *= stats.critMul;
@@ -308,12 +363,7 @@ function onHit(e, dmg, stats, run, primary, kind = 0) {
     e.poisonT = 3;
     e.poisoned = true;
   }
-  if (kind === ROCKET) {
-    const radius = 26 + 8 * stats.frag + (stats.smartRockets ? 10 : 0);
-    rings.push({ x: e.x, y: e.y, r: radius, t: 0.25 });
-    sfx.explode();
-    for (const o of enemies) if (o !== e && !o.dead && overlaps(o, e.x, e.y, radius)) damageEnemy(o, dmg * 0.45);
-  }
+  if (flags & F_EXPLODE) blast(e.x, e.y, dmg, stats, e);
   if (!primary) return;
   if (stats.frag > 0) {
     const radius = 26 + 12 * stats.frag;
@@ -349,7 +399,7 @@ export function resolvePlayerHits(stats, run) {
     for (const e of enemies) {
       if (e.dead || pb.lastHit[i] === e.id) continue;
       if (!overlaps(e, pb.x[i], pb.y[i], pb.r[i])) continue;
-      onHit(e, pb.dmg[i], stats, run, true, pb.kind[i]);
+      onHit(e, pb.dmg[i], stats, run, true, pb.flags[i]);
       if (pb.pierce[i] > 0) {
         pb.pierce[i]--;
         pb.lastHit[i] = e.id;
@@ -382,21 +432,31 @@ export function updateWeaponFx(dt) {
   for (let i = 0; i < rings.length; i++) { rings[i].t -= dt; if (rings[i].t <= 0) { rings.splice(i, 1); i--; } }
 }
 
+function poly(pts, color, width, alpha) {
+  if (pts.length < 4) return;
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0], pts[1]);
+  for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
 export function drawWeaponFx() {
   for (const b of beams) {
     const flick = 0.85 + Math.random() * 0.15;
-    const segs = b.ym !== b.y0 ? [[b.x0, b.y0, b.xm, b.ym], [b.xm, b.ym, b.x1, b.y1]] : [[b.x0, b.y0, b.x1, b.y1]];
-    for (const [ax, ay, bx, by] of segs) {
-      line(ax, ay, bx, by, PAL.cyan, b.w * 2.2 * flick, 0.22 * b.a);
-      line(ax, ay, bx, by, PAL.cyan, b.w * flick, 0.6 * b.a);
-      line(ax, ay, bx, by, '#ffffff', Math.max(1, b.w * 0.35), 0.95 * b.a);
-    }
-    drawGlowDot(b.x0, b.y0, PAL.cyan, 4 + b.w * 0.4, 0.9 * b.a);
+    poly(b.pts, PAL.cyan, b.w * 2.2 * flick, 0.22 * b.a);
+    poly(b.pts, PAL.cyan, b.w * flick, 0.6 * b.a);
+    poly(b.pts, '#ffffff', Math.max(1, b.w * 0.35), 0.95 * b.a);
+    drawGlowDot(b.pts[0], b.pts[1], PAL.cyan, 4 + b.w * 0.4, 0.9 * b.a);
   }
   for (const r of rails) {
     const a = r.t / 0.2;
-    line(r.x1, PLAYER_Y - 20, r.x1, 0, PAL.cyan, 14 * a * (0.5 + r.w * 0.5), 0.3 * a);
-    line(r.x1, PLAYER_Y - 20, r.x1, 0, '#ffffff', 3 * a + 1, a);
+    poly(r.pts, PAL.cyan, 14 * a * (0.5 + r.w * 0.5), 0.3 * a);
+    poly(r.pts, '#ffffff', 3 * a + 1, a);
   }
   for (const a of arcs) {
     // jagged lightning

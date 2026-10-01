@@ -17,6 +17,7 @@ import { line as drawLine, drawGlowDot } from './render/draw.js';
 import { PLAYER_Y } from './game/player.js';
 import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
+import { ITEM_BY_ID } from './game/items.js';
 import { unlockedBoards } from './game/achievements.js';
 import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
 import { drawHud } from './ui/hud.js';
@@ -35,6 +36,7 @@ let menuT = 0;
 let boardIdx = Math.max(0, BOARDS.findIndex((b) => b.id === save.board));
 let archiveTab = 'items';
 let archiveSel = null;
+let comboPage = 0;
 
 applySettings(save.settings);
 setHaptics(save.settings.haptics);
@@ -109,6 +111,9 @@ function update(dt) {
     if (id === 'back' || input.pause) { screen = 'menu'; sfx.select(); }
     else if (id === 'tabItems') archiveTab = 'items';
     else if (id === 'tabGoals') archiveTab = 'goals';
+    else if (id === 'tabCombos') { archiveTab = 'combos'; comboPage = 0; }
+    else if (id === 'comboPrev') comboPage = Math.max(0, comboPage - 1);
+    else if (id === 'comboNext') comboPage++;
     else if (id && id.startsWith('item:')) { archiveSel = id.slice(5); sfx.lane(); }
     return;
   }
@@ -155,7 +160,7 @@ function render(alpha) {
     drawWorld(menuT * 6, -1);
     drawMenu(save, menuT, boardIdx);
   } else if (screen === 'archive') {
-    drawArchive(save, archiveTab, archiveSel);
+    drawArchive(save, archiveTab, archiveSel, comboPage);
   } else {
     const r = run;
     drawWorld(r.distance, r.player.lane);
@@ -225,6 +230,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     },
     // Advance the simulation synchronously (background tabs pause rAF).
     tick: (frames = 1) => { for (let i = 0; i < frames; i++) update(1 / 60); },
+    offer: (ids) => { run.pickChoices = ids.map((id) => ITEM_BY_ID[id]); run.mode = 'pick'; },
     god: () => { run.player.hearts = 99; run.stats.maxHearts = 99; run.nextEvent = 1e9; run.spawnT = 1e9; },
   };
 }

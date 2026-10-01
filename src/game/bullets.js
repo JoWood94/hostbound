@@ -22,15 +22,18 @@ function makePool(max) {
     lane: new Int8Array(max),      // player bullets: lane fired from (homing range), -1 = no homing
     ox: new Float32Array(max),     // mode data: sine base x / pellet start y
     aux: new Float32Array(max),    // mode data: sine phase
+    flags: new Uint8Array(max),    // player shot traits, combinable (F_*)
   };
 }
 
 // kind flags
 export const LOW = 1;       // enemy low wave: can be jumped over
 export const BIG = 2;       // player echo/heavy shot, drawn bigger
-export const PELLET = 3;    // scatter pellet, short range
-export const ROCKET = 4;    // rocket pod, accelerates, explodes
-export const SINE = 5;      // sine wave strand
+// Player shot traits: any combination is valid (that is the synergy engine).
+export const F_EXPLODE = 1; // blast on hit (ROCKET POD)
+export const F_WAVE = 2;    // weaves across neighbour lanes (SINE WAVE)
+export const F_RANGE = 4;   // short range pellet (SCATTER)
+export const F_ROCKET = 8;  // rocket body: accelerates, smoke trail
 
 export const playerBullets = makePool(384);
 export const enemyBullets = makePool(1024);
@@ -39,7 +42,7 @@ export function spawn(pool, x, y, vx, vy, r = 3, dmg = 1, kind = 0, pierce = 0) 
   if (pool.n >= pool.max) return -1;
   const i = pool.n++;
   pool.x[i] = x; pool.y[i] = y; pool.vx[i] = vx; pool.vy[i] = vy;
-  pool.r[i] = r; pool.dmg[i] = dmg; pool.kind[i] = kind; pool.pierce[i] = pierce; pool.lastHit[i] = -1; pool.lane[i] = -1; pool.ox[i] = x; pool.aux[i] = 0;
+  pool.r[i] = r; pool.dmg[i] = dmg; pool.kind[i] = kind; pool.pierce[i] = pierce; pool.lastHit[i] = -1; pool.lane[i] = -1; pool.ox[i] = x; pool.aux[i] = 0; pool.flags[i] = 0;
   return i;
 }
 
@@ -48,7 +51,7 @@ export function kill(pool, i) {
   pool.x[i] = pool.x[l]; pool.y[i] = pool.y[l]; pool.vx[i] = pool.vx[l]; pool.vy[i] = pool.vy[l];
   pool.r[i] = pool.r[l]; pool.dmg[i] = pool.dmg[l]; pool.kind[i] = pool.kind[l];
   pool.pierce[i] = pool.pierce[l]; pool.lastHit[i] = pool.lastHit[l]; pool.lane[i] = pool.lane[l];
-  pool.ox[i] = pool.ox[l]; pool.aux[i] = pool.aux[l];
+  pool.ox[i] = pool.ox[l]; pool.aux[i] = pool.aux[l]; pool.flags[i] = pool.flags[l];
 }
 
 const MARGIN = 40;
@@ -70,18 +73,19 @@ export function drawPlayerBullets() {
   for (let i = 0; i < p.n; i++) {
     const rot = Math.atan2(p.vx[i], -p.vy[i]);
     const k = p.r[i] / 3;
-    const kind = p.kind[i];
-    if (kind === BIG) {
+    const f = p.flags[i];
+    if (f & F_EXPLODE && !(f & F_ROCKET)) drawGlowDot(p.x[i], p.y[i], '#ffd27a', p.r[i] + 2, 0.45);
+    if (p.kind[i] === BIG) {
       drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, p.r[i], 0.6);
       drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k, flash: 0.5 });
-    } else if (kind === PELLET) {
-      drawSprite(pelletSprite(), p.x[i], p.y[i], { sx: k, sy: k });
-    } else if (kind === ROCKET) {
+    } else if (f & F_ROCKET) {
       const sp = Math.hypot(p.vx[i], p.vy[i]);
       const tx = -p.vx[i] / sp, ty = -p.vy[i] / sp;
       for (let s2 = 1; s2 <= 3; s2++) drawGlowDot(p.x[i] + tx * 7 * s2, p.y[i] + ty * 7 * s2, s2 === 1 ? '#ffffff' : COLOR_PLAYER_BULLET, 3 - s2 * 0.6, 0.8 - s2 * 0.2);
       drawSprite(rocketSprite(), p.x[i], p.y[i], { rot });
-    } else if (kind === SINE) {
+    } else if (f & F_RANGE) {
+      drawSprite(pelletSprite(), p.x[i], p.y[i], { sx: k, sy: k });
+    } else if (f & F_WAVE) {
       drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, p.r[i] + 1.5, 0.55);
       drawGlowDot(p.x[i], p.y[i], '#ffffff', p.r[i] * 0.5);
     } else {

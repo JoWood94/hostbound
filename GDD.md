@@ -294,6 +294,34 @@ Fatto (v0.9):
 - Sinergie: SMART ROCKETS, MELTDOWN, BUCKSHOT, OVERLOAD, HELIX.
 - I razzi NON inseguono da soli: lo fanno solo con SEEKER (niente item ridondanti).
 
+Fatto (v1.0) — sinergie vere e statistiche:
+
+**Statistiche** (da Isaac, solo quelle utili a corsie):
+| Stat | Effetto |
+|---|---|
+| DAMAGE | danno di ogni colpo |
+| FIRE RATE | colpi al secondo |
+| SPEED | velocità del cambio corsia e ricarica phase (la pista scorre da sola) |
+| LUCK | +3% critico per punto, rarità item, drop di cuori/cuori blu/item corrotti |
+| HP | cuori massimi |
+Scartate: SHOT SPEED e RANGE (i colpi attraversano lo schermo in <1 s, i nemici stanno
+sempre in alto: non cambierebbero le scelte del giocatore).
+Frecce ▲▼ sulle carte (calcolate applicando davvero l'item alla build), pannello in pausa.
+Item nuovi: AFTERBURNER (SPEED), LOADED DICE (LUCK). LUCKY CHIP ora dà LUCK +2.
+
+**Motore di colpo componibile** (src/game/weapon.js):
+- Vettore: BEAM (laser) > RAIL > ROCKET > BOLT.
+- SCATTER = ventaglio del vettore, SINE = onda, ROCKET (se non vettore) = esplosione,
+  RAIL (con raggio) = impulsi carichi, SPLITTER = corsie laterali, SEEKER = piega/mira
+  nella corsia vicina, PIERCER = più bersagli (o +danno sul rail).
+- Nessuna combinazione è scritta a mano: LASER + SCATTER è un raggio con ventaglio.
+
+**Scoperta combinazioni** (src/game/combos.js, 42 coppie):
+- Item offerto che reagisce con la build: cornice magenta + "⟡ RESONATES WITH X".
+- Prima volta che tieni la coppia: NEW COMBO (nome + effetto), salvato per sempre.
+- Poi: la carta mostra nome ed effetto; archivio → scheda COMBOS; pausa → combo attive.
+- Le combo che dipendono dal vettore valgono solo se l'effetto esiste davvero.
+
 Backlog:
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.

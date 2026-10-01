@@ -1,0 +1,67 @@
+// Combo discovery. Every pair of items that does something together is a
+// combo. Effects come from the shot engine and item stats (nothing here changes
+// gameplay); this file only names them so the player can discover and look
+// them up later, Isaac-style but without needing a wiki:
+//   - not discovered: an offered item only says it RESONATES with something you hold
+//   - discovered (held both once): the name and effect are shown from then on
+import { SYNERGIES, ITEM_BY_ID, computeStats } from './items.js';
+
+// `when(stats)`: the combo only exists if its effect is real for the current
+// shot carrier (e.g. rockets only spiral if rockets are what you fire).
+const pair = (a, b, name, desc, id = `${a}+${b}`, when = null) => ({ id, a, b, name, desc, when });
+const carrierIs = (c) => (s) => s.carrier === c;
+
+export const COMBOS = [
+  // Named synergies (they also carry a stat bonus in items.js)
+  ...SYNERGIES.map((s) => pair(s.req[0], s.req[1], s.name, s.desc, s.id)),
+
+  // Shot modifiers composing through the shot engine
+  pair('laser', 'scatter', 'PRISM FAN', 'The beam splits into a fan of beams.'),
+  pair('laser', 'sine', 'SERPENT BEAM', 'The beam snakes across your lane and its neighbours.'),
+  pair('laser', 'railgun', 'PULSE LANCE', 'The beam fires in heavy charged pulses.'),
+  pair('laser', 'rockets', 'SCORCHER', 'Where the beam lands, things explode.'),
+  pair('railgun', 'scatter', 'TRIDENT', 'Rails strike in a cone.', undefined, carrierIs('rail')),
+  pair('railgun', 'sine', 'ZIGZAG RAIL', 'Rails zigzag through three lanes.', undefined, carrierIs('rail')),
+  pair('railgun', 'rockets', 'DETONATOR', 'Everything a rail touches explodes.', undefined, carrierIs('rail')),
+  pair('rockets', 'scatter', 'SALVO', 'Rockets launch in a fan.', undefined, carrierIs('rocket')),
+  pair('rockets', 'sine', 'CORKSCREW', 'Rockets spiral across lanes.', undefined, carrierIs('rocket')),
+  pair('scatter', 'sine', 'FIREFLIES', 'Pellets weave as they spread.', undefined, carrierIs('bolt')),
+
+  // Modifiers that change how a shot modifier behaves
+  pair('laser', 'split', 'SIDE BEAMS', 'Extra beams bend into the next lanes.'),
+  pair('laser', 'homing', 'BENDING BEAM', 'With nothing ahead, the beam bends to a target next door.'),
+  pair('laser', 'pierce', 'BORE BEAM', 'The beam drills through more enemies.'),
+  pair('laser', 'echo', 'SURGE', 'The beam surges every few moments.'),
+  pair('railgun', 'homing', 'AUTO-AIM', 'Rails snap to a target in the next lane.', undefined, carrierIs('rail')),
+  pair('railgun', 'pierce', 'OVERPENETRATION', 'Rails already pierce: they hit harder instead.', undefined, carrierIs('rail')),
+  pair('railgun', 'split', 'TRIPLE RAIL', 'Rails also strike the side lanes.', undefined, carrierIs('rail')),
+  pair('scatter', 'split', 'WIDE SPREAD', 'More shots in a wider cone.'),
+  pair('rockets', 'frag', 'BIG BADDA', 'Bigger blasts.'),
+  pair('rockets', 'pierce', 'CLUSTER', 'Rockets punch through and blow up again.'),
+];
+
+export const COMBO_BY_ID = Object.fromEntries(COMBOS.map((c) => [c.id, c]));
+
+const held = (stacks, id) => (stacks[id] || 0) > 0;
+
+// Combos currently formed by the build.
+export function activeCombos(stacks, stats) {
+  return COMBOS.filter((c) => held(stacks, c.a) && held(stacks, c.b) && (!c.when || !stats || c.when(stats)));
+}
+
+// What an offered item would form with the current build.
+export function offerHints(id, stacks, save, board) {
+  const out = [];
+  const after = board ? computeStats(board, { ...stacks, [id]: (stacks[id] || 0) + 1 }) : null;
+  for (const c of COMBOS) {
+    const partner = c.a === id ? c.b : c.b === id ? c.a : null;
+    if (!partner || !held(stacks, partner) || held(stacks, id)) continue;
+    if (c.when && after && !c.when(after)) continue;
+    out.push({ combo: c, partner: ITEM_BY_ID[partner], known: !!(save.combos && save.combos[c.id]) });
+  }
+  return out;
+}
+
+export function knownCount(save) {
+  return COMBOS.filter((c) => save.combos && save.combos[c.id]).length;
+}

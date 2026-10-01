@@ -11,7 +11,8 @@ import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, c
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnGate, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
-import { ITEMS, ITEM_BY_ID, computeStats, rollItems, activeSynergies, RARITY, powerRatio } from './items.js';
+import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from './items.js';
+import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
@@ -117,7 +118,6 @@ export function acquire(run, id, silent = false) {
   if (!it) return;
   const p = run.player;
   if (it.cat === 'mode') {
-    for (const m of ITEMS) if (m.cat === 'mode' && m.id !== id) delete run.stacks[m.id];
     if (!run.save.modesUsed) run.save.modesUsed = [];
     if (!run.save.modesUsed.includes(id)) run.save.modesUsed.push(id);
   }
@@ -143,12 +143,20 @@ export function acquire(run, id, silent = false) {
     if (it.cat === 'active') toast(run, 'ACTIVE ITEM', 'Kills fill the orange button: tap it when full', PAL.orange, 4.5);
   }
 
-  for (const sy of activeSynergies(run.stacks)) {
-    if (run.synergies.has(sy.id)) continue;
-    run.synergies.add(sy.id);
-    toast(run, `SYNERGY: ${sy.name}`, sy.desc, PAL.magenta, 3.2);
-    sfx.synergy();
-    run.flashT = 0.3;
+  // Combos: first time ever = discovery (named, explained, remembered forever).
+  if (!run.save.combos) run.save.combos = {};
+  for (const c of activeCombos(run.stacks, run.stats)) {
+    if (run.synergies.has(c.id)) continue;
+    run.synergies.add(c.id);
+    if (!run.save.combos[c.id]) {
+      run.save.combos[c.id] = true;
+      writeSave(run.save);
+      toast(run, `NEW COMBO: ${c.name}`, c.desc, PAL.magenta, 3.6);
+      sfx.synergy();
+      run.flashT = 0.3;
+    } else {
+      toast(run, `COMBO: ${c.name}`, '', PAL.magenta, 2);
+    }
   }
 }
 
@@ -283,6 +291,7 @@ function spawnEnemies(run, dt, d) {
 
 // Runner chunks: coin lines, barriers, walls, gates.
 function spawnChunk(run, d) {
+  const luck = run.stats.luck;
   const rng = run.rng;
   const lane = rng.int(0, LANES - 1);
   const p = run.player;
@@ -290,13 +299,13 @@ function spawnChunk(run, d) {
   const roll = rng.next();
 
   // Rare specials
-  if (lockedPool.length && run.distance > 250 && run.corruptSpawned < 1 + Math.floor(run.distance / 1500) && rng.chance(0.05)) {
+  if (lockedPool.length && run.distance > 250 && run.corruptSpawned < 1 + Math.floor(run.distance / 1500) && rng.chance(0.05 + 0.01 * luck)) {
     spawnPickup('corrupt', lane, -20, { itemId: rng.pick(lockedPool).id });
     run.corruptSpawned++;
     return;
   }
-  if (p.hearts < run.stats.maxHearts && rng.chance(0.05)) { spawnPickup('heart', lane, -20); return; }
-  if (rng.chance(0.03)) { spawnPickup('blue', lane, -20); return; }
+  if (p.hearts < run.stats.maxHearts && rng.chance(0.05 + 0.01 * luck)) { spawnPickup('heart', lane, -20); return; }
+  if (rng.chance(0.03 + 0.005 * luck)) { spawnPickup('blue', lane, -20); return; }
 
   if (d >= 3 && roll < 0.12 && enemies.length === 0) {
     const gap = rng.int(0, LANES - 1);
@@ -400,7 +409,7 @@ export function skipPick(run) {
 
 function onBossKilled(run, b) {
   run.rs.bosses++;
-  if (run.stats.fireMode === 'scatter') run.rs.scatterBoss = true;
+  if (run.stats.hasScatter) run.rs.scatterBoss = true;
   if (!run.bossHit) run.rs.bossNoHit = true;
   if (run.player.hearts === 1) run.rs.boss1Heart = true;
   if (run.stats.repair && run.player.hearts < run.stats.maxHearts) run.player.hearts++;
@@ -696,7 +705,7 @@ export function updateRun(run, input, dt) {
     if (e.noReward) continue;
     run.rs.kills++;
     if (e.poisoned) run.rs.toxinKills++;
-    if (st.fireMode === 'laser') run.rs.laserKills = (run.rs.laserKills || 0) + 1;
+    if (st.hasBeam) run.rs.laserKills = (run.rs.laserKills || 0) + 1;
     if (st.chain) {
       const radius = (34 + 10 * st.chain) * (st.domino ? 1.5 : 1);
       const dmg = currentDamage(p, st) * 1.2 * st.chain;

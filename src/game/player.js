@@ -60,7 +60,7 @@ export function updatePlayer(p, input, dt, stats) {
     }
   }
   if (p.laneT < 1) {
-    p.laneT = Math.min(1, p.laneT + dt / LANE_TIME);
+    p.laneT = Math.min(1, p.laneT + dt * stats.speed / LANE_TIME);
     const e = 1 - (1 - p.laneT) * (1 - p.laneT);
     p.x = p.laneFromX + (laneX(p.lane) - p.laneFromX) * e;
   } else {
@@ -232,7 +232,7 @@ export function drawPlayer(p, alpha, stats) {
   }
   drawSprite(spr, x, y, { rot: p.bank, sx: sxs, sy: sys, flash: p.iframes > 0 ? 0.25 : 0 });
   // Railgun charge building on the nose
-  if (stats.fireMode === 'railgun' && p.charge > 0.05) {
+  if (stats.carrier === 'rail' && p.charge > 0.05) {
     drawGlowDot(x + Math.sin(p.bank) * 22, y - 24 * sys, PAL.cyan, 2 + p.charge * 5, 0.4 + p.charge * 0.6);
     if (p.charge > 0.9) drawGlowDot(x + Math.sin(p.bank) * 22, y - 24 * sys, '#ffffff', 2.5);
   }
