@@ -16,7 +16,7 @@ function probe(css) {
 }
 export function viewport() {
   const w = window.innerWidth || 360;
-  let h = Math.max(window.innerHeight || 0, probe('100lvh') || 0, probe('100dvh') || 0);
+  let h = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0, probe('100lvh') || 0, probe('100dvh') || 0);
   const standalone = navigator.standalone || window.matchMedia?.('(display-mode: standalone)').matches;
   if (standalone && screen.width === w) h = Math.max(h, screen.height);
   return { w, h: h || 640 };
@@ -77,6 +77,10 @@ export function makeOffscreen(w, h) {
 }
 
 window.addEventListener('resize', resize);
+// iOS settles the standalone viewport late: measure again after launch.
+window.addEventListener('pageshow', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 300));
+setTimeout(resize, 300);
 resize();
 
 export { canvas, ctx };
