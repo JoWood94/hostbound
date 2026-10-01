@@ -21,7 +21,8 @@ import { sfx } from '../audio/audio.js';
 import { bossHp, bossSpeed } from './balance.js';
 
 const ALL = [0, 1, 2, 3, 4];
-const HOLD_Y = 140;
+// Below the status bar and the health bar (name + bar end ~66 px under SAFE_TOP).
+const HOLD_Y = 150 + SAFE_TOP;
 
 // Attack parts: volley (n shots per lane), sweep (lanes in order), low (jumpable wave),
 // beam (dense stream for `dur`), summon (drones in lanes).
