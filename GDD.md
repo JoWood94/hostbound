@@ -55,6 +55,7 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 - **Laser gate**: si accende/spegne a ritmo, passa nel buio.
 - **Muro pieno con varco**: 1 corsia libera, si vede da lontano.
 - **Velo (squarcio)**: tenda ciano su tutte e 5 le corsie, non si schiva né si salta: solo **phase**. Mai due entro 140 m (il phase è sempre carico), suggerimento PHASE ▼ mezzo secondo prima.
+- **Formazioni** su più corsie (righe `B` muro, `T` filo da saltare, `.` libero; ogni riga ha almeno una corsia non-muro, righe a ~0,55 s): linea di fili (salta tutto), tenaglia (`BTTTB`, `TBTBT`…: schiva dentro un filo e salta), zip (`TBTBT` poi `BTBTB`), slalom (varco che si sposta di 1 corsia per riga), cancello con filo nel varco, tamburi (fili, slalom, fili). Quelle con molti muri solo a schermo vuoto.
 - Linguaggio colori: **arancio = salta**, **magenta = schiva**, **ciano = phase**. Tutti e tre sono disegnati in codice come una famiglia: fili di plasma tesi nella corrente. Basso = filo arancio sottile con scintille ed emettitori; muro = nodo magenta denso con due piloni e nucleo rosso; velo = tenda ciano su tutta la pista.
 
 ### Nemici (bullet hell su corsie)
@@ -79,6 +80,8 @@ Ogni nemico insegna una mossa:
 Nemici "larghi" (Crusher, Throb, Weaver, Wall, Tank) entrano solo a schermo libero: metà delle volte lo spawner aspetta che si svuoti (mini-duello), metà li sostituisce con un nemico stretto. Senza questa regola, a fine run non uscivano quasi mai.
 
 Spawner: 1 nemico attivo fino a 800 m, 2 fino a 2000 m, poi 3. Nemici sempre ad almeno 2 corsie di distanza. Sweeper e Crusher solo se soli a schermo. Ogni nemico spara 2 volée e se ne va (max 4 in late game). Difficoltà scala al massimo +40% di cadenza.
+
+**Ritmo dello sparo.** Tutti i nemici normali sparano su un **metronomo condiviso** (un tick = mezza battuta, 0,21 s): finito l'avviso, il primo colpo aspetta il tick successivo, e gli intervalli dentro una raffica sono multipli di tick. Il tempo (BPM) sale a scalini, uno per distretto (ogni 1000 m), non in modo continuo. Una sola velocità per tutti i colpi normali, alti e bassi, anche lei a scalini per distretto: la distanza sullo schermo corrisponde alla distanza nel tempo. I colpi escono dalla bocca della creatura con un lampo e un suono. La corsia resta illuminata **finché la raffica non ti ha superato**: la luce significa "pericolo adesso". I nemici entrano planando (ease-out) e, finite le raffiche, risalgono e se ne vanno verso l'alto invece di scivolare giù tra i propri colpi.
 
 Proiettili viaggiano **dritti giù nella corsia** (vx = 0). Variante "bassa" (arancio) si può saltare; variante "alta" (magenta) no.
 

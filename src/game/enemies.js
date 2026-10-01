@@ -39,6 +39,7 @@ export const look = { x: 180, y: 500, lane: 2 };
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
+import { PLAYER_Y } from './player.js';
 import { sfx } from '../audio/audio.js';
 
 let nextId = 1;
@@ -46,7 +47,7 @@ export const newId = () => nextId++;
 
 export const enemies = [];
 
-import { bulletSpeed, timeMul, enemyHp, maxVolleys, LEAVE_SPEED } from './balance.js';
+import { bulletSpeed, timeMul, enemyHp, maxVolleys } from './balance.js';
 
 // The enemy's lane and its neighbours, clamped to the track.
 const around = (e) => [e.lane - 1, e.lane, e.lane + 1].filter((l) => l >= 0 && l < LANES);
@@ -126,12 +127,12 @@ TYPES.brooder = {
   steps: (e) => [0, 1, 2].map((i) => ({ lanes: [e.lane], delay: i < 2 ? 0.42 : 0, low: true })),
 };
 // Locks onto your lane (its own or a neighbour, never further) when the
-// telegraph starts, then fires two fast needles there. Move after the lock.
+// telegraph starts, then fires two needles there. Move after the lock.
 TYPES.stalker = {
   color: '#ff5c8a', r: 10, hp: 3, holdY: 170, telegraph: 0.75, rest: 1.3, volleys: 3, unlockAt: 1200,
   steps: (e) => {
     const t = Math.max(0, e.lane - 1, Math.min(e.lane + 1, e.target ?? e.lane, LANES - 1));
-    return [{ lanes: [t], delay: 0.12, fast: true }, { lanes: [t], delay: 0, fast: true }];
+    return [{ lanes: [t], delay: 0.21 }, { lanes: [t], delay: 0 }];
   },
 };
 // Heartbeat: its lane, then both neighbours, on a steady pulse. Dance in and
@@ -185,12 +186,36 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
   enemies.push(e);
 }
 
+// ---------------------------------------------------------------------------
+// Rhythm. Every regular enemy fires on one shared metronome, so shots from
+// different enemies land on the same grid and a volley has a steady pulse.
+// One TICK is half a beat; the tempo steps up once per district (1000 m), like
+// a track changing BPM, instead of drifting continuously.
+// ---------------------------------------------------------------------------
+const TICK = 0.21;
+let clock = 0;            // in ticks
+let simT = 0;             // seconds, for the danger glow
+const ticksOf = (sec) => Math.max(1, Math.round(sec / TICK));
+// Lane -> { until, color }: lanes stay lit while a fired volley is still on its
+// way, so the light means "danger now", not "danger was announced".
+const danger = new Map();
+const MOUTH = 18;         // shots leave from the creature's mouth, not its belly
+
 function fire(e, st, d) {
-  const s = bulletSpeed(d) * (st.fast ? 1.45 : 1);
+  // One speed for every regular enemy shot, high or low: rhythm is readable
+  // only if the spacing on screen matches the spacing in time.
+  const s = bulletSpeed(d);
+  const y = e.y + MOUTH;
+  const travel = (PLAYER_Y + 24 - y) / s;
   for (const l of st.lanes) {
-    if (st.low) spawn(enemyBullets, laneX(l), e.y + 12, 0, s * 0.8, 10, 1, LOW);
-    else spawn(enemyBullets, laneX(l), e.y + 12, 0, s, 5, 1, 0);
+    if (st.low) spawn(enemyBullets, laneX(l), y, 0, s, 10, 1, LOW);
+    else spawn(enemyBullets, laneX(l), y, 0, s, 5, 1, 0);
+    const prev = danger.get(l);
+    if (!prev || prev.until < simT + travel) danger.set(l, { until: simT + travel, color: st.low ? PAL.orange : e.T.color });
   }
+  e.muzzle = 0.12;
+  burst(e.x, y, st.low ? PAL.orange : e.T.color, 4, 70, 0.18, 1.6);
+  sfx.enemyShot();
 }
 
 function startTelegraph(e) {
@@ -211,11 +236,14 @@ function allSequenceLanes(e) {
 
 export function updateEnemies(dt, difficulty) {
   const d = difficulty;
+  clock += (dt * timeMul(d)) / TICK;
+  simT += dt;
+  for (const [l, v] of danger) if (v.until < simT) danger.delete(l);
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
     const T = e.T;
     if (e.type === 'boss') continue; // bosses drive themselves
-    const m = timeMul(d) * (e.elite ? 1.15 : 1);
+    const m = timeMul(d) * (e.elite ? 1.15 : 1);   // telegraph/rest only; shots follow the metronome
     e.prevX = e.x; e.prevY = e.y;
     e.t += dt;
     e.stateT += dt;
@@ -237,38 +265,43 @@ export function updateEnemies(dt, difficulty) {
     if (e.jinkCd > 0) e.jinkCd -= dt;
     if (e.type !== 'boss') e.x = baseX + (e.jinkOff || 0);
 
+    if (e.muzzle > 0) e.muzzle -= dt;
     switch (e.state) {
-      case 'enter':
-        e.y += 170 * dt;
-        if (e.y >= e.holdY) { e.y = e.holdY; startTelegraph(e); }
+      case 'enter': {
+        // Glide in and settle (ease-out), no hard stop.
+        e.enterT = (e.enterT || 0) + dt / 0.65;
+        const k = 1 - Math.pow(1 - Math.min(1, e.enterT), 3);
+        e.y = -24 + (e.holdY + 24) * k;
+        if (e.enterT >= 1) { e.y = e.holdY; startTelegraph(e); }
         break;
+      }
       case 'telegraph':
         if (e.stateT >= T.telegraph / m && T.dive) {
           e.state = 'dive'; e.stateT = 0; e.telegraphLanes = [e.lane];
           sfx.dive();
         } else if (e.stateT >= T.telegraph / m) {
-          e.state = 'fire'; e.stateT = 0; e.step = 0;
-          fire(e, e.steps[0], d);
-          e.telegraphLanes = e.steps.slice(1).flatMap((s) => s.lanes);
+          // Armed: the first shot waits for the next tick of the metronome.
+          e.state = 'fire'; e.stateT = 0; e.step = -1;
+          e.fireAt = Math.ceil(clock);
         }
         break;
-      case 'fire': {
-        const st = e.steps[e.step];
-        if (e.stateT >= st.delay / m) {
+      case 'fire':
+        if (clock >= e.fireAt) {
           e.step++;
-          e.stateT = 0;
           if (e.step >= e.steps.length) {
             e.volleys++;
             e.telegraphLanes = [];
             e.state = e.volleys >= e.maxVolleys ? 'leave' : 'rest';
+            e.stateT = 0;
             if (e.state === 'rest' && T.afterVolley) T.afterVolley(e);
           } else {
-            fire(e, e.steps[e.step], d);
-            e.telegraphLanes = e.steps.slice(e.step + 1).flatMap((s) => s.lanes);
+            const st = e.steps[e.step];
+            fire(e, st, d);
+            e.telegraphLanes = e.steps.slice(e.step + 1).flatMap((x) => x.lanes);
+            e.fireAt += st.delay > 0 ? ticksOf(st.delay) : 0.001;
           }
         }
         break;
-      }
       case 'rest':
         if (e.stateT >= T.rest / m) startTelegraph(e);
         break;
@@ -277,10 +310,13 @@ export function updateEnemies(dt, difficulty) {
         if (Math.random() < 0.6) burst(e.x, e.y - 8, T.color, 1, 40, 0.25, 1.5);
         break;
       case 'leave':
-        e.y += LEAVE_SPEED * dt;
+        // Done: pull back up and away (ease-in), never drift down through
+        // its own bullets.
+        e.leaveT = (e.leaveT || 0) + dt;
+        e.y -= (40 + 520 * e.leaveT) * dt;
         break;
     }
-    if (e.y > H + 30) { enemies.splice(i, 1); i--; }
+    if (e.y > H + 30 || (e.state === 'leave' && e.y < -60)) { enemies.splice(i, 1); i--; }
   }
 }
 
@@ -339,6 +375,8 @@ export function drawTelegraphs() {
     const a = 0.25 + prog * 0.75;
     for (const l of e.telegraphLanes) if (!lit.has(l) || lit.get(l).a < a) lit.set(l, { a, color: e.T.color });
   }
+  // Volleys in flight keep their lanes lit until the shots pass you.
+  for (const [l, v] of danger) if (!lit.has(l) || lit.get(l).a < 0.75) lit.set(l, { a: 0.75, color: v.color });
   for (const [l, { a, color }] of lit) glowLane(l, color, a);
   for (const e of enemies) {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
@@ -440,6 +478,7 @@ export function drawEnemies(alpha) {
         drawGlowDot(x, y - 18, PAL.amber, 4, 0.9);
       }
       drawCell(BROOD, BROOD_ROW[e.type], col, x, y, BROOD_SIZE * breathe * (e.minion ? 0.8 : 1), { flash: e.hitFlash > 0 ? 0.7 : 0 });
+      if (e.muzzle > 0) { drawGlowDot(x, y + MOUTH, c, 7 * (e.muzzle / 0.12) + 2, 0.9); drawGlowDot(x, y + MOUTH, '#ffffff', 2.5, e.muzzle / 0.12); }
       if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
       continue;
     }
@@ -450,6 +489,7 @@ export function drawEnemies(alpha) {
     const blink = (Math.sin(t * 0.7 + e.id * 1.7) > 0.985) ? 0.9 : 0;
     const eyeCol = tele ? '#ffffff' : e.elite ? PAL.amber : '#d9c45a';
     for (const [ex, ey, er] of EYES[e.type] || []) drawEye(x + ex * scale, y + ey * scale, er * scale * (tele ? 1.25 : 1), eyeCol, look.x, look.y, blink);
+    if (e.muzzle > 0) { drawGlowDot(x, y + MOUTH, c, 7 * (e.muzzle / 0.12) + 2, 0.9); drawGlowDot(x, y + MOUTH, '#ffffff', 2.5, e.muzzle / 0.12); }
     if (e.type === 'crusher' && e.state === 'telegraph') {
       drawGlowDot(x, y + 9, c, 4 + Math.sin(t * 30) * 1.5, 0.9);
     }
@@ -457,4 +497,4 @@ export function drawEnemies(alpha) {
   }
 }
 
-export function clearEnemies() { enemies.length = 0; corpses.length = 0; }
+export function clearEnemies() { enemies.length = 0; corpses.length = 0; danger.clear(); }

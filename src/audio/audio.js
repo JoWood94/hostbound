@@ -106,6 +106,7 @@ export const sfx = {
   land() { noise(0.08, { vol: 0.15, freq: 400 }); },
   lane() { if (limit('lane', 40)) tone(520, 0.04, { type: 'triangle', vol: 0.08, slide: 380 }); },
   phase() { tone(1200, 0.25, { type: 'sine', vol: 0.2, slide: 200 }); noise(0.2, { vol: 0.1, freq: 6000, type: 'highpass' }); },
+  enemyShot() { if (limit('eshot', 60)) { tone(240, 0.07, { type: 'sawtooth', vol: 0.06, slide: 120 }); noise(0.04, { vol: 0.05, freq: 900 }); } },
   telegraph() { if (limit('tele', 120)) tone(1480, 0.07, { type: 'square', vol: 0.05 }); },
   pickup() { [660, 880, 1320].forEach((f, i) => tone(f, 0.1, { type: 'square', vol: 0.12, delay: i * 0.06 })); },
   heart() { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.12, { type: 'triangle', vol: 0.2, delay: i * 0.05 })); },

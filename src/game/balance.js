@@ -15,11 +15,11 @@ export const bossHp = (index, power) => Math.round(120 * (1 + 0.5 * index) * Mat
 export const bossSpeed = (index) => Math.min(1.75, 1 + 0.12 * index);
 
 // Enemy timing: telegraph/rest shrink and bullets speed up, both capped.
-export const timeMul = (d) => 1 + Math.min(0.65, d * 0.065);
-// Enemy bullets must always outrun enemies (enter 170, leave 140 px/s) and the
-// track scroll (220+), otherwise a shooter overtakes its own bullets.
-export const bulletSpeed = (d) => 260 + Math.min(150, d * 12);
-export const LEAVE_SPEED = 140;
+// Tempo steps once per district (d 2.5 = 1000 m), like a track changing BPM.
+export const timeMul = (d) => 1 + Math.min(0.65, Math.floor(d / 2.5) * 0.13);
+// One speed for all regular enemy shots, stepping up per district. Enemies
+// leave upwards, so they never overtake their own bullets.
+export const bulletSpeed = (d) => 270 + Math.min(150, Math.floor(d / 2.5) * 30);
 
 // How many enemies may hold position at once, and how often new ones come.
 export const maxActive = (d) => (d < 1.5 ? 1 : d < 4 ? 2 : 3);

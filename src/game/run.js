@@ -9,7 +9,7 @@ import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spa
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look } from './enemies.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
-import { obstacles, spawnObstacle, spawnGate, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
+import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
 import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from './items.js';
 import { activeCombos } from './combos.js';
@@ -325,10 +325,8 @@ function spawnChunk(run, d) {
   if (p.hearts < run.stats.maxHearts && rng.chance(0.05 + 0.01 * luck)) { spawnPickup('heart', lane, -20); return; }
   if (rng.chance(0.03 + 0.005 * luck)) { spawnPickup('blue', lane, -20); return; }
 
-  if (d >= 3 && roll < 0.12 && enemies.length === 0) {
-    const gap = rng.int(0, LANES - 1);
-    spawnGate(gap);
-    spawnCoinLine(gap, 3, -60);
+  if (d >= 0.8 && roll < 0.16 && enemies.length <= 1) {
+    spawnFormation(run, d, enemies.length === 0);
   } else if (d >= 0.3 && roll < 0.4) {
     spawnObstacle('low', lane);
     spawnCoinLine(lane, 2, -50, 22);
@@ -351,6 +349,48 @@ function spawnChunk(run, d) {
   } else {
     spawnCoinLine(lane, B.COIN_LINE);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Obstacle formations: several lanes at once, read as one shape.
+// Each row is a string over the 5 lanes: 'B' barrier (dodge), 'T' tripwire
+// (jump), '.' free. Rules (checked by construction): every row has a lane that
+// is not a barrier, and rows are spaced so a lane hop (0.11 s) plus a jump
+// always fit between them. Barrier-heavy shapes only on an empty screen.
+// ---------------------------------------------------------------------------
+const FORMATIONS = [
+  // name, min difficulty, needs empty screen, rows (top = first to arrive)
+  { min: 0.8, solo: false, rows: () => ['TTTTT'] },                                   // tripline: jump
+  { min: 1.2, solo: false, rows: (r) => [r.pick(['BTTTB', 'TBTBT', 'TTBTT'])] },      // pincer: dodge into a wire, jump
+  { min: 1.5, solo: true, rows: () => ['TBTBT', 'BTBTB'] },                           // zipper: jump, hop, jump
+  { min: 2, solo: true, rows: (r) => slalom(r, 3) },                                  // slalom: a gap that moves
+  { min: 3, solo: true, rows: (r) => { const g = r.int(0, LANES - 1); return [lanesRow((l) => (l === g ? 'T' : 'B'))]; } }, // gate with a wire in the gap
+  { min: 3.5, solo: true, rows: (r) => ['TTTTT', ...slalom(r, 2), 'TTTTT'] },         // drums: jump, weave, jump
+];
+const lanesRow = (f) => Array.from({ length: LANES }, (_, l) => f(l)).join('');
+function slalom(r, n) {
+  let g = r.int(0, LANES - 1);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push(lanesRow((l) => (l === g ? '.' : 'B')));
+    g = Math.max(0, Math.min(LANES - 1, g + (r.chance(0.5) ? 1 : -1)));
+  }
+  return out;
+}
+function spawnFormation(run, d, emptyScreen) {
+  const pool = FORMATIONS.filter((f) => d >= f.min && (emptyScreen || !f.solo));
+  const rows = run.rng.pick(pool).rows(run.rng);
+  const dy = Math.max(110, run.speed * 0.55);       // ~0.55 s between rows
+  rows.forEach((row, i) => {
+    const y = -30 - i * dy;
+    [...row].forEach((c, l) => {
+      if (c === 'B') spawnObstacle('wall', l, y);
+      else if (c === 'T') spawnObstacle('low', l, y);
+    });
+  });
+  // coins trace the way through the first row
+  const free = [...rows[0]].findIndex((c) => c !== 'B');
+  if (free >= 0) spawnCoinLine(free, 3, -60 - rows.length * dy);
 }
 
 // ---------------------------------------------------------------------------
