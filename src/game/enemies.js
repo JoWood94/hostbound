@@ -9,6 +9,7 @@
 import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, ring } from '../render/draw.js';
+import { enemySprite, drawSprite } from '../render/sprites.js';
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
@@ -19,7 +20,7 @@ export const newId = () => nextId++;
 
 export const enemies = [];
 
-import { bulletSpeed, timeMul, enemyHp, maxVolleys } from './balance.js';
+import { bulletSpeed, timeMul, enemyHp, maxVolleys, LEAVE_SPEED } from './balance.js';
 
 // The enemy's lane and its neighbours, clamped to the track.
 const around = (e) => [e.lane - 1, e.lane, e.lane + 1].filter((l) => l >= 0 && l < LANES);
@@ -114,7 +115,7 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
 function fire(e, st, d) {
   const s = bulletSpeed(d);
   for (const l of st.lanes) {
-    if (st.low) spawn(enemyBullets, laneX(l), e.y + 12, 0, s * 0.85, 10, 1, LOW);
+    if (st.low) spawn(enemyBullets, laneX(l), e.y + 12, 0, s * 0.8, 10, 1, LOW);
     else spawn(enemyBullets, laneX(l), e.y + 12, 0, s, 5, 1, 0);
   }
 }
@@ -191,7 +192,7 @@ export function updateEnemies(dt, difficulty) {
         if (Math.random() < 0.6) burst(e.x, e.y - 8, T.color, 1, 40, 0.25, 1.5);
         break;
       case 'leave':
-        e.y += 240 * dt;
+        e.y += LEAVE_SPEED * dt;
         break;
     }
     if (e.y > H + 30) { enemies.splice(i, 1); i--; }
@@ -271,46 +272,52 @@ export function drawEnemies(alpha) {
     const y = e.prevY + (e.y - e.prevY) * alpha;
     const r = e.r;
     const c = e.T.color;
-    const flash = e.state === 'telegraph' && e.stateT > e.T.telegraph * 0.5 && Math.floor(e.stateT * 16) % 2 === 0;
-    const col = flash || e.hitFlash > 0 ? PAL.white : c;
+    const tele = e.state === 'telegraph' && e.stateT > e.T.telegraph * 0.45 && Math.floor(e.stateT * 16) % 2 === 0;
+    const flash = e.hitFlash > 0 ? 0.9 : tele ? 0.7 : 0;
+    const t = e.t;
+
+    // Ground shadow sells the "hovering above the track" look
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(x + 4, y + r + 6, r * 1.1, r * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
     if (e.elite) {
-      ring(x, y, r + 7 + Math.sin(e.t * 6) * 1.5, PAL.amber, 2, 0.85);
-      ring(x, y, r + 11, PAL.amber, 1, 0.35);
+      ring(x, y, r + 9 + Math.sin(t * 6) * 1.5, PAL.amber, 2, 0.85);
+      ring(x, y, r + 13, PAL.amber, 1, 0.35);
     }
-    if (e.poison > 0) drawGlowDot(x, y - r - 5, PAL.acid, 2.5, 0.8);
-    if (e.type === 'drone') {
-      const spin = e.t * 3;
-      const pts = [];
-      for (let k = 0; k < 6; k++) { const a = spin + (k / 6) * Math.PI * 2; pts.push(x + Math.cos(a) * r, y + Math.sin(a) * r); }
-      strokePoly(pts, col, 2);
-      drawGlowDot(x, y, PAL.orange, 3);
-    } else if (e.type === 'sweeper') {
-      strokePoly([x - r * 1.6, y - r * 0.6, x, y + r * 0.8, x + r * 1.6, y - r * 0.6, x, y - r * 0.1], col, 2);
-      drawGlowDot(x, y, c, 3);
-    } else if (e.type === 'hopper') {
-      strokePoly([x, y - r, x + r, y, x, y + r, x - r, y], col, 2);
-      line(x - r, y + r * 0.2, x - r * 1.5, y + r, col, 2);
-      line(x + r, y + r * 0.2, x + r * 1.5, y + r, col, 2);
-      drawGlowDot(x, y, c, 3);
+
+    // Live parts under the body
+    if (e.type === 'hopper') {
+      const hop = e.hopT !== undefined && e.hopT < 1 ? Math.sin(e.hopT * Math.PI) : 0;
+      const spread = 1 + hop * 0.5;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const kx = x + sx * 9 * spread, ky = y + sy * 6;
+        line(x + sx * 4, y + sy * 3, kx, ky - 3, c, 2, 0.9);
+        line(kx, ky - 3, x + sx * 13 * spread, y + sy * 12, c, 1.6, 0.9);
+      }
     } else if (e.type === 'kamikaze') {
-      strokePoly([x, y + r * 1.4, x + r, y - r, x, y - r * 0.4, x - r, y - r], col, 2);
-      drawGlowDot(x, y, c, e.state === 'telegraph' ? 4 + Math.sin(e.t * 30) * 1.5 : 3);
-    } else if (e.type === 'wall') {
-      strokePoly([x - r * 2, y - r * 0.5, x + r * 2, y - r * 0.5, x + r * 2, y + r * 0.5, x - r * 2, y + r * 0.5], col, 2);
-      for (let k = -1.5; k <= 1.5; k += 1) line(x + k * r, y + r * 0.5, x + k * r, y + r * 0.9, col, 2);
-      drawGlowDot(x, y + r * 0.9, PAL.white, 2.5);   // the gap: right under it
-    } else if (e.type === 'tank') {
-      strokePoly([x - r, y - r, x + r, y - r, x + r, y + r, x - r, y + r], col, 2.5);
-      line(x - r * 1.3, y - r, x - r * 1.3, y + r, col, 3);
-      line(x + r * 1.3, y - r, x + r * 1.3, y + r, col, 3);
-      line(x, y, x, y + r * 1.4, col, 3);
-      drawGlowDot(x, y, c, 4);
-    } else if (e.type === 'crusher') {
-      // Heavy block with a slot: fires low waves
-      strokePoly([x - r * 1.3, y - r * 0.8, x + r * 1.3, y - r * 0.8, x + r * 1.3, y + r * 0.8, x - r * 1.3, y + r * 0.8], col, 2);
-      line(x - r, y + r * 0.35, x + r, y + r * 0.35, c, 3);
-      drawGlowDot(x, y - r * 0.2, c, 3);
+      const len = e.state === 'dive' ? 16 + Math.random() * 10 : 5 + Math.random() * 3;
+      drawGlowDot(x, y - 14 - len * 0.4, PAL.amber, 4, 0.9);
+      drawGlowDot(x, y - 14 - len, PAL.red, 3, 0.6);
     }
+
+    const scale = e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r));
+    drawSprite(enemySprite(e.type, c), x, y, { sx: scale, sy: scale, flash });
+
+    // Live parts over the body
+    if (e.type === 'drone') {
+      for (const [dx, dy] of [[-11, -11], [11, -11], [-11, 11], [11, 11]]) {
+        const a = t * 22 + dx;
+        line(x + dx - Math.cos(a) * 5, y + dy - Math.sin(a) * 5, x + dx + Math.cos(a) * 5, y + dy + Math.sin(a) * 5, '#ffffff', 1, 0.45);
+      }
+    } else if (e.type === 'tank') {
+      const off = (t * 40) % 6;
+      for (const tx of [-15, 15]) for (let k = -18 + off; k < 20; k += 6) line(x + tx - 4, y + k, x + tx + 4, y + k, '#5a6a64', 1.2, 0.8);
+    } else if (e.type === 'crusher' && e.state === 'telegraph') {
+      drawGlowDot(x, y + 14, c, 4 + Math.sin(t * 30) * 1.5, 0.9);
+    }
+    if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
   }
 }
 

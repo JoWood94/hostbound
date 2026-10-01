@@ -1,9 +1,10 @@
 // Pooled bullets in typed arrays. No allocation in the hot loop.
 // Two pools: player bullets and enemy bullets.
-import { drawGlowDot, line } from '../render/draw.js';
+import { drawGlowDot } from '../render/draw.js';
+import { boltSprite, enemyOrbSprite, lowWaveSprite, drawSprite } from '../render/sprites.js';
 import { W, H } from '../core/canvas.js';
 import { LANE_W } from './world.js';
-import { COLOR_PLAYER_BULLET, COLOR_ENEMY_BULLET, COLOR_ENEMY_BULLET_ALT, PAL } from '../render/palette.js';
+import { COLOR_PLAYER_BULLET, COLOR_ENEMY_BULLET } from '../render/palette.js';
 
 function makePool(max) {
   return {
@@ -58,12 +59,15 @@ export function clearPool(pool) { pool.n = 0; }
 
 export function drawPlayerBullets() {
   const p = playerBullets;
+  const bolt = boltSprite(COLOR_PLAYER_BULLET);
   for (let i = 0; i < p.n; i++) {
+    const rot = Math.atan2(p.vx[i], -p.vy[i]);
+    const k = p.r[i] / 3;
     if (p.kind[i] === BIG) {
-      drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, p.r[i], 0.7);
-      drawGlowDot(p.x[i], p.y[i], PAL.white, p.r[i] * 0.5);
+      drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, p.r[i], 0.6);
+      drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k, flash: 0.5 });
     } else {
-      drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, p.r[i]);
+      drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k });
     }
   }
 }
@@ -72,15 +76,10 @@ export function drawPlayerBullets() {
 // layer 'high' on top of everything (readability rule).
 export function drawEnemyBullets(layer = 'high') {
   const p = enemyBullets;
+  const wave = lowWaveSprite(Math.round(LANE_W * 0.86));
   for (let i = 0; i < p.n; i++) {
     if ((p.kind[i] === LOW) !== (layer === 'low')) continue;
-    if (p.kind[i] === LOW) {
-      // Low wave: flat bar across the lane, reads as "jump over me"
-      const hw = LANE_W * 0.42;
-      line(p.x[i] - hw, p.y[i], p.x[i] + hw, p.y[i], COLOR_ENEMY_BULLET_ALT, 5, 0.9);
-      line(p.x[i] - hw, p.y[i], p.x[i] + hw, p.y[i], '#fff', 1.5, 0.8);
-    } else {
-      drawGlowDot(p.x[i], p.y[i], COLOR_ENEMY_BULLET, p.r[i]);
-    }
+    if (p.kind[i] === LOW) drawSprite(wave, p.x[i], p.y[i]);
+    else drawSprite(enemyOrbSprite(COLOR_ENEMY_BULLET, p.r[i]), p.x[i], p.y[i]);
   }
 }

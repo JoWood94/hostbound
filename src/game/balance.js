@@ -15,7 +15,10 @@ export const bossSpeed = (index) => Math.min(1.5, 1 + 0.08 * index);
 
 // Enemy timing: telegraph/rest shrink and bullets speed up, both capped.
 export const timeMul = (d) => 1 + Math.min(0.7, d * 0.06);
-export const bulletSpeed = (d) => 180 + Math.min(160, d * 14);
+// Enemy bullets must always outrun enemies (enter 170, leave 140 px/s) and the
+// track scroll (220+), otherwise a shooter overtakes its own bullets.
+export const bulletSpeed = (d) => 260 + Math.min(140, d * 12);
+export const LEAVE_SPEED = 140;
 
 // How many enemies may hold position at once, and how often new ones come.
 export const maxActive = (d) => (d < 1.5 ? 1 : d < 4 ? 2 : 3);

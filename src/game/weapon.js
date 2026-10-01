@@ -73,6 +73,16 @@ export function steerBullets(stats, dt) {
 }
 
 function overlaps(e, x, y, r) {
+  if (e.hitboxes) {
+    for (const h of e.hitboxes) {
+      const hx = e.x + h.x, hy = e.y + h.y;
+      if (h.r !== undefined) {
+        const dx = hx - x, dy = hy - y, rr = h.r + r;
+        if (dx * dx + dy * dy < rr * rr) return true;
+      } else if (Math.abs(hx - x) < h.hw + r && Math.abs(hy - y) < h.hh + r) return true;
+    }
+    return false;
+  }
   if (e.hw) return Math.abs(e.x - x) < e.hw + r && Math.abs(e.y - y) < e.hh + r;
   const rr = e.r + r;
   const dx = e.x - x, dy = e.y - y;

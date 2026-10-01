@@ -4,6 +4,8 @@
 import { ctx, W, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
+import { bossSprite, prismEmitterSprite, drawSprite } from '../render/sprites.js';
+const PLAYER_ROW = H * 0.78;
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
@@ -33,6 +35,7 @@ const except = (dl) => (pl) => ALL.filter((l) => !dl.map((o) => pl + o).includes
 export const BOSSES = [
   {
     id: 'sentinel', name: 'SENTINEL', color: PAL.magenta,
+    hit: [{ x: 0, y: 0, hw: 52, hh: 26 }, { x: -78, y: 0, hw: 26, hh: 13 }, { x: 78, y: 0, hw: 26, hh: 13 }],
     phases: [
       [atk([v([0, 2, 4])]), atk([v([1, 3])])],
       [atk([v([0, 2, 4])]), atk([sw([0, 1, 2, 3, 4])], 1.0), atk([v([1, 3])]), atk([sw([4, 3, 2, 1, 0])], 1.0)],
@@ -41,6 +44,7 @@ export const BOSSES = [
   },
   {
     id: 'hive', name: 'HIVE', color: PAL.acid,
+    hit: [{ x: -62, y: 0, r: 23 }, { x: 0, y: 0, r: 27 }, { x: 62, y: 0, r: 23 }],
     phases: [
       // Drones always land in the outer lanes, so lane 2 stays readable as the safe spot.
       [atk([summon([0, 4])], 0.6, 1.8), atk([v([1, 3])])],
@@ -51,6 +55,7 @@ export const BOSSES = [
   {
     // Locks onto your lane when the telegraph starts, then fires there.
     id: 'hunter', name: 'HUNTER', color: PAL.red,
+    hit: [{ x: 0, y: -2, hw: 40, hh: 22 }, { x: -65, y: 2, hw: 9, hh: 18 }, { x: 65, y: 2, hw: 9, hh: 18 }],
     phases: [
       [atk([v(at([0]), 4)], 0.8), atk([v(at([-1, 1]), 3)], 0.8)],
       [atk([v(at([0]), 4)], 0.7), atk([low(at([-1, 0, 1]))], 0.9), atk([v(at([-2, 0, 2]), 3)], 0.8)],
@@ -60,6 +65,7 @@ export const BOSSES = [
   {
     // Beams sweeping across 4 lanes; the 5th lane is always safe (telegraphed).
     id: 'prism', name: 'PRISM', color: '#ff9cf0',
+    hit: [{ x: 0, y: -2, hw: 22, hh: 22 }],
     phases: [
       [atk([beamSweep([0, 1, 2, 3])], 1.0), atk([beam([0, 2, 4], 0.5)], 0.9), atk([beamSweep([4, 3, 2, 1])], 1.0)],
       [atk([beam([0, 2, 4], 0.45)], 0.8, 0.4), atk([beam([1, 3], 0.45)], 0.7, 0.6), atk([low(ALL)], 0.9), atk([beamSweep([1, 2, 3, 4], 0.26)], 0.9)],
@@ -68,6 +74,7 @@ export const BOSSES = [
   },
   {
     id: 'warden', name: 'WARDEN', color: PAL.orange,
+    hit: [{ x: 0, y: 0, hw: 88, hh: 24 }],
     phases: [
       [atk([beam([0, 1])], 1.0), atk([beam([3, 4])], 1.0)],
       [atk([beam([2]), low([0, 1, 3, 4])], 1.1), atk([beam([0, 4]), v([2])], 1.0), atk([beam([1, 3])], 1.0)],
@@ -90,6 +97,7 @@ export function makeBoss(index, defIndex, power = 1) {
     T: { color: def.color },
     x: W / 2, y: -90, prevX: W / 2, prevY: -90,
     hw: LANE_W * 1.6, hh: 26, r: 40,
+    hitboxes: def.hit,   // collision follows the art, not a lane-wide box
     hp, maxHp: hp,
     phase: 0,
     atkIndex: 0,
@@ -137,10 +145,10 @@ function fireEvent(b, e, difficulty) {
   const y = b.y + b.hh;
   for (const l of e.lanes) {
     const x = laneX(l);
-    if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 200, 10, 1, LOW);
+    if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 230, 10, 1, LOW);
     else if (p.kind === 'beam' || p.kind === 'beamsweep') spawn(enemyBullets, x, y, 0, 460, 5, 1, 0);
     else if (p.kind === 'summon') spawnEnemy('drone', l, difficulty, { chance: () => false });
-    else spawn(enemyBullets, x, y, 0, 230 + b.speed * 20, 5, 1, 0);
+    else spawn(enemyBullets, x, y, 0, 270 + b.speed * 25, 5, 1, 0);
   }
 }
 
@@ -236,48 +244,46 @@ export function drawBoss(b, alpha) {
   if (!b || b.dead) return;
   const x = b.prevX + (b.x - b.prevX) * alpha;
   const y = b.prevY + (b.y - b.prevY) * alpha;
-  const flash = (b.state === 'telegraph' && Math.floor(b.stateT * 14) % 2 === 0) || b.hitFlash > 0 || b.phaseFlash > 0;
-  const c = flash ? PAL.white : b.color;
+  const tele = b.state === 'telegraph' && Math.floor(b.stateT * 14) % 2 === 0;
+  const flash = b.hitFlash > 0 ? 0.8 : b.phaseFlash > 0 ? 1 : tele ? 0.5 : 0;
   const hw = b.hw, hh = b.hh;
-  const spin = b.t;
-  if (b.def.id === 'sentinel') {
-    strokePoly([x - hw, y, x - hw * 0.5, y - hh, x + hw * 0.5, y - hh, x + hw, y, x + hw * 0.5, y + hh, x - hw * 0.5, y + hh], c, 3);
-    ring(x, y, 16 + Math.sin(spin * 4) * 2, c, 2);
-    drawGlowDot(x, y, PAL.orange, 6);
-    for (let k = -2; k <= 2; k++) drawGlowDot(x + k * LANE_W * 0.55, y + hh - 4, b.color, 2.5);
-  } else if (b.def.id === 'hive') {
-    for (let k = -1; k <= 1; k++) {
-      const cx = x + k * hw * 0.62;
-      const pts = [];
-      for (let i = 0; i < 6; i++) { const a = spin * (k === 0 ? 1 : -1) + (i / 6) * Math.PI * 2; pts.push(cx + Math.cos(a) * 22, y + Math.sin(a) * 22); }
-      strokePoly(pts, c, 2.5);
-      drawGlowDot(cx, y, b.color, 4);
-    }
-  } else if (b.def.id === 'hunter') {
-    // Crosshair body: it is looking at you
-    strokePoly([x - hw, y - hh * 0.4, x - hw * 0.4, y - hh, x + hw * 0.4, y - hh, x + hw, y - hh * 0.4, x + hw * 0.6, y + hh, x - hw * 0.6, y + hh], c, 3);
-    const tx = laneX(b.playerLane);
-    const aim = b.state === 'telegraph' ? 1 : 0.35;
-    ring(x, y, 14, c, 2);
-    line(x, y, tx, y + hh + 30, c, 1.5, aim);
-    line(x - 20, y, x + 20, y, c, 2);
-    line(x, y - 20, x, y + 20, c, 2);
-    drawGlowDot(x, y, PAL.red, 5);
-  } else if (b.def.id === 'prism') {
-    // Rotating triangle prism
-    const pts = [];
-    for (let i = 0; i < 3; i++) { const a = spin * 0.8 + (i / 3) * Math.PI * 2 - Math.PI / 2; pts.push(x + Math.cos(a) * 34, y + Math.sin(a) * 26); }
-    strokePoly(pts, c, 3);
-    strokePoly([x - hw, y + hh * 0.6, x + hw, y + hh * 0.6], c, 2, false);
-    for (let k = -2; k <= 2; k++) drawGlowDot(x + k * LANE_W * 0.55, y + hh * 0.6, PAL.white, 2.5);
-    drawGlowDot(x, y, b.color, 6);
+  const id = b.def.id;
+  const t = b.t;
+
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(x + 6, y + hh + 14, hw * 0.8, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  if (id === 'prism') {
+    drawSprite(prismEmitterSprite(b.color, hw), x, y + hh * 0.6, { flash });
+    drawSprite(bossSprite(id, b.color, hw, hh), x, y - 2, { rot: Math.sin(t * 0.9) * 0.25, flash });
+    drawGlowDot(x, y + 2, b.color, 7 + Math.sin(t * 5) * 1.5);
   } else {
-    strokePoly([x - hw, y - hh, x + hw, y - hh, x + hw * 0.8, y + hh, x - hw * 0.8, y + hh], c, 3);
-    for (let k = -2; k <= 2; k++) {
-      const ex = x + k * LANE_W * 0.55;
-      line(ex, y + hh - 8, ex, y + hh + 4, c, 3);
+    drawSprite(bossSprite(id, b.color, hw, hh), x, y, { flash });
+  }
+
+  // Live details
+  if (id === 'sentinel') {
+    const pulse = 6 + Math.sin(t * 4) * 1.5;
+    ring(x, y, 12 + Math.sin(t * 2) * 2, b.color, 1.5, 0.7);
+    drawGlowDot(x, y, PAL.orange, pulse);
+    drawGlowDot(x + Math.sin(t * 1.3) * 3, y, PAL.white, 2.5);
+  } else if (id === 'hive') {
+    for (const [cx, k] of [[-62, 0], [0, 1], [62, 2]]) {
+      drawGlowDot(x + cx, y, b.color, 5 + Math.sin(t * 6 + k * 2) * 2, 0.9);
+      drawGlowDot(x + cx + Math.cos(t * 3 + k) * 6, y + Math.sin(t * 3 + k) * 6, PAL.white, 1.6, 0.8);
     }
-    drawGlowDot(x, y - 4, PAL.red, 5 + Math.sin(spin * 6) * 1.5);
+  } else if (id === 'hunter') {
+    const tx = laneX(b.playerLane);
+    const aim = b.state === 'telegraph' ? 0.9 : 0.25;
+    line(x, y, tx, H - 30, b.color, 1.2, aim * 0.6);
+    ring(tx, PLAYER_ROW, 16 + Math.sin(t * 10) * 2, b.color, 1.5, aim);
+    line(x - 11, y, x + 11, y, b.color, 1.5);
+    line(x, y - 11, x, y + 11, b.color, 1.5);
+    drawGlowDot(x, y, PAL.red, 4.5 + Math.sin(t * 8));
+  } else if (id === 'warden') {
+    drawGlowDot(x, y - 4, PAL.red, 5 + Math.sin(t * 6) * 1.5);
   }
   if (b.poison > 0) drawGlowDot(x + hw * 0.8, y - hh - 6, PAL.acid, 3);
 }

@@ -2,9 +2,9 @@
 //   low  : knee-high barrier, jump over it (orange, like low waves)
 //   wall : full-height block, change lane (magenta)
 // A "gate" is a row of walls with one open lane.
-import { ctx } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { line, strokePoly } from '../render/draw.js';
+import { drawGlowDot } from '../render/draw.js';
+import { obstacleSprite, drawSprite } from '../render/sprites.js';
 import { LANES, LANE_W, laneX } from './world.js';
 
 export const obstacles = [];
@@ -29,31 +29,13 @@ export function updateObstacles(dt, speed) {
 export const OB_H = { low: 14, wall: 30 };
 
 export function drawObstacles(alpha) {
-  const hw = LANE_W * 0.42;
+  const w = Math.round(LANE_W * 0.84);
   for (const o of obstacles) {
     if (o.dead) continue;
     const y = o.prevY + (o.y - o.prevY) * alpha;
-    const x = o.x;
-    const h = OB_H[o.type];
-    if (o.type === 'low') {
-      ctx.fillStyle = 'rgba(255,106,0,0.18)';
-      ctx.fillRect(x - hw, y - h / 2, hw * 2, h);
-      ctx.strokeStyle = PAL.orange;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x - hw, y - h / 2, hw * 2, h);
-      // hazard stripes
-      for (let k = -hw + 6; k < hw; k += 10) line(x + k, y + h / 2, x + k + 6, y - h / 2, PAL.orange, 1.5, 0.7);
-      // up-arrow glyph: jump
-      strokePoly([x - 5, y - h / 2 - 4, x, y - h / 2 - 10, x + 5, y - h / 2 - 4], PAL.orange, 2, false);
-    } else {
-      ctx.fillStyle = 'rgba(255,43,214,0.22)';
-      ctx.fillRect(x - hw, y - h / 2, hw * 2, h);
-      ctx.strokeStyle = PAL.magenta;
-      ctx.lineWidth = 2.5;
-      ctx.strokeRect(x - hw, y - h / 2, hw * 2, h);
-      line(x - hw, y - h / 2, x + hw, y + h / 2, PAL.magenta, 1.5, 0.8);
-      line(x + hw, y - h / 2, x - hw, y + h / 2, PAL.magenta, 1.5, 0.8);
-    }
+    drawSprite(obstacleSprite(o.type, w), o.x, y);
+    // Blinking beacon on walls
+    if (o.type === 'wall' && Math.floor((o.y + o.x) / 40) % 2 === 0) drawGlowDot(o.x, y - 9, PAL.red, 3, 0.8);
   }
 }
 

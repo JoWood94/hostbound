@@ -3,6 +3,7 @@
 import { PAL } from '../render/palette.js';
 import { drawGlowDot, ring, text, strokePoly } from '../render/draw.js';
 import { laneX } from './world.js';
+import { coinSprite, heartSprite, drawSprite } from '../render/sprites.js';
 
 export const pickups = [];
 
@@ -60,13 +61,13 @@ export function drawPickups(alpha, time) {
     const x = p.prevX + (p.x - p.prevX) * alpha;
     const y = p.prevY + (p.y - p.prevY) * alpha;
     if (p.kind === 'coin') {
-      const w = Math.abs(Math.sin(time * 6 + y * 0.05)) * 4 + 1.5;
-      drawGlowDot(x, y, PAL.acid, 4, 0.5);
-      strokePoly([x, y - 5, x + w, y, x, y + 5, x - w, y], PAL.acid, 1.5);
+      const spin = Math.cos(time * 5 + y * 0.04);
+      drawSprite(coinSprite(), x, y, { sx: Math.max(0.15, Math.abs(spin)), flash: spin > 0.92 ? 0.6 : 0 });
     } else if (p.kind === 'heart' || p.kind === 'blue') {
       const c = p.kind === 'heart' ? PAL.red : PAL.blue;
-      drawGlowDot(x, y, c, 7, 0.6 + Math.sin(time * 8) * 0.3);
-      strokePoly([x, y - 4, x + 5, y - 8, x + 9, y - 4, x, y + 6, x - 9, y - 4, x - 5, y - 8], c, 2);
+      const pulse = 1 + Math.sin(time * 8) * 0.08;
+      drawGlowDot(x, y, c, 9, 0.35);
+      drawSprite(heartSprite(c), x, y, { sx: pulse, sy: pulse });
     } else if (p.kind === 'corrupt') {
       const j = (Math.random() - 0.5) * 3;
       drawGlowDot(x, y, PAL.magenta, 9, 0.5);

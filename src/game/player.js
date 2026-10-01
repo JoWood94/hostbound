@@ -1,11 +1,11 @@
 import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { strokePoly, fillPoly, drawGlowDot, ring } from '../render/draw.js';
+import { fillPoly, drawGlowDot, ring } from '../render/draw.js';
 import { burst, shake, hitStop } from '../render/fx.js';
+import { playerSprite, drawSprite } from '../render/sprites.js';
 import { LANES, laneX } from './world.js';
 
 export const PLAYER_Y = H * 0.78;
-const HALF_W = 12;
 const LANE_TIME = 0.11;   // seconds for a lane hop, fixed: discrete, never follows the finger
 const ORBIT_R = 28;
 
@@ -164,10 +164,6 @@ export function jumpHeight(p) {
   return 1 - u * u * u * u;
 }
 
-function boardPoly(x, y, w, h) {
-  return [x, y - h, x + w, y - h * 0.3, x + w * 0.7, y + h * 0.6, x - w * 0.7, y + h * 0.6, x - w, y - h * 0.3];
-}
-
 export function drawPlayer(p, alpha, stats) {
   const x = p.prevX + (p.x - p.prevX) * alpha + p.bump * 40;
   const jh = jumpHeight(p);
@@ -189,7 +185,7 @@ export function drawPlayer(p, alpha, stats) {
   // Phase cooldown bar under the board
   if (p.phaseCd > 0) {
     const w = 26 * (1 - p.phaseCd / stats.phaseCd);
-    fillPoly([x - 13, PLAYER_Y + 22, x - 13 + w, PLAYER_Y + 22, x - 13 + w, PLAYER_Y + 24, x - 13, PLAYER_Y + 24], PAL.dim);
+    fillPoly([x - 13, PLAYER_Y + 31, x - 13 + w, PLAYER_Y + 31, x - 13 + w, PLAYER_Y + 33, x - 13, PLAYER_Y + 33], PAL.mute);
   }
 
   if (blink) return;
@@ -208,19 +204,30 @@ export function drawPlayer(p, alpha, stats) {
 
   const scale = 1 + jh * 0.45;
   const sq = p.squash;
-  const w = HALF_W * scale * (1 + sq * 0.22);
-  const h = 16 * scale * (1 - sq * 0.22);
-  const poly = boardPoly(x, y, w, h);
+  // Lean into lane changes: bank angle from horizontal speed.
+  const vx = p.x - p.prevX;
+  p.bank = (p.bank || 0) + (Math.max(-0.35, Math.min(0.35, vx * 0.09)) - (p.bank || 0)) * 0.3;
+  const spr = playerSprite(c);
+  const sxs = scale * 0.82 * (1 + sq * 0.2);
+  const sys = scale * 0.82 * (1 - sq * 0.2);
+
+  // Thruster flames behind the pods (live, flickering)
+  if (p.phaseT <= 0) {
+    for (const fx of [-8, 8]) {
+      const len = 6 + Math.random() * 6 + (p.laneT < 1 ? 4 : 0);
+      const bx = x + fx * sxs * Math.cos(p.bank), by = y + 24 * sys;
+      drawGlowDot(bx, by + len * 0.4, PAL.magenta, 3.2, 0.9);
+      drawGlowDot(bx, by + len, PAL.magenta, 2, 0.5);
+      drawGlowDot(bx, by + 1, PAL.white, 1.4, 0.9);
+    }
+  }
+
   if (p.phaseT > 0) {
-    strokePoly(boardPoly(x - 4, y, w, h), PAL.magenta, 1);
-    strokePoly(boardPoly(x + 4, y, w, h), PAL.cyan, 1);
-    strokePoly(poly, PAL.white, 1);
+    drawSprite(spr, x - 4, y, { rot: p.bank, sx: sxs, sy: sys, alpha: 0.35 });
+    drawSprite(spr, x + 4, y, { rot: p.bank, sx: sxs, sy: sys, alpha: 0.35 });
+    drawSprite(spr, x, y, { rot: p.bank, sx: sxs, sy: sys, alpha: 0.55, flash: 0.6 });
     return;
   }
-  fillPoly(poly, PAL.bg2);
-  strokePoly(poly, c, 2);
-  drawGlowDot(x, y - 2, PAL.white, 3);
-  drawGlowDot(x - w * 0.5, y + h * 0.6, PAL.magenta, 2.5);
-  drawGlowDot(x + w * 0.5, y + h * 0.6, PAL.magenta, 2.5);
+  drawSprite(spr, x, y, { rot: p.bank, sx: sxs, sy: sys, flash: p.iframes > 0 ? 0.25 : 0 });
   if (p.shield > 0) ring(x, y, 20, PAL.blue, 1.5 + p.shield, 0.35 + Math.sin(p.orbitA * 3) * 0.15);
 }
