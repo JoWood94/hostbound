@@ -30,9 +30,13 @@ Transparent background. Centered in each cell. No text, no UI, no shadow on the 
 
 ## NEGATIVE PROMPT
 
+Va solo nel campo "Negative prompt" del sito: elenca cosa evitare. Se il sito non ha
+quel campo, salta questo blocco (incollato nel prompt principale otterrebbe l'opposto).
+Volutamente NON esclude tratti umani: le creature possono essere mezze aliene e mezze umane.
+
 ```
-cute, chibi, cartoon, clean, glossy 3D render, plastic, mechanical spaceship,
-metal panels, robot, human face, text, watermark, logo, background scenery,
+cute, chibi, cartoon, glossy 3D render, plastic, mechanical spaceship,
+metal panels, robot, text, watermark, logo, background scenery,
 drop shadow, blurry, soft airbrush, gradient background, side view, isometric
 ```
 
@@ -50,43 +54,62 @@ drop shadow, blurry, soft airbrush, gradient background, side view, isometric
 
 ---
 
-## 1. Il simbionte del giocatore — MASSA
+## 1. Il simbionte del giocatore — MASSA (spritemap completa)
 
-Cella **64×64**. Rivolto verso l'alto (la "testa"/bocca principale in alto).
+Un unico foglio **512×256**: griglia **8 colonne × 4 righe**, celle **64×64**.
 
-**Volo (loop, 8 fotogrammi)**
+| Riga | Contenuto | Fotogrammi |
+|---|---|---|
+| 1 | VOLO, loop | 8 |
+| 2 | SALTO, palla che rotola, loop | 8 |
+| 3 | PHASE (6) + COLPITO (1) + vuoto (1) | 8 |
+| 4 | CRESCITA (3) + MORTE (5) | 8 |
+
 ```
-Sprite sheet, 8 frames in one row, 64x64 cells, seamless loop.
-The player creature: a floating amorphous mass of raw red alien flesh, roughly
-round, propelled by 6 to 9 writhing tentacles that trail backwards (down) and
-coil and uncoil each frame. Several toothy mouths open and close on its body,
-a cluster of 4 sickly yellow eyes with slit pupils near the top, pulsing veins,
-a few bone shards piercing the flesh, wet highlights. Faint hot pink
-bioluminescent rim light. Facing up. Menacing, disgusting, alive.
+One sprite sheet, 512x256 pixels, a grid of 8 columns by 4 rows, every cell exactly
+64x64 pixels, no gutters, no borders, transparent background. The SAME creature in
+every cell, identical proportions, palette and details; only the animation changes.
+
+THE CREATURE (seen from directly above, its front facing UP):
+A floating amorphous mass of raw alien flesh, body about 34 px across, centered at
+x=32, y=28 of each cell. Its front edge (top) is a vertical slit maw lined with two
+rows of needle teeth. Asymmetric cluster of 4 sickly yellow eyes with black slit
+pupils just above-left of the maw (one big, three small). Two smaller toothed mouths
+on the left and right flanks. Three yellowed bone shards pierce the flesh. Dark
+purple veins under translucent skin, a few stitched sutures, wet specular dots.
+Seven tentacles, 18 to 26 px long, sprout from the back half and trail downward
+and outward, thick at the base, thin at the tip.
+Colour ramp for the flesh, darkest to lightest: #22030a #4a0815 #7a0f22 #a01c34 #d0465a.
+Teeth and bone #e8dcc0 and #b9a47c. Eyes #d9c45a, pupils #0a0006. Veins #3a1a5a.
+1 px outline #07040a. Light from the top-left. A 1 px hot pink #ff2bd6 bioluminescent
+rim on the upper-left edges only. Hard pixel shading, no blur, no gradients.
+
+ROW 1 — FLY, 8-frame seamless loop. A jellyfish-like propulsion pulse: frames 1-4 the
+body contracts by 2 px and the tentacles pull in, frames 5-8 it relaxes and the
+tentacles sweep outward. A wave travels down each tentacle from base to tip, each
+tentacle offset in phase. The main maw opens on frames 3-4 and 7-8.
+
+ROW 2 — JUMP ROLL, 8-frame seamless loop. The creature curls into a tight ball 30 px
+across, tentacles wrapped around it as spiral bands, maw closed. The ball rotates 45
+degrees clockwise per frame. Eyes visible on frames 1, 3, 5, 7. A 2 px hot pink motion
+smear trails on the left edge.
+
+ROW 3 — frames 1-6 PHASE: the creature dissolves into black smoke and drifting ichor,
+semi-transparent by frame 3, almost gone on frame 4, reforming on frames 5-6, with a
+cyan #19f0ff and magenta #ff2bd6 chromatic split on the edges.
+Frame 7 HIT: the same idle pose as frame 1, the whole silhouette flashed pure white
+except the eyes. Frame 8 empty.
+
+ROW 4 — frames 1-3 GROWTH stages, idle pose: small (body 26 px, 5 tentacles), medium
+(body 34 px, 7 tentacles, as in the other rows), huge (body 46 px, 11 tentacles, 3
+extra eyes, more bone spikes, swollen veins). Frames 4-8 DEATH: the creature bursts,
+flesh chunks, teeth and bone chips flying outward, ichor splash, fading into dark
+smoke by frame 8.
 ```
 
-**Salto (palla che rotola, 8 fotogrammi)**
-```
-Sprite sheet, 8 frames in one row, 64x64 cells, seamless spin loop.
-The same flesh mass curled into a tight spinning ball, tentacles wrapped
-around itself, mouths shut, eyes peeking through, rotating 45 degrees per frame,
-motion smear on the edges, hot pink glowing rim. Top-down.
-```
-
-**Phase (dissolvenza, 6 fotogrammi)**
-```
-Sprite sheet, 6 frames in one row, 64x64 cells.
-The same flesh mass dissolving into dark smoke and drifting black ichor,
-becoming translucent and ghostly by frame 4, then reforming. Cyan and magenta
-chromatic split on the edges.
-```
-
-**Crescita (3 stadi, 1 fotogramma ciascuno)**
-```
-3 frames in one row, 64x64 cells. The same flesh mass at three growth stages:
-small with 5 tentacles, medium with 8 tentacles and more mouths,
-huge and swollen with 12 tentacles, extra eyes and bone spikes.
-```
+Se il sito non accetta fogli così grandi, genera una riga alla volta (512×64) ripetendo
+lo stesso blocco "THE CREATURE" e solo la riga che ti serve, con l'immagine della prima
+riga come riferimento.
 
 **Organi-arma (icone innestabili, 6 fotogrammi, celle 24×24)**
 ```
