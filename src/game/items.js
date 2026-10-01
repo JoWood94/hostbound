@@ -21,6 +21,9 @@ export function baseStats() {
   return {
     // weapon
     fireRate: 6, damage: 1, bulletSize: 3, bulletSpeed: 520,
+    // SHOT SPEED: projectile speed, pellet reach, wave length, rocket top speed,
+    // rail charge time. bulletSpeed is derived from it.
+    shotSpeed: 1,
     split: 0, sideDamage: 0.5, pierce: 0, homing: 0, frag: 0, arc: 0, toxin: 0, crit: 0, critMul: 3, echo: 0, echoMul: 2.5,
     // body
     maxHearts: 3, blueStart: 0, barrier: 0, barrierRegen: 6, orbitals: 0,
@@ -49,11 +52,14 @@ export const ITEMS = [
     desc: 'Half-damage side shots angle into neighbouring lanes. Stack: reach 2 lanes.',
     apply: (s, n) => { s.split += n; } },
   { id: 'rapid', name: 'RAPID COIL', code: 'RPD', cat: 'weapon', rarity: 0, max: 3, unlock: null,
-    desc: '+25% fire rate.',
-    apply: (s, n) => { s.fireRate *= 1 + 0.25 * n; } },
+    desc: '+25% fire rate, slightly faster shots.',
+    apply: (s, n) => { s.fireRate *= 1 + 0.25 * n; s.shotSpeed += 0.08 * n; } },
   { id: 'slug', name: 'SLUG ROUNDS', code: 'SLG', cat: 'weapon', rarity: 0, max: 3, unlock: null,
-    desc: '+50% damage, bigger bullets, -10% fire rate.',
-    apply: (s, n) => { s.damage += 0.5 * n; s.bulletSize += 1 * n; s.fireRate *= Math.pow(0.9, n); } },
+    desc: '+50% damage, bigger and heavier shots: slower fire and shot speed.',
+    apply: (s, n) => { s.damage += 0.5 * n; s.bulletSize += 1 * n; s.fireRate *= Math.pow(0.9, n); s.shotSpeed -= 0.12 * n; } },
+  { id: 'magaccel', name: 'MAG ACCELERATOR', code: 'MAX', cat: 'weapon', rarity: 0, max: 3, unlock: null,
+    desc: 'SHOT SPEED up: hit moving targets, rails charge faster, pellets reach further.',
+    apply: (s, n) => { s.shotSpeed += 0.3 * n; } },
   { id: 'pierce', name: 'PIERCER', code: 'PRC', cat: 'weapon', rarity: 0, max: 3, unlock: null,
     desc: 'Bullets pass through +1 enemy.',
     apply: (s, n) => { s.pierce += n; } },
@@ -195,7 +201,7 @@ export const SYNERGIES = [
   { id: 'swarm', name: 'SWARM', req: ['split', 'homing'], desc: 'Bullets turn even harder.',
     apply: (s) => { s.homing += 1; } },
   { id: 'railgun', name: 'RAILGUN', req: ['slug', 'pierce'], desc: 'Faster bullets, +1 pierce.',
-    apply: (s) => { s.bulletSpeed *= 1.5; s.pierce += 1; } },
+    apply: (s) => { s.shotSpeed += 0.5; s.pierce += 1; } },
   { id: 'storm', name: 'STORM', req: ['frag', 'arc'], desc: 'Arcs explode too.',
     apply: (s) => { s.arc += 1; s.frag += 1; } },
   { id: 'plague', name: 'PLAGUE', req: ['toxin', 'frag'], desc: 'Explosions poison.',
@@ -244,6 +250,8 @@ export function computeStats(board, stacks) {
   }
   for (const sy of activeSynergies(stacks)) sy.apply(s);
   s.carrier = s.hasBeam ? 'beam' : s.hasRail ? 'rail' : s.hasRocket ? 'rocket' : 'bolt';
+  s.shotSpeed = Math.max(0.5, Math.min(2.5, s.shotSpeed));
+  s.bulletSpeed = 520 * s.shotSpeed;
   // Derived from SPEED and LUCK, so every source of them counts.
   s.speed = Math.max(0.6, Math.min(2.2, s.speed));
   s.phaseCd /= s.speed;
@@ -284,6 +292,7 @@ export function effectiveDps(s) {
   perShot *= 1 + s.crit * (s.critMul - 1);
   const CARRIER_DPS = { bolt: 1, beam: 1.15, rail: 1.05, rocket: 1 };
   let m = CARRIER_DPS[s.carrier] ?? 1;
+  if (s.carrier === 'rail') m *= s.shotSpeed;   // shot speed = rail charge rate
   if (s.hasScatter) m *= 0.85;
   if (s.hasSine) m *= 0.9;
   if (s.hasRocket && s.carrier !== 'rocket') m *= 1.1;
@@ -296,6 +305,7 @@ export const STAT_DEFS = [
   { id: 'dmg', label: 'DMG', get: (s) => s.damage * s.damageMul, fmt: (v) => v.toFixed(2) },
   { id: 'rate', label: 'RATE', get: (s) => s.fireRate, fmt: (v) => v.toFixed(1) },
   { id: 'speed', label: 'SPEED', get: (s) => s.speed, fmt: (v) => v.toFixed(2) },
+  { id: 'shot', label: 'SHOT SPD', get: (s) => s.shotSpeed, fmt: (v) => v.toFixed(2) },
   { id: 'luck', label: 'LUCK', get: (s) => s.luck, fmt: (v) => String(Math.round(v)) },
   { id: 'hearts', label: 'HP', get: (s) => s.maxHearts, fmt: (v) => String(v) },
 ];

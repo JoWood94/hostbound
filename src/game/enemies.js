@@ -149,11 +149,22 @@ export function updateEnemies(dt, difficulty) {
     e.t += dt;
     e.stateT += dt;
     if (e.hitFlash > 0) e.hitFlash -= dt;
+    // Base x: lane centre, or mid-hop for hoppers.
+    let baseX = laneX(e.lane);
     if (e.hopT !== undefined && e.hopT < 1) {
       e.hopT = Math.min(1, e.hopT + dt / 0.18);
       const k = 1 - (1 - e.hopT) * (1 - e.hopT);
-      e.x = e.hopFromX + (laneX(e.lane) - e.hopFromX) * k;
+      baseX = e.hopFromX + (laneX(e.lane) - e.hopFromX) * k;
     }
+    // Elite jink: a half-lane sidestep and back. Patterns still fire from the
+    // lane centre, so only the player's aim (and shot speed) is tested.
+    if (e.jinkT > 0) {
+      e.jinkT -= dt;
+      const t = 1 - e.jinkT / JINK_TIME;
+      e.jinkOff = Math.sin(Math.min(1, t) * Math.PI) * e.jinkDir * LANE_W * 0.45;
+    } else e.jinkOff = 0;
+    if (e.jinkCd > 0) e.jinkCd -= dt;
+    if (e.type !== 'boss') e.x = baseX + (e.jinkOff || 0);
 
     switch (e.state) {
       case 'enter':
@@ -204,8 +215,14 @@ export function updateEnemies(dt, difficulty) {
 
 // Marks the enemy dead; rewards are handled by the run so every damage
 // source (bullets, arcs, frags, poison, EMP) is treated the same.
+const JINK_TIME = 0.55;
 export function damageEnemy(e, dmg) {
   if (e.dead) return false;
+  if (e.elite && !(e.jinkCd > 0) && e.state !== 'enter') {
+    e.jinkT = JINK_TIME;
+    e.jinkCd = 2.2;
+    e.jinkDir = e.lane <= 0 ? 1 : e.lane >= LANES - 1 ? -1 : (Math.random() < 0.5 ? -1 : 1);
+  }
   e.hp -= dmg;
   e.hitFlash = 0.06;
   burst(e.x, e.y, e.T.color, 3, 90, 0.25, 1.5);

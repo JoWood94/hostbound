@@ -165,7 +165,7 @@ function blast(x, y, dmg, stats, skip) {
 export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
   if (stats.carrier === 'beam') { updateBeam(p, stats, dt, rateMul, hit); return; }
   beams.length = 0;
-  let rate = stats.fireRate * rateMul * CARRIER_RATE[stats.carrier];
+  let rate = stats.fireRate * rateMul * CARRIER_RATE[stats.carrier] * (stats.carrier === 'rail' ? stats.shotSpeed : 1);
   if (stats.hasScatter) rate *= stats.carrier === 'rail' ? 0.85 : 0.4;
   p.fireTimer -= dt;
   p.charge = Math.max(0, Math.min(1, 1 - p.fireTimer * rate));
@@ -181,7 +181,7 @@ export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
 function fireProjectiles(p, stats) {
   const rocket = stats.carrier === 'rocket';
   const dmg = currentDamage(p, stats) * (rocket ? 1.4 : 1);
-  const speed = rocket ? 180 : stats.bulletSpeed;
+  const speed = rocket ? 180 * stats.shotSpeed : stats.bulletSpeed;
   const y = PLAYER_Y - 14;
   let flags = 0;
   if (stats.hasRocket) flags |= F_EXPLODE;
@@ -248,7 +248,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
   // Surges: ECHO and/or RAIL turn the beam into charged pulses.
   let surge = 1, widthMul = 1;
   if (stats.hasRail) {
-    const cyc = p.beamT % 0.9;
+    const cyc = p.beamT % (0.9 / stats.shotSpeed);
     const on = cyc < 0.28;
     surge = on ? 2.6 : 0.65;
     widthMul = on ? 2 : 0.6;
@@ -287,18 +287,19 @@ export function updateModeBullets(stats, dt) {
   const pb = playerBullets;
   for (let i = 0; i < pb.n; i++) {
     const f = pb.flags[i];
-    if (f & F_RANGE && pb.aux[i] - pb.y[i] > 440 && !(f & F_WAVE)) { kill(pb, i); i--; continue; }
+    const reach = 440 * stats.shotSpeed;
+    if (f & F_RANGE && pb.aux[i] - pb.y[i] > reach && !(f & F_WAVE)) { kill(pb, i); i--; continue; }
     if (f & F_ROCKET) {
       const sp = Math.hypot(pb.vx[i], pb.vy[i]);
-      if (sp < 720) { const k = 1 + dt * 2.4; pb.vx[i] *= k; pb.vy[i] *= k; }
+      if (sp < 720 * stats.shotSpeed) { const k = 1 + dt * 2.4; pb.vx[i] *= k; pb.vy[i] *= k; }
       if (Math.random() < 0.5) burst(pb.x[i], pb.y[i] + 6, '#8aa0b0', 1, 20, 0.35, 1.5);
     }
     if (f & F_WAVE) {
       // ox carries the un-weaved path; x = ox + offset (pre-compensated for updatePool).
       pb.ox[i] += pb.vx[i] * dt;
       const traveled = PLAYER_Y - 14 - pb.y[i];
-      if (f & F_RANGE && traveled > 440) { kill(pb, i); i--; continue; }
-      const off = Math.sin(pb.aux[i] + traveled * 0.026) * LANE_W * Math.min(1, traveled / 60);
+      if (f & F_RANGE && traveled > reach) { kill(pb, i); i--; continue; }
+      const off = Math.sin(pb.aux[i] + traveled * 0.026 / stats.shotSpeed) * LANE_W * Math.min(1, traveled / 60);
       pb.x[i] = pb.ox[i] + off - pb.vx[i] * dt;
     }
   }

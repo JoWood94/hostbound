@@ -13,7 +13,7 @@ import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
 import { SKIP_COINS } from '../game/balance.js';
 
-const VERSION = 'v1.0';
+const VERSION = 'v1.1';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
