@@ -51,7 +51,7 @@ export const ITEMS = [
     desc: 'Bullets pass through +1 enemy.',
     apply: (s, n) => { s.pierce += n; } },
   { id: 'homing', name: 'SEEKER CHIP', code: 'SEK', cat: 'weapon', rarity: 1, max: 2, unlock: 'dist_1000',
-    desc: 'Bullets bend toward enemies in the next lane. Stack: 2 lanes.',
+    desc: 'Bullets bend toward enemies in your lane and the two next to it. Stack: tighter turns.',
     apply: (s, n) => { s.homing += n; } },
   { id: 'frag', name: 'FRAG TIPS', code: 'FRG', cat: 'weapon', rarity: 1, max: 2, unlock: 'kills_150',
     desc: 'Hits explode for 40% damage around the target.',
@@ -162,7 +162,7 @@ export const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
 
 // Named synergies: announced on screen when first formed.
 export const SYNERGIES = [
-  { id: 'swarm', name: 'SWARM', req: ['split', 'homing'], desc: 'Side shots home harder.',
+  { id: 'swarm', name: 'SWARM', req: ['split', 'homing'], desc: 'Bullets turn even harder.',
     apply: (s) => { s.homing += 1; } },
   { id: 'railgun', name: 'RAILGUN', req: ['slug', 'pierce'], desc: 'Faster bullets, +1 pierce.',
     apply: (s) => { s.bulletSpeed *= 1.5; s.pierce += 1; } },

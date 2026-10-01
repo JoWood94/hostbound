@@ -4,6 +4,7 @@
 import { ctx, W, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { line, text } from '../render/draw.js';
+import { bake, shade, rgba } from '../render/sprites.js';
 
 export const LANES = 5;
 export const PX_PER_M = 10;
@@ -14,7 +15,7 @@ export const DISTRICT_LEN = 1000;
 const PLAYER_ROW = H * 0.78;
 
 export const DISTRICTS = [
-  { name: 'NEON ROW', bg: '#0a0008', floor: 'rgba(255,43,214,0.025)', sleeper: '#3a1030', rail: '#ff2bd6', wall: '#ff2bd6', wallFill: '#14020f' },
+  { name: 'NEON ROW', bg: '#0a0008', floor: 'rgba(255,43,214,0.025)', sleeper: '#3a1030', rail: '#7b3fd6', wall: '#ff2bd6', wallFill: '#14020f' },
   { name: 'ACID DOCKS', bg: '#030a04', floor: 'rgba(182,255,43,0.03)', sleeper: '#1f3512', rail: '#8fd61f', wall: '#b6ff2b', wallFill: '#071205' },
   { name: 'CHROME SPINE', bg: '#03050d', floor: 'rgba(61,123,255,0.035)', sleeper: '#18244a', rail: '#3d7bff', wall: '#9ab8ff', wallFill: '#060a18' },
   { name: 'RED SECTOR', bg: '#0d0203', floor: 'rgba(255,31,75,0.03)', sleeper: '#3d0d16', rail: '#c8183c', wall: '#ff1f4b', wallFill: '#180408' },
@@ -24,66 +25,129 @@ export const DISTRICTS = [
 export const districtIndex = (distance) => Math.floor(distance / DISTRICT_LEN) % DISTRICTS.length;
 
 let scroll = 0;
+const TILE_H = 96;
 
 export function updateWorld(dt, speed) {
-  scroll = (scroll + speed * dt) % 48;
+  scroll = (scroll + speed * dt) % (TILE_H * 100);
+}
+
+// One baked track tile per district: panels, seams, guide dashes, metal rails
+// with studs, walls with windows and signs. Scrolled vertically.
+function trackTile(di) {
+  const D = DISTRICTS[di];
+  return bake(`track:${di}`, W, TILE_H, (c) => {
+    c.translate(-W / 2, -TILE_H / 2);
+    c.fillStyle = D.bg;
+    c.fillRect(0, 0, W, TILE_H);
+    // Lane panels: recessed, darker at the edges
+    for (let i = 0; i < LANES; i++) {
+      const x0 = MARGIN + i * LANE_W + 3, w = LANE_W - 6;
+      const g = c.createLinearGradient(x0, 0, x0 + w, 0);
+      g.addColorStop(0, shade(D.rail, -0.93));
+      g.addColorStop(0.5, shade(D.rail, -0.84));
+      g.addColorStop(1, shade(D.rail, -0.93));
+      c.fillStyle = g;
+      c.fillRect(x0, 0, w, TILE_H);
+      // seams with a lit lower lip
+      for (const sy of [0, TILE_H / 2]) {
+        c.fillStyle = 'rgba(0,0,0,0.6)'; c.fillRect(x0, sy, w, 1.5);
+        c.fillStyle = rgba(D.rail, 0.12); c.fillRect(x0, sy + 1.5, w, 1);
+      }
+      // bolts in the panel corners
+      c.fillStyle = rgba(D.rail, 0.22);
+      for (const sy of [5, TILE_H / 2 + 5]) for (const bx of [x0 + 4, x0 + w - 4]) { c.beginPath(); c.arc(bx, sy, 0.9, 0, Math.PI * 2); c.fill(); }
+      // centre guide dashes
+      const cx = x0 + w / 2;
+      c.fillStyle = rgba(D.rail, 0.16);
+      c.fillRect(cx - 1, 14, 2, 18);
+      c.fillRect(cx - 1, TILE_H / 2 + 14, 2, 18);
+      // inner rails the ship "rides"
+      for (const rx of [cx - LANE_W * 0.3, cx + LANE_W * 0.3]) {
+        c.fillStyle = rgba(D.rail, 0.1); c.fillRect(rx - 1.5, 0, 3, TILE_H);
+        c.fillStyle = rgba(D.rail, 0.24); c.fillRect(rx - 0.4, 0, 0.8, TILE_H);
+      }
+    }
+    // Dividers: raised metal rails with a neon strip and glowing studs
+    for (let i = 0; i <= LANES; i++) {
+      const x = MARGIN + i * LANE_W;
+      const g = c.createLinearGradient(x - 3, 0, x + 3, 0);
+      g.addColorStop(0, '#07060a'); g.addColorStop(0.5, shade(D.rail, -0.55)); g.addColorStop(1, '#07060a');
+      c.fillStyle = g;
+      c.fillRect(x - 3, 0, 6, TILE_H);
+      c.fillStyle = rgba(D.rail, 0.4);
+      c.fillRect(x - 0.5, 0, 1, TILE_H);
+      // one dim stud per tile: present, but never competing with bullets
+      const sy = TILE_H / 4;
+      const sg = c.createRadialGradient(x, sy, 0, x, sy, 3);
+      sg.addColorStop(0, rgba('#ffffff', 0.6)); sg.addColorStop(0.4, rgba(D.rail, 0.45)); sg.addColorStop(1, rgba(D.rail, 0));
+      c.fillStyle = sg; c.beginPath(); c.arc(x, sy, 3, 0, Math.PI * 2); c.fill();
+    }
+    // Walls: building facades with lit windows, pipes and a neon edge
+    for (const side of [0, 1]) {
+      const x0 = side ? W - MARGIN + 3 : 0, w = MARGIN - 3;
+      c.fillStyle = D.wallFill; c.fillRect(x0, 0, w, TILE_H);
+      c.fillStyle = 'rgba(255,255,255,0.05)'; c.fillRect(x0 + (side ? 1 : w - 3), 0, 2, TILE_H);   // pipe
+      for (let k = 0; k < 6; k++) {
+        const wy = 6 + k * 15;
+        const lit = (k * 7 + side * 3 + di) % 4 !== 0;
+        c.fillStyle = lit ? rgba(k % 3 === 0 ? D.wall : '#ffd27a', 0.55) : 'rgba(255,255,255,0.05)';
+        c.fillRect(x0 + 3, wy, w - 7, 6);
+      }
+      // sign
+      c.fillStyle = rgba(D.wall, 0.9);
+      c.fillRect(x0 + (side ? 2 : 3), TILE_H / 2 - 9, 2, 18);
+    }
+  });
 }
 
 // activeLane: lane the player is in, lit up so position is always obvious.
 export function drawWorld(distance, activeLane = -1) {
-  const D = DISTRICTS[districtIndex(distance)];
-  ctx.fillStyle = D.bg;
-  ctx.fillRect(0, 0, W, H);
+  const di = districtIndex(distance);
+  const D = DISTRICTS[di];
+  const tile = trackTile(di);
+  const off = scroll % TILE_H;
+  for (let y = off - TILE_H; y < H; y += TILE_H) ctx.drawImage(tile.canvas, 0, y, W, TILE_H);
 
-  // Lane floors
-  for (let i = 0; i < LANES; i++) {
-    const x0 = MARGIN + i * LANE_W;
-    ctx.fillStyle = i === activeLane ? 'rgba(25,240,255,0.06)' : D.floor;
-    ctx.fillRect(x0 + 4, 0, LANE_W - 8, H);
+  // Active lane: cyan floor glow and edge lights
+  if (activeLane >= 0) {
+    const x0 = MARGIN + activeLane * LANE_W;
+    const g = ctx.createLinearGradient(0, H, 0, 0);
+    g.addColorStop(0, 'rgba(25,240,255,0.16)');
+    g.addColorStop(1, 'rgba(25,240,255,0.03)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x0 + 3, 0, LANE_W - 6, H);
+    line(x0 + 3, 0, x0 + 3, H, PAL.cyan, 1.5, 0.55);
+    line(x0 + LANE_W - 3, 0, x0 + LANE_W - 3, H, PAL.cyan, 1.5, 0.55);
   }
 
-  // Sleepers (rungs) scrolling down inside each lane, like track ties
-  ctx.strokeStyle = D.sleeper;
-  ctx.lineWidth = 2;
-  ctx.globalAlpha = 0.8;
-  ctx.beginPath();
-  for (let y = scroll - 48; y < H; y += 48) {
-    for (let i = 0; i < LANES; i++) {
-      const x0 = MARGIN + i * LANE_W;
-      ctx.moveTo(x0 + 8, y);
-      ctx.lineTo(x0 + LANE_W - 8, y);
-    }
+  // Overhead tunnel lights sweeping past: sells speed
+  const gap = 230;
+  const lo = scroll % gap;
+  for (let y = lo - gap; y < H; y += gap) {
+    const g = ctx.createLinearGradient(0, y - 26, 0, y + 26);
+    g.addColorStop(0, rgba(D.wall, 0));
+    g.addColorStop(0.5, rgba(D.wall, 0.07));
+    g.addColorStop(1, rgba(D.wall, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y - 26, W, 52);
+    line(0, y, MARGIN, y, D.wall, 3, 0.9);
+    line(W - MARGIN, y, W, y, D.wall, 3, 0.9);
   }
-  ctx.stroke();
+
+  // Speed streaks on the panels
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = '#ffffff';
+  for (let k = 0; k < 6; k++) {
+    const sx = MARGIN + ((k * 97 + 31) % (W - MARGIN * 2));
+    const sy = ((scroll * 1.6 + k * 151) % (H + 80)) - 40;
+    ctx.fillRect(sx, sy, 1, 26);
+  }
   ctx.globalAlpha = 1;
-
-  // Rails: two per lane
-  for (let i = 0; i < LANES; i++) {
-    const cx = laneX(i);
-    const col = i === activeLane ? PAL.cyan : D.rail;
-    const a = i === activeLane ? 0.55 : 0.28;
-    const rx = LANE_W * 0.3;
-    line(cx - rx, 0, cx - rx, H, col, 1.5, a);
-    line(cx + rx, 0, cx + rx, H, col, 1.5, a);
-  }
-
-  // Lane dividers
-  for (let i = 1; i < LANES; i++) {
-    const x = MARGIN + i * LANE_W;
-    line(x, 0, x, H, D.sleeper, 1, 0.9);
-  }
-
-  // Walls
-  ctx.fillStyle = D.wallFill;
-  ctx.fillRect(0, 0, MARGIN, H);
-  ctx.fillRect(W - MARGIN, 0, MARGIN, H);
-  line(MARGIN, 0, MARGIN, H, D.wall, 2, 0.8);
-  line(W - MARGIN, 0, W - MARGIN, H, D.wall, 2, 0.8);
 
   // Distance markers every 100 m on the walls
   const step = 100 * PX_PER_M;
-  const off = (distance * PX_PER_M) % step;
-  for (let y = off - step; y < H; y += step) {
+  const mOff = (distance * PX_PER_M) % step;
+  for (let y = mOff - step; y < H; y += step) {
     line(4, y, MARGIN - 4, y, PAL.cyan, 3, 0.9);
     line(W - MARGIN + 4, y, W - 4, y, PAL.cyan, 3, 0.9);
   }

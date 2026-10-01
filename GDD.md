@@ -271,6 +271,16 @@ Fatto (v0.7):
   BLOOD PACT, INTEREST, RAIL STRIKE (attivo). 5 sinergie: AFTERSHOCK, SQUADRON,
   DRIFT KING, DOMINO, COUNTERSTRIKE. 7 obiettivi nuovi per sbloccarli.
 
+Fatto (v0.8):
+- Il player pilota una navicella, non più una board: 5 sagome (STOCK intercettore,
+  GHOST stealth, TANK cannoniera a 4 motori, VIRAL bio-nave, GLITCH frammentata),
+  pilota con maschera visibile nel cockpit, fiamme dei motori live.
+- Pista: texture per distretto con pannelli, giunture, guide, binari metallici,
+  muri con finestre e insegne; luci da tunnel e scie di velocità.
+  Rail del primo distretto viola: il magenta resta riservato ai proiettili nemici.
+- SEEKER: ogni proiettile insegue solo la corsia da cui parte e le due adiacenti;
+  lo stack rende la curva più stretta, non allarga il raggio.
+
 Backlog:
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.

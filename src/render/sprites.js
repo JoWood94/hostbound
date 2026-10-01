@@ -136,67 +136,113 @@ function hazard(c, x, y, w, h, color, step = 4) {
 }
 
 // ---------------------------------------------------------------------------
-// Player: courier on a hoverboard, Hotline-style animal mask, delivery pack
+// Player ships: one silhouette per ship type, nose up. The pilot's animal mask
+// shows through the canopy (Hotline nod). Engine points get live flames.
 // ---------------------------------------------------------------------------
-export function playerSprite(color) {
-  return bake(`player:${color}`, 46, 66, (c) => {
-    // Deck
-    rrect(c, -10, -27, 20, 54, 10);
-    const g = c.createLinearGradient(-10, 0, 10, 0);
-    g.addColorStop(0, shade(color, -0.85));
-    g.addColorStop(0.5, shade(color, -0.55));
-    g.addColorStop(1, shade(color, -0.85));
-    c.fillStyle = g;
-    c.fill();
-    neon(c, color, 1.8, 9);
-    // Grip tape with stripes
-    c.save();
-    rrect(c, -7, -23, 14, 46, 7);
-    c.fillStyle = '#0c0812';
-    c.fill();
-    c.clip();
-    c.strokeStyle = rgba(color, 0.18);
-    c.lineWidth = 1;
-    for (let k = -40; k < 40; k += 5) { c.beginPath(); c.moveTo(-10, k); c.lineTo(10, k + 8); c.stroke(); }
-    c.restore();
-    // Nose light + side running lights
-    glow(c, 0, -24, 4, color);
-    c.fillStyle = shade(color, 0.4);
-    for (const sx of [-9.5, 9.5]) { c.fillRect(sx - 0.6, -12, 1.2, 6); c.fillRect(sx - 0.6, 6, 1.2, 6); }
-    // Thruster pods
-    for (const px of [-8, 8]) {
-      rrect(c, px - 3.5, 19, 7, 10, 2.5);
-      plate(c, '#8a8a9a', 19, 29, -0.85, -0.45);
-      neon(c, PAL.magenta, 0.9, 4);
+function canopy(c, cx, cy, rx, ry, glass) {
+  c.beginPath(); c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  const g = c.createLinearGradient(cx, cy - ry, cx, cy + ry);
+  g.addColorStop(0, shade(glass, 0.5)); g.addColorStop(0.5, rgba(glass, 0.55)); g.addColorStop(1, shade(glass, -0.6));
+  c.fillStyle = g; c.fill();
+  c.strokeStyle = shade(glass, 0.3); c.lineWidth = 0.8; c.stroke();
+  // pilot mask seen through the glass
+  c.fillStyle = 'rgba(244,240,255,0.85)';
+  circle(c, cx, cy + ry * 0.15, Math.min(rx, ry) * 0.48); c.fill();
+  path(c, [cx - rx * 0.45, cy - ry * 0.05, cx - rx * 0.55, cy - ry * 0.55, cx - rx * 0.15, cy - ry * 0.2]); c.fill();
+  path(c, [cx + rx * 0.45, cy - ry * 0.05, cx + rx * 0.55, cy - ry * 0.55, cx + rx * 0.15, cy - ry * 0.2]); c.fill();
+  c.strokeStyle = PAL.magenta; c.lineWidth = 0.7;
+  c.beginPath(); c.moveTo(cx - rx * 0.35, cy + ry * 0.05); c.lineTo(cx - rx * 0.1, cy + ry * 0.1);
+  c.moveTo(cx + rx * 0.35, cy + ry * 0.05); c.lineTo(cx + rx * 0.1, cy + ry * 0.1); c.stroke();
+  // glint
+  c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = 0.8;
+  c.beginPath(); c.ellipse(cx - rx * 0.3, cy - ry * 0.35, rx * 0.25, ry * 0.18, -0.5, Math.PI, Math.PI * 1.6); c.stroke();
+}
+function nozzle(c, x, y, w, h, col) {
+  rrect(c, x - w / 2, y, w, h, Math.min(w, h) * 0.35);
+  plate(c, '#9a9aaa', y, y + h, -0.85, -0.45);
+  c.strokeStyle = rgba(col, 0.8); c.lineWidth = 0.8; c.stroke();
+  c.fillStyle = shade(col, 0.2);
+  c.fillRect(x - w * 0.3, y + h - 1.4, w * 0.6, 1.4);
+}
+
+const SHIP_ART = {
+  // Swept-wing interceptor
+  stock: (c, col) => {
+    path(c, [0, -28, 5, -14, 22, 6, 22, 13, 8, 10, 6, 20, -6, 20, -8, 10, -22, 13, -22, 6, -5, -14]);
+    plate(c, col, -28, 20, -0.86, -0.5); neon(c, col, 1.6, 9);
+    path(c, [0, -24, 3, -12, 3, 14, -3, 14, -3, -12]); c.fillStyle = shade(col, -0.7); c.fill();
+    panelLine(c, 5, -12, 18, 8, 0.3); panelLine(c, -5, -12, -18, 8, 0.3); panelLine(c, -8, 10, 8, 10, 0.25);
+    rivets(c, [-15, 7, 15, 7, -10, 3, 10, 3]);
+    for (const wx of [-21, 21]) glow(c, wx, 9.5, 2.6, wx < 0 ? PAL.red : PAL.acid);
+    canopy(c, 0, -10, 4.4, 7.5, PAL.cyan);
+    nozzle(c, -4.5, 17, 5.5, 6, col); nozzle(c, 4.5, 17, 5.5, 6, col);
+  },
+  // Long, thin, forward-swept stealth
+  ghost: (c, col) => {
+    path(c, [0, -30, 3, -6, 18, -12, 20, -8, 6, 8, 4, 22, -4, 22, -6, 8, -20, -8, -18, -12, -3, -6]);
+    plate(c, '#cfd6ff', -30, 22, -0.9, -0.62); neon(c, col, 1.3, 10);
+    panelLine(c, 0, -26, 0, 18, 0.35);
+    panelLine(c, 3, -6, 17, -10, 0.3); panelLine(c, -3, -6, -17, -10, 0.3);
+    for (const wx of [-19, 19]) glow(c, wx, -10, 2, col);
+    canopy(c, 0, -12, 3.4, 7, '#9ad8ff');
+    nozzle(c, 0, 19, 6, 6, col);
+  },
+  // Wide armoured gunship, four engines, twin cannons
+  tank: (c, col) => {
+    rrect(c, -20, -16, 40, 34, 6); plate(c, col, -16, 18, -0.85, -0.55); neon(c, col, 1.8, 8);
+    path(c, [-10, -16, -6, -26, 6, -26, 10, -16]); plate(c, col, -26, -16, -0.8, -0.45); neon(c, col, 1.2, 5);
+    for (const gx of [-14, 14]) { rrect(c, gx - 2, -27, 4, 13, 1.2); plate(c, '#aaa', -27, -14, -0.85, -0.5); glow(c, gx, -27, 2, col); }
+    hazard(c, -18, 10, 36, 4, col, 3);
+    for (const px of [-12, 12]) { rrect(c, px - 6, -10, 12, 16, 2); c.strokeStyle = rgba(col, 0.4); c.lineWidth = 0.8; c.stroke(); }
+    rivets(c, [-17, -13, 17, -13, -17, 7, 17, 7, -6, 7, 6, 7]);
+    canopy(c, 0, -5, 5, 6, PAL.cyan);
+    for (const ex of [-15, -6, 6, 15]) nozzle(c, ex, 18, 5.5, 5, col);
+  },
+  // Organic bio-ship: curved hull, pods and veins
+  viral: (c, col) => {
+    c.beginPath();
+    c.moveTo(0, -28);
+    c.bezierCurveTo(10, -22, 12, -6, 20, 2);
+    c.bezierCurveTo(24, 8, 16, 16, 8, 12);
+    c.bezierCurveTo(6, 20, -6, 20, -8, 12);
+    c.bezierCurveTo(-16, 16, -24, 8, -20, 2);
+    c.bezierCurveTo(-12, -6, -10, -22, 0, -28);
+    c.closePath();
+    plate(c, col, -28, 20, -0.88, -0.55); neon(c, col, 1.5, 10);
+    c.strokeStyle = rgba(col, 0.45); c.lineWidth = 0.8;
+    c.beginPath(); c.moveTo(0, -20); c.bezierCurveTo(6, -6, 12, 2, 18, 4); c.moveTo(0, -20); c.bezierCurveTo(-6, -6, -12, 2, -18, 4); c.stroke();
+    for (const [px, py, r] of [[-13, 6, 3.4], [13, 6, 3.4], [0, 4, 2.6]]) { circle(c, px, py, r); c.fillStyle = '#0c1406'; c.fill(); glow(c, px, py, r * 0.9, col); }
+    canopy(c, 0, -11, 4.2, 6.5, PAL.acid);
+    nozzle(c, 0, 15, 6, 5, col);
+  },
+  // Fractured silhouette, sliced and offset like a corrupted file
+  glitch: (c, col) => {
+    const hull = [0, -28, 6, -12, 20, 4, 14, 12, 6, 10, 4, 20, -4, 20, -6, 10, -14, 12, -20, 4, -6, -12];
+    c.save(); c.translate(-1.5, 0); path(c, hull); c.strokeStyle = rgba(PAL.cyan, 0.7); c.lineWidth = 1.2; c.stroke(); c.restore();
+    c.save(); c.translate(1.5, 0); path(c, hull); c.strokeStyle = rgba(PAL.magenta, 0.7); c.lineWidth = 1.2; c.stroke(); c.restore();
+    path(c, hull); plate(c, col, -28, 20, -0.88, -0.6);
+    for (const [y0, dx] of [[-16, 2], [-2, -3], [8, 2.5]]) {
+      c.save(); c.beginPath(); c.rect(-24, y0, 48, 3); c.clip();
+      c.translate(dx, 0); path(c, hull); c.fillStyle = shade(col, -0.3); c.fill(); c.restore();
     }
-    // Rider: stance slightly rotated, sideways on the board
-    c.save();
-    c.rotate(-0.3);
-    // Delivery pack
-    rrect(c, -6, 3, 12, 8, 2);
-    plate(c, '#3a2a4a', 3, 11);
-    c.strokeStyle = color; c.lineWidth = 0.8; c.stroke();
-    c.fillStyle = color; c.fillRect(-4, 6, 8, 1.2);
-    // Shoulders / jacket
-    c.beginPath(); c.ellipse(0, 0, 12, 5.6, 0, 0, Math.PI * 2);
-    const jg = c.createLinearGradient(0, -6, 0, 6);
-    jg.addColorStop(0, '#3b1f4f'); jg.addColorStop(1, '#160a20');
-    c.fillStyle = jg; c.fill();
-    c.strokeStyle = rgba(color, 0.7); c.lineWidth = 0.8; c.stroke();
-    // Arms
-    for (const ax of [-11, 11]) { c.beginPath(); c.ellipse(ax, 2.5, 2.4, 4, ax < 0 ? 0.4 : -0.4, 0, Math.PI * 2); c.fillStyle = '#24112f'; c.fill(); }
-    // Head + mask with ears
-    c.fillStyle = '#efe6f7';
-    path(c, [-4.6, -3.5, -5.6, -9.5, -2.2, -5.6]); c.fill();
-    path(c, [4.6, -3.5, 5.6, -9.5, 2.2, -5.6]); c.fill();
-    circle(c, 0, -1.6, 5.2);
-    const mg = c.createRadialGradient(-1.5, -3.5, 0.5, 0, -1.6, 5.2);
-    mg.addColorStop(0, '#ffffff'); mg.addColorStop(1, '#bfb2cc');
-    c.fillStyle = mg; c.fill();
-    c.strokeStyle = PAL.magenta; c.lineWidth = 1.1;
-    c.beginPath(); c.moveTo(-3.2, -2.6); c.lineTo(-1.1, -2.1); c.moveTo(3.2, -2.6); c.lineTo(1.1, -2.1); c.stroke();
-    c.restore();
-  });
+    path(c, hull); neon(c, col, 1.4, 9);
+    canopy(c, 0, -9, 4.2, 6.8, PAL.white);
+    nozzle(c, -4, 17, 5, 5, PAL.cyan); nozzle(c, 4, 17, 5, 5, PAL.magenta);
+  },
+};
+
+// Engine exhaust points per ship (sprite coordinates), for live flames.
+export const SHIP_ENGINES = {
+  stock: [[-4.5, 24], [4.5, 24]],
+  ghost: [[0, 25]],
+  tank: [[-15, 23], [-6, 23], [6, 23], [15, 23]],
+  viral: [[0, 20]],
+  glitch: [[-4, 22], [4, 22]],
+};
+
+export function shipSprite(id, color) {
+  const art = SHIP_ART[id] || SHIP_ART.stock;
+  return bake(`ship:${id}:${color}`, 50, 62, (c) => art(c, color));
 }
 
 // ---------------------------------------------------------------------------

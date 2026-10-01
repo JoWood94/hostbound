@@ -19,6 +19,7 @@ function makePool(max) {
     kind: new Uint8Array(max),     // enemy: 0 normal, LOW; player: 0 normal, BIG
     pierce: new Uint8Array(max),   // remaining enemies this bullet can pass through
     lastHit: new Int32Array(max),  // id of last enemy hit, avoids double hits while piercing
+    lane: new Int8Array(max),      // player bullets: lane fired from (homing range), -1 = no homing
   };
 }
 
@@ -33,7 +34,7 @@ export function spawn(pool, x, y, vx, vy, r = 3, dmg = 1, kind = 0, pierce = 0) 
   if (pool.n >= pool.max) return -1;
   const i = pool.n++;
   pool.x[i] = x; pool.y[i] = y; pool.vx[i] = vx; pool.vy[i] = vy;
-  pool.r[i] = r; pool.dmg[i] = dmg; pool.kind[i] = kind; pool.pierce[i] = pierce; pool.lastHit[i] = -1;
+  pool.r[i] = r; pool.dmg[i] = dmg; pool.kind[i] = kind; pool.pierce[i] = pierce; pool.lastHit[i] = -1; pool.lane[i] = -1;
   return i;
 }
 
@@ -41,7 +42,7 @@ export function kill(pool, i) {
   const l = --pool.n;
   pool.x[i] = pool.x[l]; pool.y[i] = pool.y[l]; pool.vx[i] = pool.vx[l]; pool.vy[i] = pool.vy[l];
   pool.r[i] = pool.r[l]; pool.dmg[i] = pool.dmg[l]; pool.kind[i] = pool.kind[l];
-  pool.pierce[i] = pool.pierce[l]; pool.lastHit[i] = pool.lastHit[l];
+  pool.pierce[i] = pool.pierce[l]; pool.lastHit[i] = pool.lastHit[l]; pool.lane[i] = pool.lane[l];
 }
 
 const MARGIN = 40;

@@ -40,7 +40,7 @@ export function rewardOf(achId) {
   const it = ITEMS.find((i) => i.unlock === achId);
   if (it) return { kind: 'item', name: it.name, id: it.id };
   const b = BOARDS.find((x) => x.unlock === achId);
-  if (b) return { kind: 'board', name: b.name + ' BOARD', id: b.id };
+  if (b) return { kind: 'board', name: b.name + ' SHIP', id: b.id };
   return null;
 }
 

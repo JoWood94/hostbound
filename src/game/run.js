@@ -64,7 +64,7 @@ export function createRun(save, opts = {}) {
     district: 0,
   };
   run.stats = computeStats(board, run.stacks);
-  run.player = makePlayer(run.stats, board.color);
+  run.player = makePlayer(run.stats, board.color, board.id);
   run.rs.daily = daily;
   // Boss order is shuffled per run (Fisher-Yates on the run seed).
   run.bossOrder = BOSSES.map((_, i) => i);

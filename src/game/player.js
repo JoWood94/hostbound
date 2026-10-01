@@ -2,14 +2,14 @@ import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { fillPoly, drawGlowDot, ring } from '../render/draw.js';
 import { burst, shake, hitStop } from '../render/fx.js';
-import { playerSprite, drawSprite } from '../render/sprites.js';
+import { shipSprite, SHIP_ENGINES, drawSprite } from '../render/sprites.js';
 import { LANES, laneX } from './world.js';
 
 export const PLAYER_Y = H * 0.78;
 const LANE_TIME = 0.11;   // seconds for a lane hop, fixed: discrete, never follows the finger
 const ORBIT_R = 28;
 
-export function makePlayer(stats, color = PAL.cyan) {
+export function makePlayer(stats, color = PAL.cyan, ship = 'stock') {
   const lane = Math.floor(LANES / 2);
   return {
     lane,
@@ -19,6 +19,7 @@ export function makePlayer(stats, color = PAL.cyan) {
     bump: 0,
     prevX: laneX(lane),
     color,
+    ship,
     r: 7,                 // hurt radius
     hearts: stats.maxHearts,
     blueHearts: stats.blueStart,
@@ -207,18 +208,19 @@ export function drawPlayer(p, alpha, stats) {
   // Lean into lane changes: bank angle from horizontal speed.
   const vx = p.x - p.prevX;
   p.bank = (p.bank || 0) + (Math.max(-0.35, Math.min(0.35, vx * 0.09)) - (p.bank || 0)) * 0.3;
-  const spr = playerSprite(c);
-  const sxs = scale * 0.82 * (1 + sq * 0.2);
-  const sys = scale * 0.82 * (1 - sq * 0.2);
+  const spr = shipSprite(p.ship, c);
+  const sxs = scale * 0.85 * (1 + sq * 0.2);
+  const sys = scale * 0.85 * (1 - sq * 0.2);
 
-  // Thruster flames behind the pods (live, flickering)
+  // Engine flames (live, flickering), longer while boosting into a lane
   if (p.phaseT <= 0) {
-    for (const fx of [-8, 8]) {
-      const len = 6 + Math.random() * 6 + (p.laneT < 1 ? 4 : 0);
-      const bx = x + fx * sxs * Math.cos(p.bank), by = y + 24 * sys;
-      drawGlowDot(bx, by + len * 0.4, PAL.magenta, 3.2, 0.9);
-      drawGlowDot(bx, by + len, PAL.magenta, 2, 0.5);
-      drawGlowDot(bx, by + 1, PAL.white, 1.4, 0.9);
+    const cos = Math.cos(p.bank), sin = Math.sin(p.bank);
+    for (const [ex, ey] of SHIP_ENGINES[p.ship] || SHIP_ENGINES.stock) {
+      const len = 5 + Math.random() * 6 + (p.laneT < 1 ? 5 : 0);
+      const bx = x + (ex * cos - ey * sin) * sxs, by = y + (ex * sin + ey * cos) * sys;
+      drawGlowDot(bx, by + len * 0.45, c, 3.4, 0.85);
+      drawGlowDot(bx, by + len, PAL.magenta, 2.2, 0.5);
+      drawGlowDot(bx, by + 1, PAL.white, 1.6, 0.95);
     }
   }
 

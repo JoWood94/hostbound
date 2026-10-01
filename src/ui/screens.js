@@ -8,10 +8,11 @@ import { ITEMS, ITEM_BY_ID, RARITY, CAT_COLOR, SYNERGIES } from '../game/items.j
 import { BOARDS } from '../game/boards.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
+import { shipSprite, drawSprite } from '../render/sprites.js';
 import { todayKey } from '../game/run.js';
 import { SKIP_COINS } from '../game/balance.js';
 
-const VERSION = 'v0.7';
+const VERSION = 'v0.8';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
@@ -44,6 +45,7 @@ function itemCard(id, x, y, w, h, it, { price = null, sold = false, afford = tru
 // Menu
 // ---------------------------------------------------------------------------
 export function drawMenu(save, t, boardIdx) {
+  dim(0.55);
   const pulse = 0.7 + Math.sin(t * 4) * 0.3;
   const gl = Math.random() < 0.04 ? (Math.random() - 0.5) * 8 : 0;
   text('NEON', W / 2 + gl, 130, { color: PAL.magenta, size: 52, align: 'center' });
@@ -58,11 +60,14 @@ export function drawMenu(save, t, boardIdx) {
   ctx.strokeStyle = unlocked ? b.color : PAL.dim;
   ctx.lineWidth = 2;
   ctx.strokeRect(66, 238, W - 132, 96);
-  text('BOARD', W / 2, 250, { color: PAL.mute, size: 8, align: 'center' });
-  text(unlocked ? b.name : `${b.name} [LOCKED]`, W / 2, 266, { color: unlocked ? b.color : PAL.dim, size: 16, align: 'center' });
+  ctx.fillStyle = 'rgba(10,0,8,0.85)';
+  ctx.fillRect(66, 238, W - 132, 96);
+  drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), 100, 288, { sx: 0.95, sy: 0.95, alpha: unlocked ? 1 : 0.45 });
+  text('SHIP', 136, 250, { color: PAL.mute, size: 8 });
+  text(unlocked ? b.name : `${b.name} [LOCKED]`, 136, 266, { color: unlocked ? b.color : PAL.mute, size: 15 });
   const ach = ACHIEVEMENTS.find((a) => a.id === b.unlock);
   const desc = unlocked ? b.desc : `Unlock: ${ach ? ach.desc : '?'}`;
-  wrap(desc, 34).slice(0, 4).forEach((l, i) => text(l, W / 2, 286 + i * 12, { color: PAL.white, size: 9, align: 'center', weight: 'normal', alpha: unlocked ? 0.9 : 0.6 }));
+  wrap(desc, 25).slice(0, 4).forEach((l, i) => text(l, 136, 284 + i * 11, { color: PAL.white, size: 8, weight: 'normal', alpha: unlocked ? 0.9 : 0.7 }));
 
   button('run', 60, 348, W - 120, 46, 'RUN', { color: PAL.cyan, size: 20, disabled: !unlocked });
   const dBest = save.daily.date === todayKey() ? save.daily.best : 0;

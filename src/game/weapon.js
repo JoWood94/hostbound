@@ -41,7 +41,8 @@ export function updateWingmen(p, stats, dt) {
     w.fireT -= dt;
     if (w.fireT <= 0) {
       w.fireT += 1 / (stats.fireRate * (stats.squadron ? 0.75 : 0.5));
-      spawn(playerBullets, w.x, PLAYER_Y - 30, 0, -stats.bulletSpeed, 2.4, currentDamage(p, stats) * 0.6, 0, stats.pierce);
+      const bi = spawn(playerBullets, w.x, PLAYER_Y - 30, 0, -stats.bulletSpeed, 2.4, currentDamage(p, stats) * 0.6, 0, stats.pierce);
+      if (bi >= 0) playerBullets.lane[bi] = l;
     }
   });
 }
@@ -79,10 +80,11 @@ export function updateWeapon(p, stats, dt, rateMul = 1) {
   const speed = stats.bulletSpeed;
   const y = PLAYER_Y - 14;
 
+  const tag = (i) => { if (i >= 0) playerBullets.lane[i] = p.lane; };
   if (stats.echo && p.shotCount % stats.echo === 0) {
-    spawn(playerBullets, p.x, y, 0, -speed * 0.9, stats.bulletSize * 2.4, dmg * stats.echoMul, BIG, stats.pierce + 3);
+    tag(spawn(playerBullets, p.x, y, 0, -speed * 0.9, stats.bulletSize * 2.4, dmg * stats.echoMul, BIG, stats.pierce + 3));
   } else {
-    spawn(playerBullets, p.x, y, 0, -speed, stats.bulletSize, dmg, 0, stats.pierce);
+    tag(spawn(playerBullets, p.x, y, 0, -speed, stats.bulletSize, dmg, 0, stats.pierce));
   }
 
   // Split: side shots reach k lanes over by the time they are at enemy height.
@@ -91,31 +93,36 @@ export function updateWeapon(p, stats, dt, rateMul = 1) {
     for (let k = 1; k <= stats.split; k++) {
       const vx = (LANE_W * k) / travel;
       const sd = dmg * stats.sideDamage;
-      spawn(playerBullets, p.x, y, -vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce);
-      spawn(playerBullets, p.x, y, vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce);
+      tag(spawn(playerBullets, p.x, y, -vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce));
+      tag(spawn(playerBullets, p.x, y, vx, -speed, stats.bulletSize * 0.85, sd, 0, stats.pierce));
     }
   }
   sfx.shoot();
 }
 
-// Homing: steer toward the nearest target above, but only within `homing`
-// lanes of the bullet. Position still matters: you cannot hide in a far lane.
+// Homing: a bullet only tracks enemies in the lane it was fired from or the
+// two lanes next to it. Stacks make the turn sharper, never the range wider.
 export function steerBullets(stats, dt) {
   if (stats.homing <= 0) return;
   const pb = playerBullets;
-  const k = 3.5;
+  const k = 2.5 + 1.5 * stats.homing;
   const maxVx = 200 + 60 * stats.homing;
-  const reach = LANE_W * (stats.homing + 0.5);
   for (let i = 0; i < pb.n; i++) {
-    let best = null, bd = 1e9;
+    const lane = pb.lane[i];
+    if (lane < 0) continue;
+    const xMin = laneX(Math.max(0, lane - 1)) - LANE_W * 0.5;
+    const xMax = laneX(Math.min(LANES - 1, lane + 1)) + LANE_W * 0.5;
+    let bestX = 0, bd = 1e9, found = false;
     for (const e of enemies) {
       if (e.dead || e.y > pb.y[i]) continue;
-      if (!e.hw && Math.abs(e.x - pb.x[i]) > reach) continue;
-      const d = Math.abs(e.x - pb.x[i]) + (pb.y[i] - e.y) * 0.3;
-      if (d < bd) { bd = d; best = e; }
+      // Big targets (bosses): aim at their closest point inside the allowed lanes.
+      const tx = Math.max(xMin, Math.min(xMax, e.x));
+      if (!e.hitboxes && (e.x < xMin || e.x > xMax)) continue;
+      const d = Math.abs(tx - pb.x[i]) + (pb.y[i] - e.y) * 0.3;
+      if (d < bd) { bd = d; bestX = tx; found = true; }
     }
-    if (!best) continue;
-    const want = Math.max(-maxVx, Math.min(maxVx, (best.x - pb.x[i]) * k));
+    if (!found) continue;
+    const want = Math.max(-maxVx, Math.min(maxVx, (bestX - pb.x[i]) * k));
     pb.vx[i] += (want - pb.vx[i]) * Math.min(1, dt * 6);
   }
 }
