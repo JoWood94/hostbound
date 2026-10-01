@@ -5,6 +5,7 @@
 import { PAL } from '../render/palette.js';
 import { H } from '../core/canvas.js';
 import { drawGlowDot } from '../render/draw.js';
+import { ctx } from '../core/canvas.js';
 import { obstacleSprite, drawSprite } from '../render/sprites.js';
 import { LANES, LANE_W, laneX } from './world.js';
 import { sheet, drawCell } from '../render/images.js';
@@ -42,14 +43,37 @@ export function drawObstacles(alpha) {
     if (ROCKS.ready) {
       const wall = o.type === 'wall';
       // colour-coded halo under the rock: orange = jump it, magenta = dodge it
-      drawGlowDot(o.x, y, wall ? PAL.magenta : PAL.orange, wall ? 30 : 22, wall ? 0.32 : 0.18);
+      if (wall) drawGlowDot(o.x, y, PAL.magenta, 30, 0.32);
       drawCell(ROCKS, wall ? 1 : 0, o.v, o.x, y, LANE_W * (wall ? 1.02 : 1.0), { rot: wall ? o.rot : 0 });
+      if (!wall) neonTube(o.x, y, LANE_W * 0.8, o.v);
       continue;
     }
     drawSprite(obstacleSprite(o.type, w), o.x, y);
     // Blinking beacon on walls
     if (o.type === 'wall' && Math.floor((o.y + o.x) / 40) % 2 === 0) drawGlowDot(o.x, y - 9, PAL.red, 3, 0.8);
   }
+}
+
+// Low rocks carry a neon tripwire: a bent glass tube stretched across the
+// lane, orange like every other "jump over it" signal. Japan neon, not lava.
+function neonTube(x, y, w, v) {
+  const t = performance.now() / 1000;
+  const flick = Math.sin(t * 17 + x) > 0.97 ? 0.4 : 1;
+  const hw = w / 2, k = v ? 3 : -3;             // two bends, one per variant
+  const pts = [x - hw, y + 2, x - hw * 0.35, y + k, x + hw * 0.35, y - k, x + hw, y + 2];
+  ctx.save();
+  ctx.globalAlpha = flick;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (const [col, lw, blur] of [[PAL.orange, 5, 14], [PAL.orange, 2.6, 6], ['#fff1e0', 1, 0]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.shadowColor = PAL.orange; ctx.shadowBlur = blur;
+    ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // mounting clips at the ends
+  drawGlowDot(x - hw, y + 2, '#ffffff', 1.6, 0.9 * flick);
+  drawGlowDot(x + hw, y + 2, '#ffffff', 1.6, 0.9 * flick);
 }
 
 export function clearObstacles() { obstacles.length = 0; }

@@ -6,7 +6,7 @@ palette with violet shadows, add a dark outline.
 Usage: import-obstacles.py <src> <dst> <cols> <rows> <picks>
   picks: ';'-separated output rows, each a ','-list of source cells "r.c",
          e.g. "0.1,0.0;1.1,1.3,1.0" -> row 0 = low variants, row 1 = walls.
-Output cells are 128x128.
+Output cells are 128x128. --neon turns lava glow into thin neon seams (output row 0).
 """
 import sys
 import numpy as np
@@ -26,6 +26,26 @@ def key(px):
     px = px.copy()
     px[..., 1] = np.minimum(g, np.maximum(r, b) + 10)    # despill
     return px, a
+
+def neonize(px):
+    """Lava -> neon: broad molten fills become dark rock, only the brightest
+    seams survive, recoloured as a thin neon tube (hot core, orange edge)."""
+    r, g, b = px[..., 0] / 255, px[..., 1] / 255, px[..., 2] / 255
+    warm = (r - b)                                   # how 'lava' a pixel is
+    lum = 0.3 * r + 0.55 * g + 0.15 * b
+    out = px.copy()
+    hot = warm > 0.35
+    if hot.any():
+        thr = np.quantile(lum[hot], 0.82)            # keep the top 18% as seams
+        seam = hot & (lum >= thr)
+        fill = hot & ~seam
+        rock = np.stack([lum * 70 + 18, lum * 40 + 10, lum * 80 + 26], -1)
+        out[fill] = rock[fill]
+        core = np.array([255, 236, 220]); edge = np.array([255, 106, 0])
+        t = np.clip((lum - thr) / max(1e-3, 1 - thr), 0, 1)[..., None]
+        neon = edge * (1 - t) + core * t
+        out[seam] = neon[seam]
+    return out
 
 def restyle(px, a):
     rgba = np.dstack([px, a * 255]).astype(np.uint8)
@@ -66,6 +86,7 @@ def restyle(px, a):
     cell.alpha_composite(big, ((CELL - big.width) // 2, (CELL - big.height) // 2))
     return cell
 
+NEON_ROWS = {0} if '--neon' in sys.argv else set()
 rows_out = [r.split(',') for r in picks.split(';')]
 ncol = max(len(r) for r in rows_out)
 sheet = Image.new('RGBA', (ncol * CELL, len(rows_out) * CELL), (0, 0, 0, 0))
@@ -75,6 +96,7 @@ for oy, row in enumerate(rows_out):
         x0, y0 = int(c * cw) + 2, int(r * ch) + 2
         px = im[y0:int((r + 1) * ch) - 2, x0:int((c + 1) * cw) - 2]
         px, a = key(px)
+        if oy in NEON_ROWS: px = neonize(px)
         sheet.alpha_composite(restyle(px, a), (ox * CELL, oy * CELL))
 sheet.save(dst)
 print(dst, sheet.size)

@@ -5,6 +5,7 @@
 //   tap         : pointer down+up without movement, or Enter
 //   pause       : Esc / P / window blur
 import { canvas, toLogical } from './canvas.js';
+import { gestureTick } from './haptics.js';
 
 const SWIPE_MIN = 22;      // logical px
 const SWIPE_MAX_MS = 320;
@@ -27,6 +28,9 @@ function onDown(e) {
   startT = performance.now();
   swiped = false;
   state.down = true;
+  // iOS haptics only fire inside an activation event (pointerdown/up), not
+  // pointermove: tick on touch-down so every swipe and tap is felt.
+  gestureTick();
 }
 
 function detectSwipe(p) {
