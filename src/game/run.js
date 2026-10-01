@@ -1,5 +1,6 @@
-// One run: spawning, collisions, rewards, boss/shop events, actives, achievements.
-// Modes: play | pick (item after boss) | shop | pause | dead
+// One run: spawning, collisions, rewards, levels, bosses, actives, achievements.
+// Modes: play | pick (item after a boss or a level-up) | pause | dead
+// Coins are 'cells' on screen: they are experience. Every level offers a pick.
 import { W, H, SAFE_TOP } from '../core/canvas.js';
 import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
@@ -11,7 +12,7 @@ import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, u
 import { SECTIONS, mirrorEvent } from './sections.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
-import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
+import { pickups, spawnPickup, dropCoins, updatePickups, clearPickups } from './pickups.js';
 import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from './items.js';
 import { activeCombos } from './combos.js';
 import * as B from './balance.js';
@@ -24,7 +25,7 @@ import { setMusic } from '../audio/music.js';
 import { buzz } from '../core/haptics.js';
 import { ACTIVE_BTN } from '../ui/hud.js';
 
-export const EVENT_EVERY = 600;       // metres between boss / market checkpoints
+export const EVENT_EVERY = 1000;      // metres between bosses: one at the end of each district
 
 // Daily run: same seed for everyone on the same local date, always STOCK board.
 export function todayKey() {
@@ -55,7 +56,7 @@ export function createRun(save, opts = {}) {
     mode: 'play',
     nextEvent: EVENT_EVERY, eventIndex: 0, pending: null, warnT: 0,
     boss: null, bossIndex: 0, bossHit: false, pickDelay: 0,
-    shopIndex: 0, shopSlots: [], rerollCost: B.REROLL_BASE, freeShop: !!board.freeShop,
+    level: 1, xp: 0, levelUps: 0, pickKind: 'boss',
     pickChoices: [],
     active: null, overdriveT: 0, slowT: 0, flashT: 0,
     toasts: [], newUnlocks: [],
@@ -235,6 +236,38 @@ export function coveredLanes() {
 }
 
 // ---------------------------------------------------------------------------
+// Cells and obstacles never overlap. Both scroll at the track speed, so their
+// relative positions are fixed at spawn: whichever comes second checks the
+// other. A cell on a TRIPWIRE is allowed on purpose (jump to grab it: risk).
+// ---------------------------------------------------------------------------
+const CELL_CLEAR = 46;     // px kept free around a barrier, in its lane
+const blockedAt = (lane, y) => obstacles.some((o) => !o.dead && o.type === 'wall' && o.lane === lane && Math.abs(o.y - y) < CELL_CLEAR);
+
+function placeCells(lane, n, y0 = -20, gap = 26) {
+  for (let i = 0; i < n; i++) {
+    const y = y0 - i * gap;
+    if (!blockedAt(lane, y)) spawnPickup('coin', lane, y);
+  }
+}
+function placePickup(kind, lane, extra) {
+  if (blockedAt(lane, -20)) return false;
+  spawnPickup(kind, lane, -20, extra);
+  return true;
+}
+function placeWall(lane, y = -30) {
+  spawnObstacle('wall', lane, y);
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const pk = pickups[i];
+    if (!pk.fly && pk.lane === lane && Math.abs(pk.y - y) < CELL_CLEAR) pickups.splice(i, 1);
+  }
+}
+// A lane with no barrier just entering the screen: where loose cells go.
+function openLane(rng) {
+  const lanes = [0, 1, 2, 3, 4].filter((l) => !obstacles.some((o) => !o.dead && o.type === 'wall' && o.lane === l && o.y < 60));
+  return lanes.length ? rng.pick(lanes) : -1;
+}
+
+// ---------------------------------------------------------------------------
 // Director: plays authored sections (sections.js) back to back on the enemy
 // metronome. A section starts on a beat, its events fire at fixed beats, and
 // the next one waits until this one is over (enemies gone, rows passed) plus a
@@ -284,13 +317,13 @@ function direct(run, d) {
       if (en) sec.enemyIds.push(en.id);
     } else if (ev.kind === 'row') {
       [...ev.row].forEach((ch, l) => {
-        if (ch === 'B') spawnObstacle('wall', l);
+        if (ch === 'B') placeWall(l);
         else if (ch === 'T') spawnObstacle('low', l);
       });
     } else if (ev.kind === 'veil') {
       spawnVeil();
     } else if (ev.kind === 'coins') {
-      spawnCoinLine(ev.lane, ev.n);
+      placeCells(ev.lane, ev.n);
     }
   }
   // Over when every event fired, its enemies are on their last volley (or
@@ -315,77 +348,23 @@ function spawnChunk(run, d) {
 
   // Rare specials
   if (lockedPool.length && run.distance > 250 && run.corruptSpawned < 1 + Math.floor(run.distance / 1500) && rng.chance(0.05 + 0.01 * luck)) {
-    spawnPickup('corrupt', lane, -20, { itemId: rng.pick(lockedPool).id });
-    run.corruptSpawned++;
+    if (placePickup('corrupt', lane, { itemId: rng.pick(lockedPool).id })) run.corruptSpawned++;
     return;
   }
-  if (p.hearts < run.stats.maxHearts && rng.chance(0.05 + 0.01 * luck)) { spawnPickup('heart', lane, -20); return; }
-  if (rng.chance(0.03 + 0.005 * luck)) { spawnPickup('blue', lane, -20); return; }
+  if (p.hearts < run.stats.maxHearts && rng.chance(0.05 + 0.01 * luck)) { placePickup('heart', lane); return; }
+  if (rng.chance(0.03 + 0.005 * luck)) { placePickup('blue', lane); return; }
 
   // Everything dangerous comes from the director; chunks only add coins.
-  if (roll < 0.5) spawnCoinLine(lane, B.COIN_LINE);
+  if (roll < 0.5) { const l = openLane(rng); if (l >= 0) placeCells(l, B.COIN_LINE); }
 }
 
 // ---------------------------------------------------------------------------
-// Events: boss and black market alternate every EVENT_EVERY metres
+// Events: a boss every EVENT_EVERY metres (the end of each district)
 // ---------------------------------------------------------------------------
 function startBoss(run) {
   run.warnT = 2.2;
   sfx.bossWarn();
   setMusic('boss', difficulty(run));
-}
-
-function openShop(run) {
-  run.mode = 'shop';
-  run.toasts = [];
-  if (run.stats.interest) {
-    const gain = Math.min(15 * run.stats.interest, Math.floor(run.coins * 0.15 * run.stats.interest));
-    if (gain > 0) { run.coins += gain; toast(run, `INTEREST +¤${gain}`, '', PAL.acid, 3); }
-  }
-  setMusic('shop');
-  const items = rollItems(run.rng, unlockedItems(run.save), run.stacks, 3, run.stats.luck);
-  const free = run.freeShop;
-  const si = run.shopIndex;
-  run.shopSlots = [
-    ...items.map((it) => ({ kind: 'item', id: it.id, price: free ? 0 : B.itemPrice(it.rarity, si), sold: false })),
-    { kind: 'heal', price: B.healPrice(si), sold: false },
-    { kind: 'blue', price: B.bluePrice(si), sold: false },
-  ];
-  run.freeShop = false;
-  run.shopIndex++;
-}
-
-export function shopBuy(run, i) {
-  const s = run.shopSlots[i];
-  if (!s || s.sold) return;
-  const p = run.player;
-  if (s.kind === 'heal' && p.hearts >= run.stats.maxHearts) { sfx.deny(); return; }
-  if (run.coins < s.price) { sfx.deny(); return; }
-  run.coins -= s.price;
-  s.sold = true;
-  run.rs.purchases++;
-  if (s.kind === 'item') acquire(run, s.id);
-  else if (s.kind === 'heal') { p.hearts++; sfx.heart(); }
-  else if (s.kind === 'blue') { p.blueHearts++; sfx.heart(); }
-  sfx.buy();
-}
-
-export function shopReroll(run) {
-  if (run.coins < run.rerollCost) { sfx.deny(); return; }
-  run.coins -= run.rerollCost;
-  run.rerollCost += B.REROLL_STEP;
-  const items = rollItems(run.rng, unlockedItems(run.save), run.stacks, 3, run.stats.luck);
-  const rest = run.shopSlots.filter((s) => s.kind !== 'item');
-  run.shopSlots = [...items.map((it) => ({ kind: 'item', id: it.id, price: B.itemPrice(it.rarity, run.shopIndex - 1), sold: false })), ...rest];
-  sfx.select();
-}
-
-export function shopLeave(run) {
-  run.mode = 'play';
-  run.nextEvent += EVENT_EVERY;
-  run.pending = null;
-  setMusic('run', difficulty(run));
-  sfx.select();
 }
 
 export function pickItem(run, i) {
@@ -396,11 +375,12 @@ export function pickItem(run, i) {
   run.mode = 'play';
 }
 
+// Skipping a pick patches you up instead (1 heart if hurt).
 export function skipPick(run) {
-  addCoins(run, B.SKIP_COINS);
+  const p = run.player;
+  if (p.hearts < run.stats.maxHearts) { p.hearts++; sfx.heart(); } else sfx.select();
   run.pickChoices = [];
   run.mode = 'play';
-  sfx.coin();
 }
 
 function onBossKilled(run, b) {
@@ -440,6 +420,23 @@ function addCoins(run, n) {
   run.coinFrac -= whole;
   run.coins += whole;
   run.rs.coins += whole;
+  // Cells are experience: fill the bar, queue a pick per level gained.
+  run.xp += whole;
+  while (run.xp >= B.xpNeed(run.level)) {
+    run.xp -= B.xpNeed(run.level);
+    run.level++;
+    run.levelUps++;
+  }
+}
+
+function openPick(run, kind) {
+  const n = 3 + (run.stats.extraChoices || 0);
+  run.pickChoices = rollItems(run.rng, unlockedItems(run.save), run.stacks, n, run.stats.luck);
+  run.pickKind = kind;
+  if (run.pickChoices.length) { run.mode = 'pick'; run.toasts = []; sfx.select(); return true; }
+  // Pool exhausted: a level-up still pays out a heart.
+  if (run.player.hearts < run.stats.maxHearts) run.player.hearts++;
+  return false;
 }
 
 export function onCrit(run) {
@@ -483,10 +480,14 @@ export function updateRun(run, input, dt) {
 
   if (run.pickDelay > 0) {
     run.pickDelay -= dt;
-    if (run.pickDelay <= 0) {
-      run.pickChoices = rollItems(run.rng, unlockedItems(run.save), run.stacks, 3, st.luck);
-      if (run.pickChoices.length) { run.mode = 'pick'; run.toasts = []; sfx.select(); }
-    }
+    if (run.pickDelay <= 0) openPick(run, 'boss');
+  }
+  // Level-ups: open one pick per frame while any are queued (not during the
+  // boss warning, the boss loot, or a dying player).
+  if (run.levelUps > 0 && run.pickDelay <= 0 && run.warnT <= 0 && !p.dead) {
+    run.levelUps--;
+    sfx.synergy();
+    if (openPick(run, 'level')) return;
   }
 
   if (run.slowT > 0) run.slowT -= dt;
@@ -510,17 +511,13 @@ export function updateRun(run, input, dt) {
 
   // Checkpoints
   if (!run.pending && !run.boss && run.distance >= run.nextEvent) {
-    run.pending = run.eventIndex % 2 === 0 ? 'boss' : 'shop';
+    run.pending = 'boss';
     run.sec = null;                 // drop the rest of the section; the event takes over
     run.eventIndex++;
   }
   if (run.pending && !run.boss && run.warnT <= 0) {
     const clear = enemies.length === 0 && enemyBullets.n === 0 && obstacles.length === 0;
-    if (clear) {
-      if (run.pending === 'boss') startBoss(run);
-      else openShop(run);
-      if (run.mode !== 'play') return;
-    }
+    if (clear) startBoss(run);
   }
   if (run.warnT > 0) {
     run.warnT -= dt;

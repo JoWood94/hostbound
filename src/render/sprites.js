@@ -618,17 +618,26 @@ export function obstacleSprite(type, w) {
 // ---------------------------------------------------------------------------
 // Pickups and bullets
 // ---------------------------------------------------------------------------
-export function coinSprite() {
-  return bake('coin', 16, 16, (c) => {
-    const hex = []; for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; hex.push(Math.cos(a) * 6.2, Math.sin(a) * 6.2); }
-    path(c, hex);
-    const g = c.createLinearGradient(-6, -6, 6, 6);
-    g.addColorStop(0, '#eaffb0'); g.addColorStop(0.45, PAL.acid); g.addColorStop(1, '#3e6a08');
+// A cell: wobbly acid-green membrane, darker cytoplasm, a bright nucleus.
+// `k` picks one of a few shapes so a line of cells does not look stamped.
+export function cellSprite(k = 0) {
+  return bake(`cell:${k}`, 18, 18, (c) => {
+    const pts = [];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const r = 6.2 + Math.sin(a * 3 + k * 1.7) * 0.9 + Math.cos(a * 2 + k) * 0.5;
+      pts.push(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    blob(c, pts);
+    const g = c.createRadialGradient(-1.5, -1.5, 0.5, 0, 0, 7);
+    g.addColorStop(0, '#f2ffc8'); g.addColorStop(0.35, PAL.acid); g.addColorStop(1, '#2e5206');
     c.fillStyle = g; c.fill();
-    neon(c, PAL.acid, 1, 5);
-    c.strokeStyle = 'rgba(20,40,0,0.7)'; c.lineWidth = 0.8;
-    c.beginPath(); c.moveTo(-3, 0); c.lineTo(0, 0); c.lineTo(0, -3); c.moveTo(0, 0); c.lineTo(2.5, 2.5); c.stroke();
-    circle(c, 0, 0, 1.2); c.fillStyle = '#1a3000'; c.fill();
+    neon(c, PAL.acid, 1, 6);
+    // organelles
+    c.fillStyle = 'rgba(30,60,0,0.55)';
+    for (const [ox, oy, r] of [[-2.8, 1.6, 1], [2.4, -2.6, 0.8], [2.6, 2.4, 0.7]]) { circle(c, ox, oy, r); c.fill(); }
+    circle(c, 0.4, -0.3, 2.1); c.fillStyle = '#1c3a00'; c.fill();
+    circle(c, -0.1, -0.8, 0.8); c.fillStyle = '#f8ffd8'; c.fill();
   });
 }
 

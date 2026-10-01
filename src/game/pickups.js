@@ -1,26 +1,22 @@
-// Pickups: coins (lines in lanes, Subway style), hearts, blue hearts,
+// Pickups: cells (the currency, and experience: lines in lanes, Subway style), hearts, blue hearts,
 // corrupted items (locked items that unlock if you survive to the next boss).
 import { PAL } from '../render/palette.js';
 import { H } from '../core/canvas.js';
 import { drawGlowDot, ring, text, strokePoly } from '../render/draw.js';
 import { laneX } from './world.js';
-import { coinSprite, heartSprite, drawSprite } from '../render/sprites.js';
+import { cellSprite, heartSprite, drawSprite } from '../render/sprites.js';
 
 export const pickups = [];
 
 export function spawnPickup(kind, lane, y, extra = {}) {
   const x = laneX(lane);
-  pickups.push({ kind, lane, x, y, prevX: x, prevY: y, fly: false, t: 0, dead: false, ...extra });
-}
-
-export function spawnCoinLine(lane, count, startY = -20, gap = 26) {
-  for (let i = 0; i < count; i++) spawnPickup('coin', lane, startY - i * gap);
+  pickups.push({ kind, lane, x, y, prevX: x, prevY: y, fly: false, t: 0, dead: false, v: Math.floor(Math.random() * 3), ...extra });
 }
 
 // Coins dropped by kills fly straight to the player.
 export function dropCoins(x, y, n) {
   for (let i = 0; i < n; i++) {
-    pickups.push({ kind: 'coin', lane: -1, x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20,
+    pickups.push({ kind: 'coin', v: Math.floor(Math.random() * 3), lane: -1, x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20,
       prevX: x, prevY: y, fly: true, t: -i * 0.05, dead: false });
   }
 }
@@ -62,8 +58,9 @@ export function drawPickups(alpha, time) {
     const x = p.prevX + (p.x - p.prevX) * alpha;
     const y = p.prevY + (p.y - p.prevY) * alpha;
     if (p.kind === 'coin') {
-      const spin = Math.cos(time * 5 + y * 0.04);
-      drawSprite(coinSprite(), x, y, { sx: Math.max(0.15, Math.abs(spin)), flash: spin > 0.92 ? 0.6 : 0 });
+      // cells breathe instead of spinning
+      const b = 1 + Math.sin(time * 6 + y * 0.05) * 0.08;
+      drawSprite(cellSprite(p.v), x, y, { sx: b, sy: 2 - b, rot: Math.sin(time * 2 + p.v) * 0.3 });
     } else if (p.kind === 'heart' || p.kind === 'blue') {
       const c = p.kind === 'heart' ? PAL.red : PAL.blue;
       const pulse = 1 + Math.sin(time * 8) * 0.08;

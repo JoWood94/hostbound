@@ -139,12 +139,16 @@ Bomb (pulisce schermo), Time Slow 3 s, Overdrive (sparo x3 per 5 s), Heal.
 - Alcuni item **escludono** altri (Laser esclude Big Shot).
 - Max stack per item (es. Split max 4).
 
-## 8. Shop
+## 8. Livelli (al posto del market)
 
-- Ogni **2 boss** (alternato) appare **negozio** al posto del boss: scroll rallenta, 3-4 slot con item e prezzo in **monete**.
-- Merce: 1 item random (prezzo alto), 1 cura, 1 cuore blu, 1 reroll dei 3 item del prossimo boss.
-- Monete: droppate da nemici, pickup sulla strada. Persistono **solo nella run**.
-- Nessun negozio permanente fuori run: il meta si sblocca giocando, non comprando (pilastro 3).
+- La valuta sono le **cellule** (verdi, membrana e nucleo). Sono **esperienza**: riempiono la barra acida in cima allo schermo.
+- Ogni livello apre una **scelta 1 di 3** dal pool sbloccato, come in Vampire Survivors; il gioco si ferma durante la scelta. Livelli guadagnati insieme si mettono in coda.
+- Cellule per salire dal livello L: `10 + 8·(L−1)` (balance.js `xpNeed`). Un giocatore fermo in corsia arriva al livello 6 in ~4 minuti; chi raccoglie le file sale più in fretta.
+- **SKIP** cura 1 cuore (se manca); se il pool è esaurito il livello cura comunque.
+- Restano il **bottino dei boss** (scelta 1 di 3) e i **chip corrotti** (decriptati battendo il boss).
+- Un boss alla fine di ogni distretto (ogni 1000 m); niente più negozio, niente pause economiche.
+- Item legati alle monete: GREED = più cellule (sali prima), MAGNET le attira, **MUTAGEN** (ex INTEREST, stesso id) aggiunge una scelta a livelli e bottini. L'obiettivo ex "compra 5 cose" (stesso id, sblocca LUCKY CHIP) ora è "raggiungi il livello 8 in una run".
+- **Cellule e ostacoli non si sovrappongono mai**: entrambi scorrono alla velocità della pista, quindi chi compare per secondo controlla l'altro; nessuna cellula entro 46 px da un muro nella sua corsia. Le cellule sopra un filo arancio sono permesse apposta: le prendi saltando (rischio). Le file sparse scelgono una corsia senza muri in arrivo.
 
 ## 9. Meta progressione (roguelike unlock)
 

@@ -14,11 +14,11 @@ export const BOARDS = [
     desc: '5 hearts, starts with SLUG. Too heavy to jump, rams through low barriers.',
     apply: (s) => { s.maxHearts += 2; s.speed -= 0.15; s.canJump = false; s.breakLow = true; }, start: ['slug'] },
   { id: 'viral', name: 'VIRAL', color: PAL.acid, unlock: 'toxin_kills_60',
-    desc: '3 hearts, bio-ship, starts with TOXIN. Poisoned enemies drop double coins.',
+    desc: '3 hearts, bio-ship, starts with TOXIN. Poisoned enemies drop double cells.',
     apply: (s) => { s.toxinCoins = true; }, start: ['toxin'] },
   { id: 'glitch', name: 'GLITCH', color: PAL.magenta, unlock: 'discover_18',
-    desc: '1 heart + 3 blue, LUCK +2. Starts with 2 random items. First shop is free.',
-    apply: (s) => { s.maxHearts = 1; s.blueStart = 3; s.luck += 2; }, start: ['?', '?'], freeShop: true },
+    desc: '1 heart + 3 blue, LUCK +2. Starts with 2 random items.',
+    apply: (s) => { s.maxHearts = 1; s.blueStart = 3; s.luck += 2; }, start: ['?', '?'] },
 ];
 
 export const BOARD_BY_ID = Object.fromEntries(BOARDS.map((b) => [b.id, b]));

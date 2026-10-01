@@ -9,8 +9,8 @@ import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/b
 import { drawPlayer, drawPlayerDeath } from './game/player.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
-import { drawObstacles, spawnObstacle } from './game/obstacles.js';
-import { drawPickups } from './game/pickups.js';
+import { drawObstacles, spawnObstacle, obstacles } from './game/obstacles.js';
+import { drawPickups, pickups } from './game/pickups.js';
 import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.js';
 import { drawWeaponFx, drawWingmen } from './game/weapon.js';
 import { line as drawLine, drawGlowDot } from './render/draw.js';
@@ -19,9 +19,9 @@ import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
 import { ITEM_BY_ID } from './game/items.js';
 import { unlockedBoards } from './game/achievements.js';
-import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
+import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick } from './game/run.js';
 import { drawHud } from './ui/hud.js';
-import { drawMenu, drawArchive, drawPick, drawShop, drawPause, drawDead } from './ui/screens.js';
+import { drawMenu, drawArchive, drawPick, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
 import { setHaptics, buzz } from './core/haptics.js';
 import { startMusic, setMusic } from './audio/music.js';
@@ -129,11 +129,6 @@ function update(dt) {
       if (id && id.startsWith('pick:')) pickItem(run, Number(id.slice(5)));
       else if (id === 'skip') skipPick(run);
       break;
-    case 'shop':
-      if (id && id.startsWith('buy:')) shopBuy(run, Number(id.slice(4)));
-      else if (id === 'reroll') shopReroll(run);
-      else if (id === 'leave') shopLeave(run);
-      break;
     case 'pause':
       if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; sfx.select(); }
       else if (id === 'quit') { run.player.dead = true; endRun(run); run.deadT = 0.8; }
@@ -201,7 +196,6 @@ function render(alpha) {
     drawBossBar(r.boss);
     drawHud(r);
     if (r.mode === 'pick') centred(() => drawPick(r));
-    else if (r.mode === 'shop') centred(() => drawShop(r));
     else if (r.mode === 'pause') centred(() => drawPause(r));
     else if (r.mode === 'dead') centred(() => drawDead(r));
   }
@@ -231,6 +225,8 @@ if (new URLSearchParams(location.search).has('debug')) {
     acquire: (id) => acquire(run, id),
     spawn: (type, lane, elite = false) => spawnEnemy(type, lane, 1, { chance: () => Math.random() < 0.5 }, { elite }),
     get enemies() { return enemies; },
+    get obstacles() { return obstacles; },
+    get pickups() { return pickups; },
     obstacle: (type, lane, y = 200) => spawnObstacle(type, lane, y),
     boss: (def) => { run.boss = makeBoss(0, def, 1); run.nextEvent = 1e9; },
     covered: () => [...coveredLanes()],

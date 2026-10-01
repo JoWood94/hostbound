@@ -16,7 +16,6 @@ import { sheet, drawCell } from '../render/images.js';
 const MENU_SYM = sheet('symbiote', 128);
 import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
-import { SKIP_COINS } from '../game/balance.js';
 
 const VERSION = 'v1.3';
 
@@ -25,14 +24,14 @@ function dim(a = 0.78) {
   ctx.fillRect(0, -UI_OFFSET, W, H);   // screens are drawn shifted by UI_OFFSET: cover the whole canvas
 }
 
-function itemCard(id, x, y, w, h, it, { price = null, sold = false, afford = true, run = null } = {}) {
+function itemCard(id, x, y, w, h, it, { run = null } = {}) {
   area(id, x, y, w, h);
   const rc = RARITY[it.rarity].color;
   const cc = CAT_COLOR[it.cat];
-  const hints = run && !sold ? offerHints(it.id, run.stacks, run.save, run.board) : [];
+  const hints = run ? offerHints(it.id, run.stacks, run.save, run.board) : [];
   ctx.fillStyle = 'rgba(20,2,15,0.95)';
   ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = sold ? PAL.dim : rc;
+  ctx.strokeStyle = rc;
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
   // A resonating item gets a pulsing magenta inner frame.
@@ -46,10 +45,10 @@ function itemCard(id, x, y, w, h, it, { price = null, sold = false, afford = tru
   ctx.strokeStyle = cc;
   ctx.strokeRect(x + 10, y + 10, 40, 40);
   text(it.code, x + 30, y + 30, { color: cc, size: 12, align: 'center' });
-  text(it.name, x + 60, y + 18, { color: sold ? PAL.dim : rc, size: 14 });
+  text(it.name, x + 60, y + 18, { color: rc, size: 14 });
   text(`${RARITY[it.rarity].name} · ${it.cat === 'mode' ? 'SHOT' : it.cat.toUpperCase()}`, x + 60, y + 34, { color: PAL.mute, size: 8 });
   // Stat arrows, computed by actually applying the item to this build.
-  if (run && !sold) {
+  if (run) {
     let sx = x + w - 10;
     for (const d of statDelta(run.board, run.stacks, it.id).reverse()) {
       const label = `${d.label}${d.dir > 0 ? '▲' : '▼'}`;
@@ -59,10 +58,7 @@ function itemCard(id, x, y, w, h, it, { price = null, sold = false, afford = tru
   }
   const lines = wrap(it.desc, Math.floor((w - 70) / 5.6));
   const maxLines = hints.length ? 2 : 3;
-  lines.slice(0, maxLines).forEach((l, i) => text(l, x + 60, y + 50 + i * 12, { color: PAL.white, size: 9, weight: 'normal', alpha: sold ? 0.4 : 0.9 }));
-  if (price !== null) {
-    text(sold ? 'SOLD' : price === 0 ? 'FREE' : `¤${price}`, x + w - 10, y + 18, { color: sold ? PAL.dim : afford ? PAL.acid : PAL.red, size: 14, align: 'right' });
-  }
+  lines.slice(0, maxLines).forEach((l, i) => text(l, x + 60, y + 50 + i * 12, { color: PAL.white, size: 9, weight: 'normal', alpha: 0.9 }));
   // Combo hint: vague until discovered, explicit afterwards.
   if (hints.length) {
     const known = hints.find((h) => h.known);
@@ -257,35 +253,14 @@ export function drawArchive(save, tab, selected, page = 0) {
 // ---------------------------------------------------------------------------
 export function drawPick(run) {
   dim(0.82);
-  text('BOSS DOWN', W / 2, 62, { color: PAL.acid, size: 22, align: 'center' });
-  text('CHOOSE ONE UPGRADE', W / 2, 88, { color: PAL.white, size: 11, align: 'center' });
-  run.pickChoices.forEach((it, i) => itemCard(`pick:${i}`, 20, 112 + i * 120, W - 40, 108, it, { run }));
-  button('skip', 80, 486, W - 160, 40, 'SKIP', { color: PAL.mute, size: 12, sub: `+${SKIP_COINS} coins` });
-}
-
-export function drawShop(run) {
-  dim(0.86);
-  text('BLACK MARKET', W / 2, 36, { color: PAL.acid, size: 22, align: 'center' });
-  text(`¤${run.coins}`, W / 2, 60, { color: PAL.acid, size: 14, align: 'center' });
-  const p = run.player;
-  let y = 76;
-  run.shopSlots.forEach((s, i) => {
-    if (s.kind !== 'item') return;
-    itemCard(`buy:${i}`, 16, y, W - 32, 92, ITEM_BY_ID[s.id], { price: s.price, sold: s.sold, afford: run.coins >= s.price, run });
-    y += 98;
-  });
-  const half = (W - 40) / 2;
-  run.shopSlots.forEach((s, i) => {
-    if (s.kind === 'heal') {
-      const full = p.hearts >= run.stats.maxHearts;
-      button(`buy:${i}`, 16, y + 4, half, 50, s.sold ? 'SOLD' : 'REPAIR', { color: PAL.red, disabled: s.sold || full, sub: full ? 'hearts full' : `+1 heart  ¤${s.price}` });
-    }
-    if (s.kind === 'blue') {
-      button(`buy:${i}`, 24 + half, y + 4, half, 50, s.sold ? 'SOLD' : 'ICE', { color: PAL.blue, disabled: s.sold, sub: `+1 blue  ¤${s.price}` });
-    }
-  });
-  button('reroll', 16, y + 62, W - 32, 36, `REROLL ITEMS  ¤${run.rerollCost}`, { color: PAL.cyan, size: 12, disabled: run.coins < run.rerollCost });
-  button('leave', 16, y + 106, W - 32, 42, 'LEAVE', { color: PAL.white, size: 16 });
+  const lvl = run.pickKind === 'level';
+  text(lvl ? `LEVEL ${run.level}` : 'BOSS DOWN', W / 2, 62, { color: lvl ? PAL.acid : PAL.magenta, size: 22, align: 'center', font: 'display' });
+  text(lvl ? 'THE MASS MUTATES · CHOOSE ONE' : 'CHOOSE ONE UPGRADE', W / 2, 88, { color: PAL.white, size: 11, align: 'center' });
+  const n = run.pickChoices.length;
+  const h = n > 3 ? 88 : 108, step = h + (n > 3 ? 8 : 12);
+  run.pickChoices.forEach((it, i) => itemCard(`pick:${i}`, 20, 108 + i * step, W - 40, h, it, { run }));
+  const full = run.player.hearts >= run.stats.maxHearts;
+  button('skip', 80, 108 + n * step + 6, W - 160, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
 }
 
 export function drawPause(run) {
@@ -332,7 +307,7 @@ export function drawDead(run) {
   if (run.daily) text(`DAILY ${run.dailyKey}${run.newDailyBest ? ' · NEW DAILY BEST' : ''}`, W / 2, 134, { color: PAL.magenta, size: 9, align: 'center' });
   if (run.newBest) text('NEW BEST', W / 2, 186, { color: PAL.acid, size: 12, align: 'center', alpha: 0.6 + Math.sin(run.deadT * 6) * 0.4 });
   const rs = run.rs;
-  text(`KILLS ${rs.kills}   BOSSES ${rs.bosses}   ¤${rs.coins}`, W / 2, 212, { color: PAL.white, size: 11, align: 'center' });
+  text(`KILLS ${rs.kills}   BOSSES ${rs.bosses}   LV ${run.level}`, W / 2, 212, { color: PAL.white, size: 11, align: 'center' });
   text(`BEST ${run.save.best}m`, W / 2, 230, { color: PAL.mute, size: 10, align: 'center' });
   if (run.newUnlocks.length) {
     text('UNLOCKED', W / 2, 264, { color: PAL.acid, size: 12, align: 'center' });

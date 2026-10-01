@@ -22,14 +22,11 @@ export const timeMul = (d) => 1 + Math.min(0.65, Math.floor(d / 2.5) * 0.13);
 export const bulletSpeed = (d) => 270 + Math.min(150, Math.floor(d / 2.5) * 30);
 
 
-// Elites: tougher, faster, one extra volley, more coins. Start around 1000 m.
+// Elites: tougher, faster, one extra volley, more cells. Start around 1000 m.
 export const eliteChance = (d) => Math.max(0, Math.min(0.4, (d - 2.5) * 0.06));
 
 // Economy
 export const COIN_LINE = 4;
-export const itemPrice = (rarity, shopIndex) => Math.round([22, 36, 55][rarity] * (1 + 0.3 * shopIndex));
-export const healPrice = (shopIndex) => Math.round(12 * (1 + 0.3 * shopIndex));
-export const bluePrice = (shopIndex) => Math.round(16 * (1 + 0.3 * shopIndex));
-export const REROLL_BASE = 8;
-export const REROLL_STEP = 5;
-export const SKIP_COINS = 8;
+// Levels: cells (the currency) are experience. Cells needed to go from
+// `level` to the next: quick early level-ups, then a steady climb.
+export const xpNeed = (level) => 10 + 8 * (level - 1);

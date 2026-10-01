@@ -9,7 +9,7 @@ let timer = null;
 let step = 0;
 let nextTime = 0;
 let bpm = 112;
-let mode = 'run';     // 'menu' | 'run' | 'boss' | 'shop'
+let mode = 'run';     // 'menu' | 'run' | 'boss'
 let intensity = 0;    // 0..1, adds layers
 let bar = 0;
 
@@ -129,12 +129,6 @@ function scheduleStep(t, s) {
     if (s % 4 === 2) hat(t, false, 0.05);
     return;
   }
-  if (mode === 'shop') {
-    if (s === 0) pad(t, root, sixteenth * 16);
-    if (s % 2 === 0) lead(t, ARP[(s / 2) % ARP.length] + root, sixteenth * 1.5, 0.03);
-    if (s % 8 === 0) kick(t);
-    return;
-  }
   const boss = mode === 'boss';
   // Drums
   if (s % 4 === 0) kick(t);
@@ -172,7 +166,7 @@ export function startMusic() {
 
 export function setMusic(newMode, difficulty = 0) {
   if (newMode !== mode) { mode = newMode; step = 0; }
-  const base = mode === 'menu' ? 96 : mode === 'shop' ? 100 : mode === 'boss' ? 138 : 112;
+  const base = mode === 'menu' ? 96 : mode === 'boss' ? 138 : 112;
   bpm = mode === 'run' ? Math.min(150, base + difficulty * 5) : base;
   intensity = Math.min(1, difficulty / 6);
 }

@@ -36,7 +36,7 @@ export function baseStats() {
     // misc
     adrenaline: 0, repair: false, damageMul: 1, toxinCoins: false,
     // movement-driven
-    wingmen: 0, groundPound: 0, slipstream: 0, ambush: 0, chain: 0, leech: 0, bloodPact: 0, interest: 0,
+    wingmen: 0, groundPound: 0, slipstream: 0, ambush: 0, chain: 0, leech: 0, bloodPact: 0, extraChoices: 0,
     aftershock: false, squadron: false, driftKing: false, domino: false, counter: false,
     // Shot engine: shot modifiers COMPOSE. The carrier is what you fire
     // (beam > rail > rocket > bolt); the rest reshape it.
@@ -110,10 +110,10 @@ export const ITEMS = [
 
   // ---- economy ----
   { id: 'magnet', name: 'MAGNET', code: 'MAG', cat: 'economy', rarity: 0, max: 2, unlock: null,
-    desc: 'Pull coins from neighbouring lanes. Stack: 2 lanes.',
+    desc: 'Pull cells from neighbouring lanes. Stack: 2 lanes.',
     apply: (s, n) => { s.magnet += n; } },
   { id: 'greed', name: 'GREED', code: 'GRD', cat: 'economy', rarity: 0, max: 2, unlock: null,
-    desc: '+35% coins.',
+    desc: '+35% cells: level up faster.',
     apply: (s, n) => { s.coinMul += 0.35 * n; } },
   { id: 'lucky', name: 'LUCKY CHIP', code: 'LCK', cat: 'economy', rarity: 1, max: 2, unlock: 'buy_5',
     desc: 'LUCK +2.',
@@ -155,9 +155,9 @@ export const ITEMS = [
   { id: 'blood', name: 'BLOOD PACT', code: 'BLD', cat: 'risk', rarity: 1, max: 2, unlock: 'boss_5',
     desc: '+25% damage for every red heart you are missing.',
     apply: (s, n) => { s.bloodPact += n; } },
-  { id: 'interest', name: 'INTEREST', code: 'INT', cat: 'economy', rarity: 0, max: 2, unlock: 'coins_run_150',
-    desc: 'Entering a market pays 15% of your coins (max 15).',
-    apply: (s, n) => { s.interest += n; } },
+  { id: 'interest', name: 'MUTAGEN', code: 'MUT', cat: 'economy', rarity: 1, max: 2, unlock: 'coins_run_150',
+    desc: 'Level-ups and boss loot offer one more choice. Stack: two more.',
+    apply: (s, n) => { s.extraChoices += n; } },
 
   // ---- shot modifiers: they all combine with each other ----
   { id: 'laser', name: 'LASER', code: 'LSR', cat: 'mode', rarity: 1, max: 1, unlock: null,
@@ -210,7 +210,7 @@ export const SYNERGIES = [
     apply: (s) => { s.orbitals += 1; } },
   { id: 'burst', name: 'BURST FIRE', req: ['rapid', 'echo'], desc: 'Echo every 3rd shot.',
     apply: (s) => { s.echo = 3; } },
-  { id: 'jackpot', name: 'JACKPOT', req: ['greed', 'lucky'], desc: 'Crits drop coins.',
+  { id: 'jackpot', name: 'JACKPOT', req: ['greed', 'lucky'], desc: 'Crits drop cells.',
     apply: (s) => { s.critCoins = true; } },
 ];
 

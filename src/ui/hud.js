@@ -1,6 +1,7 @@
 import { ctx, W, H, SAFE_TOP, SAFE_BOTTOM } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { text, fillPoly, strokePoly, ring } from '../render/draw.js';
+import { text, fillPoly, strokePoly, ring, drawGlowDot } from '../render/draw.js';
+import { xpNeed } from '../game/balance.js';
 import { ITEM_BY_ID, CAT_COLOR } from '../game/items.js';
 
 // y follows the live safe area (it can settle after launch).
@@ -15,18 +16,26 @@ export function heart(x, y, color, filled, s = 1) {
 export function drawHud(run) {
   const p = run.player;
   const st = run.stats;
-  const y = 18 + SAFE_TOP;
+  const y = 20 + SAFE_TOP;
   let hx = 14;
   for (let i = 0; i < st.maxHearts; i++) { heart(hx, y, PAL.red, i < p.hearts); hx += 20; }
   for (let i = 0; i < p.blueHearts; i++) { heart(hx, y, PAL.blue, true); hx += 20; }
   for (let i = 0; i < st.barrier; i++) ring(14 + i * 12, y + 18, 4, PAL.blue, 2, i < p.shield ? 1 : 0.25);
 
+  // Experience: cells fill a thin acid bar across the very top, VS style.
+  const need = xpNeed(run.level);
+  const bx = 8, bw = W - 16, by = SAFE_TOP + 2;
+  ctx.fillStyle = 'rgba(198,255,26,0.12)';
+  ctx.fillRect(bx, by, bw, 4);
+  ctx.fillStyle = PAL.acid;
+  ctx.fillRect(bx, by, bw * Math.min(1, run.xp / need), 4);
+  if (run.xp / need > 0.85) drawGlowDot(bx + bw * Math.min(1, run.xp / need), by + 2, PAL.acid, 5, 0.7);
+
   text(`${Math.floor(run.distance)}m`, W - 10, y, { color: PAL.cyan, size: 16, align: 'right' });
-  text(`¤${run.coins}`, W - 10, y + 16, { color: PAL.acid, size: 12, align: 'right' });
+  text(`LV ${run.level}`, W - 10, y + 16, { color: PAL.acid, size: 12, align: 'right' });
   if (!run.boss && run.warnT <= 0) {
     const left = Math.max(0, Math.ceil(run.nextEvent - run.distance));
-    const next = run.eventIndex % 2 === 0 ? 'BOSS' : 'MARKET';
-    text(run.pending ? `${next} INCOMING` : `${next} ${left}m`, W - 10, y + 30, { color: run.eventIndex % 2 === 0 ? PAL.magenta : PAL.acid, size: 9, align: 'right', alpha: 0.8 });
+    text(run.pending ? 'BOSS INCOMING' : `BOSS ${left}m`, W - 10, y + 30, { color: PAL.magenta, size: 9, align: 'right', alpha: 0.8 });
   }
 
   // Pause button
