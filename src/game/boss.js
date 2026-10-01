@@ -5,7 +5,7 @@ import { ctx, W, H, SAFE_TOP } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
 import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
-import { look } from './enemies.js';
+import { look, glowLane } from './enemies.js';
 import { sheet, drawCell } from '../render/images.js';
 
 // Generated boss sheet: 4x5 cells of 256x128, cropped to content by
@@ -232,12 +232,7 @@ export function drawBossTelegraph(b) {
     const c = p.kind === 'low' ? PAL.orange : p.kind === 'summon' ? PAL.magenta : b.color;
     for (const l of p.lanes) {
       const x = laneX(l);
-      const w = LANE_W - 8;
-      ctx.globalAlpha = (0.05 + prog * 0.14) * (p.kind === 'beam' ? 1.6 : 1);
-      ctx.fillStyle = c;
-      ctx.fillRect(x - w / 2, b.y, w, H - b.y);
-      ctx.globalAlpha = 1;
-      line(x, b.y, x, H, c, 1 + prog * 2, 0.2 + prog * 0.4);
+      glowLane(l, c, (0.25 + prog * 0.75) * (p.kind === 'beam' ? 1.3 : 1));
       const cy = H - 22;
       if (p.kind === 'low') strokePoly([x - 8, cy + 4, x, cy - 6, x + 8, cy + 4], c, 2.5, false);
       else if (p.kind === 'summon') { line(x - 6, cy, x + 6, cy, c, 2.5); line(x, cy - 6, x, cy + 6, c, 2.5); }

@@ -264,7 +264,37 @@ export function damageEnemy(e, dmg) {
 }
 
 // Glowing lane strips for telegraphed shots, under everything else.
+// Lights a whole lane, top to bottom: a smooth vertical gradient (stronger
+// toward the player, who has to read it) and glowing edges. One call per lane
+// per frame: callers dedupe, so overlapping warnings never stack into steps.
+export function glowLane(l, color, a) {
+  const x = laneX(l) - LANE_W / 2 + 3, w = LANE_W - 6;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, rgbaHex(color, a * 0.08));
+  g.addColorStop(0.55, rgbaHex(color, a * 0.2));
+  g.addColorStop(1, rgbaHex(color, a * 0.32));
+  ctx.fillStyle = g;
+  ctx.fillRect(x, 0, w, H);
+  line(x, 0, x, H, color, 1.5, a * 0.75);
+  line(x + w, 0, x + w, H, color, 1.5, a * 0.75);
+}
+function rgbaHex(hex, a) {
+  let h = hex.slice(1);
+  if (h.length === 3) h = h.replace(/./g, '$&$&');
+  const n = parseInt(h, 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, a))})`;
+}
+
 export function drawTelegraphs() {
+  // Strongest warning per lane wins; drawn once each.
+  const lit = new Map();
+  for (const e of enemies) {
+    if (e.type === 'boss' || !e.telegraphLanes.length) continue;
+    const prog = e.state === 'telegraph' ? Math.min(1, e.stateT / e.T.telegraph) : 1;
+    const a = 0.25 + prog * 0.75;
+    for (const l of e.telegraphLanes) if (!lit.has(l) || lit.get(l).a < a) lit.set(l, { a, color: e.T.color });
+  }
+  for (const [l, { a, color }] of lit) glowLane(l, color, a);
   for (const e of enemies) {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
     const prog = e.state === 'telegraph' ? Math.min(1, e.stateT / e.T.telegraph) : 1;
@@ -274,10 +304,6 @@ export function drawTelegraphs() {
     for (const l of e.telegraphLanes) {
       const low = lowLanes.has(l);
       const x = laneX(l);
-      const w = LANE_W - 8;
-      // Soft lane fill
-      ctxFill(x - w / 2, e.y, w, H - e.y, e.T.color, a * 0.18);
-      line(x, e.y, x, H, e.T.color, 1 + prog * 2, a * 0.6);
       // Warning glyph at bottom: chevron = move, up-arrow = jump
       const cy = H - 22;
       if (low) strokePoly([x - 8, cy + 4, x, cy - 6, x + 8, cy + 4], e.T.color, 2.5, false);
