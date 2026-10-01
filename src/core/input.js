@@ -28,9 +28,6 @@ function onDown(e) {
   startT = performance.now();
   swiped = false;
   state.down = true;
-  // iOS haptics only fire inside an activation event (pointerdown/up), not
-  // pointermove: tick on touch-down so every swipe and tap is felt.
-  gestureTick();
 }
 
 function detectSwipe(p) {
@@ -65,6 +62,9 @@ canvas.addEventListener('pointermove', onMove);
 canvas.addEventListener('pointerup', onUp);
 canvas.addEventListener('pointercancel', onUp);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+// iOS haptics: WebKit treats touchend (not pointerdown/move) as the user
+// activation that may toggle the hidden switch, so tick there.
+canvas.addEventListener('touchend', gestureTick, { passive: true });
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;

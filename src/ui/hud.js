@@ -3,7 +3,8 @@ import { PAL } from '../render/palette.js';
 import { text, fillPoly, strokePoly, ring } from '../render/draw.js';
 import { ITEM_BY_ID, CAT_COLOR } from '../game/items.js';
 
-export const ACTIVE_BTN = { x: 8, y: H - 82 - SAFE_BOTTOM, w: 74, h: 46 };
+// y follows the live safe area (it can settle after launch).
+export const ACTIVE_BTN = { x: 8, get y() { return H - 82 - SAFE_BOTTOM; }, w: 74, h: 46 };
 
 export function heart(x, y, color, filled, s = 1) {
   const pts = [x, y - 4 * s, x + 5 * s, y - 8 * s, x + 9 * s, y - 4 * s, x, y + 6 * s, x - 9 * s, y - 4 * s, x - 5 * s, y - 8 * s];

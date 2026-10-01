@@ -36,9 +36,17 @@ function insetPx(side) {
   d.remove();
   return v;
 }
-const pxToLogical = H / VP.h;
-export const SAFE_TOP = Math.round(insetPx('top') * pxToLogical);
-export const SAFE_BOTTOM = Math.round(insetPx('bottom') * pxToLogical);
+// Live bindings, re-measured on every resize: on iOS the insets can read 0 at
+// launch and only settle a moment later. Portrait insets never shrink, so keep
+// the largest value seen (a late 0 must not pull the HUD back under the notch).
+export let SAFE_TOP = 0;
+export let SAFE_BOTTOM = 0;
+function measureSafe(vh) {
+  const k = H / (vh || VP.h);
+  SAFE_TOP = Math.max(SAFE_TOP, Math.round(insetPx('top') * k));
+  SAFE_BOTTOM = Math.max(SAFE_BOTTOM, Math.round(insetPx('bottom') * k));
+}
+measureSafe(VP.h);
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -48,6 +56,7 @@ let dpr = 1;
 
 export function resize() {
   const { w: vw, h: vh } = viewport();
+  measureSafe(vh);
   sx = vw / W; sy = vh / H;
   // H was picked from this aspect ratio, so sx≈sy and the canvas fills the
   // screen edge to edge. If the viewport changed a lot since startup (rotation,
@@ -81,6 +90,8 @@ window.addEventListener('resize', resize);
 window.addEventListener('pageshow', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 300));
 setTimeout(resize, 300);
+setTimeout(resize, 1200);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) resize(); });
 resize();
 
 export { canvas, ctx };

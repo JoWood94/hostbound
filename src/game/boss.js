@@ -22,7 +22,7 @@ import { bossHp, bossSpeed } from './balance.js';
 
 const ALL = [0, 1, 2, 3, 4];
 // Below the status bar and the health bar (name + bar end ~66 px under SAFE_TOP).
-const HOLD_Y = 150 + SAFE_TOP;
+const holdY = () => 150 + SAFE_TOP;
 
 // Attack parts: volley (n shots per lane), sweep (lanes in order), low (jumpable wave),
 // beam (dense stream for `dur`), summon (drones in lanes).
@@ -195,7 +195,7 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
   switch (b.state) {
     case 'enter':
       b.y += 90 * dt;
-      if (b.y >= HOLD_Y) { b.y = HOLD_Y; b.state = 'rest'; b.stateT = 0.3; }
+      if (b.y >= holdY()) { b.y = holdY(); b.state = 'rest'; b.stateT = 0.3; }
       break;
     case 'rest':
       if (b.stateT >= a.rest / m) {
