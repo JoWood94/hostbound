@@ -35,7 +35,7 @@ export function drawCorpses() {
 }
 
 // Where creature eyes look (the player's ship), set each frame by main.js.
-export const look = { x: 180, y: 500 };
+export const look = { x: 180, y: 500, lane: 2 };
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
@@ -100,7 +100,7 @@ export const TYPES = {
   },
   // Fires every lane except its own. Teaches: get under it.
   wall: {
-    color: PAL.violet, r: 14, hp: 7, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2500, wide: true,
+    color: PAL.violet, r: 14, hp: 7, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2500, wide: true, solo: true,
     // From ~1600 m it squeezes in rhythm: everything but its lane, then ONLY its
     // lane, then everything else again. Step under it, out, back in.
     steps: (e) => (e.d >= 4
@@ -116,6 +116,40 @@ export const TYPES = {
         ? [0, 1, 2].map((i) => ({ lanes: [0, 1, 2, 3, 4], delay: i < 2 ? 0.55 : 0, low: true }))
         : [{ lanes: [0, 1, 2, 3, 4], delay: 0, low: true }])
       : [0, 1, 2].map((i) => ({ lanes: [e.lane - 2, e.lane + 2].filter((l) => l >= 0 && l < LANES), delay: i < 2 ? 0.14 : 0 }))),
+  },
+};
+
+// --- second wave of the Brood: rhythm teachers -----------------------------
+// Lays three eggs down its own lane on a beat: jump, jump, jump (or step out).
+TYPES.brooder = {
+  color: '#ffd23f', r: 12, hp: 4, holdY: 150, telegraph: 0.8, rest: 1.6, volleys: 2, unlockAt: 700,
+  steps: (e) => [0, 1, 2].map((i) => ({ lanes: [e.lane], delay: i < 2 ? 0.42 : 0, low: true })),
+};
+// Locks onto your lane (its own or a neighbour, never further) when the
+// telegraph starts, then fires two fast needles there. Move after the lock.
+TYPES.stalker = {
+  color: '#ff5c8a', r: 10, hp: 3, holdY: 170, telegraph: 0.75, rest: 1.3, volleys: 3, unlockAt: 1200,
+  steps: (e) => {
+    const t = Math.max(0, e.lane - 1, Math.min(e.lane + 1, e.target ?? e.lane, LANES - 1));
+    return [{ lanes: [t], delay: 0.12, fast: true }, { lanes: [t], delay: 0, fast: true }];
+  },
+};
+// Heartbeat: its lane, then both neighbours, on a steady pulse. Dance in and
+// out of the gap, or stay two lanes away.
+TYPES.throb = {
+  color: PAL.blue, r: 13, hp: 7, holdY: 130, telegraph: 0.9, rest: 1.8, volleys: 2, unlockAt: 1800, wide: true,
+  steps: (e) => {
+    const side = [e.lane - 1, e.lane + 1].filter((l) => l >= 0 && l < LANES);
+    return [[e.lane], side, [e.lane], side].map((lanes, i) => ({ lanes, delay: i < 3 ? 0.4 : 0 }));
+  },
+};
+// Weaves a moving hole through its three lanes, one row per beat.
+TYPES.weaver = {
+  color: '#ff9cf0', r: 13, hp: 8, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2300, wide: true,
+  steps: (e) => {
+    const win = around(e);
+    const path = e.dir > 0 ? [e.lane - 1, e.lane, e.lane + 1, e.lane] : [e.lane + 1, e.lane, e.lane - 1, e.lane];
+    return path.map((h, i) => ({ lanes: win.filter((l) => l !== h), delay: i < 3 ? 0.38 : 0 }));
   },
 };
 
@@ -152,7 +186,7 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
 }
 
 function fire(e, st, d) {
-  const s = bulletSpeed(d);
+  const s = bulletSpeed(d) * (st.fast ? 1.45 : 1);
   for (const l of st.lanes) {
     if (st.low) spawn(enemyBullets, laneX(l), e.y + 12, 0, s * 0.8, 10, 1, LOW);
     else spawn(enemyBullets, laneX(l), e.y + 12, 0, s, 5, 1, 0);
@@ -160,6 +194,7 @@ function fire(e, st, d) {
 }
 
 function startTelegraph(e) {
+  e.target = look.lane;            // target lock (stalker), resolved once per volley
   e.steps = e.T.steps(e);
   e.state = 'telegraph';
   e.stateT = 0;

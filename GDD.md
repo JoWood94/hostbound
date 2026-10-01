@@ -55,7 +55,7 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 - **Laser gate**: si accende/spegne a ritmo, passa nel buio.
 - **Muro pieno con varco**: 1 corsia libera, si vede da lontano.
 - **Velo (squarcio)**: tenda ciano su tutte e 5 le corsie, non si schiva né si salta: solo **phase**. Mai due entro 140 m (il phase è sempre carico), suggerimento PHASE ▼ mezzo secondo prima.
-- Linguaggio colori: **arancio = salta**, **magenta = schiva**, **ciano = phase**. Arte: rocce/asteroidi generati, filtrati allo stile pixel del gioco; gli ostacoli bassi hanno un tubo neon arancio.
+- Linguaggio colori: **arancio = salta**, **magenta = schiva**, **ciano = phase**. Tutti e tre sono disegnati in codice come una famiglia: fili di plasma tesi nella corrente. Basso = filo arancio sottile con scintille ed emettitori; muro = nodo magenta denso con due piloni e nucleo rosso; velo = tenda ciano su tutta la pista.
 
 ### Nemici (bullet hell su corsie)
 Regola d'oro: **ogni nemico ha UN pattern fisso e un telegraph** (la corsia che sta per colpire si illumina prima dello sparo). Il giocatore impara il nemico, non il caso. La difficoltà scala cadenza/velocità, mai il pattern.
@@ -67,7 +67,16 @@ Ogni nemico insegna una mossa:
 | **Drone** | 0 m | raffica 3 nella sua corsia | cambia corsia |
 | **Sweeper** | 500 m | spazza 3 corsie adiacenti in sequenza, freccia mostra la direzione | entra nella corsia già spazzata |
 | **Crusher** | 1000 m | onda **bassa** su 3 corsie adiacenti | salta, o spostati di 2 corsie |
-| Hopper, Wall, Kamikaze, Tank | dopo | vedi backlog | — |
+| **Brooder** | 700 m | tre uova (onde basse) nella sua corsia, a tempo | salti ritmici, o esci dalla corsia |
+| **Hopper** | 1500 m | spara e salta di corsia, freccia mostra la prossima | seguilo con l'occhio, non col corpo |
+| **Stalker** | 1200 m | aggancia la tua corsia (al massimo ±1 dalla sua) e spara 2 aghi veloci | muoviti dopo l'aggancio |
+| **Throb** | 1800 m | battito: sua corsia, poi le due vicine, ×2 | danza dentro/fuori dal varco |
+| **Kamikaze** | 2000 m | illumina la corsia e ci si tuffa | lascia la corsia o uccidilo prima |
+| **Weaver** | 2300 m | tesse un varco che si sposta nelle sue 3 corsie, una fila per battuta | segui il varco |
+| **Wall** | 2500 m | tutte le corsie tranne la sua (da 1600 m: dentro, fuori, dentro a tempo) | mettiti sotto di lui |
+| **Tank** | 3000 m | onda bassa su tutto alternata a colpi a 2 corsie (tardi: rullo di 3 onde) | salta e spostati |
+
+Nemici "larghi" (Crusher, Throb, Weaver, Wall, Tank) entrano solo a schermo libero: metà delle volte lo spawner aspetta che si svuoti (mini-duello), metà li sostituisce con un nemico stretto. Senza questa regola, a fine run non uscivano quasi mai.
 
 Spawner: 1 nemico attivo fino a 800 m, 2 fino a 2000 m, poi 3. Nemici sempre ad almeno 2 corsie di distanza. Sweeper e Crusher solo se soli a schermo. Ogni nemico spara 2 volée e se ne va (max 4 in late game). Difficoltà scala al massimo +40% di cadenza.
 

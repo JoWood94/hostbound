@@ -1,19 +1,15 @@
 // Runner obstacles, placed in lanes and scrolling with the world.
-//   low  : knee-high barrier, jump over it (orange, like low waves)
-//   wall : full-height block, change lane (magenta)
+//   low  : tripwire of orange plasma, jump over it (like low waves)
+//   wall : magenta field-line barrier, change lane
 //   veil : a rift curtain across ALL lanes, cannot be dodged or jumped: PHASE
 //          through it (cyan, the phase colour)
 // A "gate" is a row of walls with one open lane.
 import { PAL } from '../render/palette.js';
 import { drawGlowDot } from '../render/draw.js';
 import { ctx, W, H } from '../core/canvas.js';
-import { obstacleSprite, drawSprite } from '../render/sprites.js';
 import { LANES, LANE_W, laneX } from './world.js';
-import { sheet, drawCell } from '../render/images.js';
 
-// Generated rocks (scripts/import-obstacles.py): row 0 low variants, row 1 walls.
-const ROCKS = sheet('obstacles', 128);
-const VARIANTS = { low: 2, wall: 3, veil: 1 };
+const VARIANTS = { low: 3, wall: 3, veil: 1 };
 
 export const obstacles = [];
 
@@ -41,45 +37,91 @@ export function spawnVeil(y = -30) {
 }
 
 export function drawObstacles(alpha) {
-  const w = Math.round(LANE_W * 0.84);
   for (const o of obstacles) {
     if (o.dead) continue;
     const y = o.prevY + (o.y - o.prevY) * alpha;
-    if (o.type === 'veil') { drawVeil(y, o.phased); continue; }
-    if (ROCKS.ready) {
-      const wall = o.type === 'wall';
-      // colour-coded halo under the rock: orange = jump it, magenta = dodge it
-      if (wall) drawGlowDot(o.x, y, PAL.magenta, 30, 0.32);
-      drawCell(ROCKS, wall ? 1 : 0, o.v, o.x, y, LANE_W * (wall ? 1.02 : 1.0), { rot: wall ? o.rot : 0 });
-      if (!wall) neonTube(o.x, y, LANE_W * 0.8, o.v);
-      continue;
-    }
-    drawSprite(obstacleSprite(o.type, w), o.x, y);
-    // Blinking beacon on walls
-    if (o.type === 'wall' && Math.floor((o.y + o.x) / 40) % 2 === 0) drawGlowDot(o.x, y - 9, PAL.red, 3, 0.8);
+    if (o.type === 'veil') drawVeil(y, o.phased);
+    else if (o.type === 'low') drawTrip(o.x, y, o.v);
+    else drawBarrier(o.x, y, o.v);
   }
 }
 
-// Low rocks carry a neon tripwire: a bent glass tube stretched across the
-// lane, orange like every other "jump over it" signal. Japan neon, not lava.
-function neonTube(x, y, w, v) {
+// All three obstacles are one family: strands of plasma stretched across the
+// current, coloured by what you must do. Orange = jump, magenta = dodge,
+// cyan = phase.
+function strands(x0, x1, y, { color, core, n, gap, amp, freq, speed, blur, alpha = 1, seed = 0 }) {
   const t = performance.now() / 1000;
-  const flick = Math.sin(t * 17 + x) > 0.97 ? 0.4 : 1;
-  const hw = w / 2, k = v ? 3 : -3;             // two bends, one per variant
-  const pts = [x - hw, y + 2, x - hw * 0.35, y + k, x + hw * 0.35, y - k, x + hw, y + 2];
   ctx.save();
-  ctx.globalAlpha = flick;
-  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  for (const [col, lw, blur] of [[PAL.orange, 5, 14], [PAL.orange, 2.6, 6], ['#fff1e0', 1, 0]]) {
-    ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.shadowColor = PAL.orange; ctx.shadowBlur = blur;
-    ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
-    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  for (let k = 0; k < n; k++) {
+    const mid = k === (n >> 1);
+    ctx.strokeStyle = mid ? core : color;
+    ctx.globalAlpha = alpha * (mid ? 0.95 : 0.6);
+    ctx.lineWidth = mid ? 1.6 : 1;
+    ctx.shadowColor = color; ctx.shadowBlur = mid ? blur : blur * 0.4;
+    const yy0 = y + (k - (n - 1) / 2) * gap;
+    ctx.beginPath();
+    for (let x = x0; x <= x1 + 0.1; x += 4) {
+      const yy = yy0 + Math.sin(x * freq + t * (speed + k * 1.7) + k + seed) * amp;
+      if (x === x0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+    }
     ctx.stroke();
   }
   ctx.restore();
-  // mounting clips at the ends
-  drawGlowDot(x - hw, y + 2, '#ffffff', 1.6, 0.9 * flick);
-  drawGlowDot(x + hw, y + 2, '#ffffff', 1.6, 0.9 * flick);
+}
+// Soft vertical glow band; `rgba` has an "A" placeholder for the alpha.
+function field(x0, x1, y, h, rgba, a) {
+  const g = ctx.createLinearGradient(0, y - h, 0, y + h);
+  g.addColorStop(0, rgba.replace('A', 0));
+  g.addColorStop(0.5, rgba.replace('A', a));
+  g.addColorStop(1, rgba.replace('A', 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(x0, y - h, x1 - x0, h * 2);
+}
+function chevron(x, y, up, color, a = 0.9) {
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = a; ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (up) { ctx.moveTo(x - 5, y + 2); ctx.lineTo(x, y - 3); ctx.lineTo(x + 5, y + 2); }
+  else { ctx.moveTo(x - 5, y - 3); ctx.lineTo(x, y + 2); ctx.lineTo(x + 5, y - 3); }
+  ctx.stroke(); ctx.restore();
+}
+
+// Tripwire: a thin, low ribbon of orange plasma across one lane, sparks
+// crawling along it, emitters on the lane edges. Jump it.
+function drawTrip(x, y, v) {
+  const hw = LANE_W * 0.42;
+  const t = performance.now() / 1000;
+  field(x - hw, x + hw, y, 10, 'rgba(255,106,0,A)', 0.22);
+  strands(x - hw, x + hw, y, { color: PAL.orange, core: '#fff1e0', n: 3, gap: 2.5, amp: 1.6, freq: 0.16, speed: 9, blur: 10, seed: v });
+  for (let k = 0; k < 3; k++) {
+    const f = (t * 0.9 + k / 3 + v * 0.17) % 1;
+    drawGlowDot(x - hw + f * hw * 2, y + Math.sin(f * 20) * 1.5, '#ffffff', 1.3, 0.9);
+  }
+  for (const s of [-1, 1]) { drawGlowDot(x + s * hw, y, PAL.orange, 4, 0.8); drawGlowDot(x + s * hw, y, '#ffffff', 1.5, 1); }
+  chevron(x, y - 11, true, PAL.orange, 0.75 + Math.sin(t * 8) * 0.2);
+}
+
+// Barrier: a dense magenta knot of field lines filling one lane, dark and
+// solid at the core, anchored by two pylons. Too tall to jump: change lane.
+function drawBarrier(x, y, v) {
+  const hw = LANE_W * 0.44;
+  const t = performance.now() / 1000;
+  ctx.save();
+  ctx.fillStyle = 'rgba(12,0,14,0.85)';
+  ctx.beginPath(); ctx.ellipse(x, y, hw, 15, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  field(x - hw, x + hw, y, 22, 'rgba(255,43,214,A)', 0.28);
+  strands(x - hw, x + hw, y, { color: PAL.magenta, core: '#ffe0fa', n: 5, gap: 4.5, amp: 2.6, freq: 0.12, speed: 6, blur: 12, seed: v * 2 });
+  for (const s of [-1, 1]) {
+    const px = x + s * hw;
+    ctx.save(); ctx.fillStyle = '#1a0418'; ctx.strokeStyle = PAL.magenta; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(px, y - 15); ctx.lineTo(px + 4, y); ctx.lineTo(px, y + 15); ctx.lineTo(px - 4, y); ctx.closePath();
+    ctx.fill(); ctx.stroke(); ctx.restore();
+    drawGlowDot(px, y, PAL.magenta, 5, 0.6 + Math.sin(t * 5 + s) * 0.3);
+  }
+  drawGlowDot(x, y, PAL.red, 6 + Math.sin(t * 6) * 1.5, 0.55);
+  drawGlowDot(x, y, '#ffffff', 1.6, 0.9);
 }
 
 // A tear in space stretched across the whole track: shimmering strands of

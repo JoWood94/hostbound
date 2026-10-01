@@ -430,13 +430,48 @@ const ENEMY_ART = {
     nodule(c, 0, 24, 2, col);
   },
 };
-const ENEMY_SIZE = { drone: [38, 38], sweeper: [58, 32], crusher: [46, 40], hopper: [30, 30], kamikaze: [28, 38], wall: [68, 30], tank: [42, 54] };
+// Second Brood wave (placeholder art until the generated sheet arrives)
+// An egg sac on legs with a dripping ovipositor
+ENEMY_ART.brooder = (c, col) => {
+  for (const s of [-1, 1]) for (const k of [-1, 1]) vein(c, [s * 6, k * 4, s * 13, k * 8, s * 15, k * 14], '#3a1a2a', 1.6, 1);
+  blob(c, [0, -14, 10, -10, 13, 0, 9, 10, 0, 14, -9, 10, -13, 0, -10, -10]);
+  flesh(c, col, 0, -3, 14); bioEdge(c, col, 1.3, 7);
+  for (const [x, y] of [[-5, -5], [4, -6], [0, 2], [-4, 7], [5, 6]]) nodule(c, x, y, 2.2, col);
+  socket(c, 0, -9, 1.8);
+};
+// A thin eel with one long sighting eye and a barbed snout
+ENEMY_ART.stalker = (c, col) => {
+  blob(c, [0, -16, 5, -8, 6, 6, 3, 15, 0, 18, -3, 15, -6, 6, -5, -8]);
+  flesh(c, col, 0, -2, 14); bioEdge(c, col, 1.2, 8);
+  spine(c, 0, -14, 12, 1.6, 5);
+  vein(c, [0, 12, 0, 20], col, 1.2, 0.9);
+  socket(c, 0, -4, 2.6);
+};
+// A pulsing heart with three valves
+ENEMY_ART.throb = (c, col) => {
+  for (const s of [-1, 0, 1]) membrane(c, [s * 8, -6, s * 14 - 4, -16, s * 14 + 4, -16], col, 0.3);
+  circle(c, 0, 0, 13); flesh(c, col, 0, 0, 14, 0.3); bioEdge(c, col, 1.5, 9);
+  vein(c, [-10, -4, -4, 0, -6, 7], '#9a1020', 0.8, 0.8); vein(c, [9, -5, 4, 1, 7, 8], '#9a1020', 0.8, 0.8);
+  sutures(c, -6, 9, 6, 9, 4);
+  socket(c, -5, -2, 1.8); socket(c, 5, -2, 1.8);
+};
+// A loom of three tendrils that weaves the bullets
+ENEMY_ART.weaver = (c, col) => {
+  for (const s of [-1, 0, 1]) vein(c, [s * 7, 4, s * 14, 10, s * 10, 18], col, 1.4, 0.9);
+  blob(c, [0, -12, 14, -9, 20, -1, 13, 6, 0, 8, -13, 6, -20, -1, -14, -9]);
+  flesh(c, col, 0, -3, 18); bioEdge(c, col, 1.4, 8);
+  sutures(c, -12, -4, 12, -4, 6);
+  socket(c, -7, -6, 1.7); socket(c, 0, -7, 2); socket(c, 7, -6, 1.7);
+};
+
+const ENEMY_SIZE = { brooder: [36, 36], stalker: [22, 42], throb: [36, 40], weaver: [44, 40], drone: [38, 38], sweeper: [58, 32], crusher: [46, 40], hopper: [30, 30], kamikaze: [28, 38], wall: [68, 30], tank: [42, 54] };
 
 // Live eye positions [x, y, radius] in sprite coordinates.
 export const EYES = {
   drone: [[0, 0, 4]], sweeper: [[-5, -4, 1.7], [5, -4, 1.7]], crusher: [[-7, -7, 1.9], [7, -7, 1.9]],
   hopper: [[0, -7, 1.7]], kamikaze: [[0, -9, 1.6]], wall: [[-24, 0, 2.6], [-8, 0, 2.6], [8, 0, 2.6], [24, 0, 2.6]],
   tank: [[-3, 17, 1.4], [3, 17, 1.4]],
+  brooder: [[0, -9, 1.6]], stalker: [[0, -4, 2.4]], throb: [[-5, -2, 1.6], [5, -2, 1.6]], weaver: [[-7, -6, 1.5], [0, -7, 1.8], [7, -6, 1.5]],
 };
 
 export function enemySprite(type, color) {

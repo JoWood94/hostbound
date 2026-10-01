@@ -7,7 +7,7 @@ import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
-import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses } from './enemies.js';
+import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look } from './enemies.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnGate, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
@@ -196,7 +196,9 @@ function useActive(run) {
 // ---------------------------------------------------------------------------
 function pickType(run) {
   const pool = Object.keys(TYPES).filter((k) => TYPES[k].unlockAt <= run.distance);
-  return run.rng.pick(pool);
+  let t = run.rng.pick(pool);
+  if (t === run.lastType && pool.length > 1) t = run.rng.pick(pool);   // fewer repeats
+  return t;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +222,7 @@ function threatLanes(type, lane, dir = null) {
     }
   }
   if (T.dive) out.add(lane);
-  if (type === 'hopper') { out.add(lane - 1); out.add(lane + 1); }
+  if (type === 'hopper' || type === 'stalker') { out.add(lane - 1); out.add(lane + 1); }
   return out;
 }
 function patternLanes(e) { return threatLanes(e.type, e.lane, e.type === 'sweeper' ? e.dir : null); }
@@ -245,12 +247,23 @@ const MIN_SAFE = 2;
 function safeToAdd(covered, type, lane) {
   const u = new Set(covered);
   for (const l of candidateLanes(type, lane)) if (l >= 0 && l < LANES) u.add(l);
-  return LANES - u.size >= MIN_SAFE ? u : null;
+  // The Wall's whole point is the one safe lane under it: allowed only on an
+  // otherwise quiet screen.
+  const need = TYPES[type].solo && covered.size === 0 ? 1 : MIN_SAFE;
+  return LANES - u.size >= need ? u : null;
 }
 
 function spawnEnemies(run, dt, d) {
   const busy = new Set();
   for (const e of enemies) if (e.type !== 'boss' && e.state !== 'leave') busy.add(e.lane);
+  // A wide enemy was drawn: hold new spawns until the screen is clear, then it
+  // enters alone (a short duel). Without this, wide types almost never appear
+  // late in the run, when the screen is rarely empty.
+  if (run.queuedWide) {
+    if (busy.size > 0) { run.spawnT = Math.max(run.spawnT, 0.3); return; }
+    run.spawnT -= dt;
+    if (run.spawnT > 0) return;
+  }
   if (busy.size >= B.maxActive(d)) { run.spawnT = Math.max(run.spawnT, 0.7); return; }
   run.spawnT -= dt;
   if (run.spawnT > 0) return;
@@ -263,12 +276,15 @@ function spawnEnemies(run, dt, d) {
   }
   if (!free.length) return;
 
-  // Wide patterns only when alone on screen.
-  let type = pickType(run);
-  if (busy.size > 0 && TYPES[type].wide) {
-    const narrow = NARROW_TYPES.filter((k) => TYPES[k].unlockAt <= run.distance);
-    type = run.rng.pick(narrow);
+  // Wide patterns only when alone on screen: queue them.
+  let type = run.queuedWide || pickType(run);
+  if (TYPES[type].wide && busy.size > 0) {
+    // Half the time wait for a clear screen (a duel), half the time swap for a
+    // narrow enemy so the pressure does not drop.
+    if (run.rng.chance(0.5)) { run.queuedWide = type; run.spawnT = 0.4; return; }
+    type = run.rng.pick(NARROW_TYPES.filter((k) => TYPES[k].unlockAt <= run.distance));
   }
+  run.queuedWide = null;
   const opts = () => ({ power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
 
   // Pick a lane that keeps at least MIN_SAFE lanes open; fall back to a drone; else wait.
@@ -282,6 +298,7 @@ function spawnEnemies(run, dt, d) {
   }
   if (lane < 0) { run.spawnT = 0.5; return; }
   spawnEnemy(type, lane, d, run.rng, opts());
+  run.lastType = type;
 
   // Squads: from ~1000 m, sometimes a second narrow enemy joins, if still safe.
   if (d >= 2.5 && !TYPES[type].wide && busy.size + 2 <= B.maxActive(d) && run.rng.chance(0.3)) {
@@ -591,6 +608,7 @@ export function updateRun(run, input, dt) {
   updateModeBullets(st, dt);
   updatePool(playerBullets, dt);
   updatePool(enemyBullets, edt);
+  look.lane = p.lane;
   updateEnemies(edt, d);
   updateCorpses(edt, run.speed);
   if (run.boss) updateBoss(run.boss, edt, d, p.lane);

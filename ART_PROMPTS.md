@@ -174,6 +174,27 @@ Row 7 TANK (fits in 48x58): a huge beetle with two cracked bone wing-cases, six 
 legs, mandibles and a fleshy horn cannon pointing down.
 ```
 
+## 2b. Nemici — secondo foglio Brood (4 nuovi)
+
+Stesso stile e palette del primo foglio (allegalo come riferimento). 512×256, 8 colonne
+× 4 righe, celle 64×64 (le importo a 128). Colonne come il primo: 0–3 idle, 4–5 avviso
+(occhi accesi, bocca aperta), 6–7 morte.
+```
+Match the attached Brood enemy sheet exactly: same dark gritty pixel art, same bruise
+purple and grey-green flesh palette, same lighting and outline. A sprite sheet of 4 new
+alien creatures seen from directly above, 512x256 pixels, 8 columns x 4 rows of 64x64
+cells, flat pure chroma green #00ff00 background, no grid lines, no text.
+Columns 1-4 idle loop, 5-6 attack warning (eyes flare, maw opens), 7-8 death (bursts).
+Row 1 BROODER: a bloated egg sac on six thin legs, translucent dirty yellow #ffd23f eggs
+inside, a dripping ovipositor at the back.
+Row 2 STALKER: a thin eel-like hunter with one huge sighting eye and a barbed snout,
+pinkish red #ff5c8a glow in the eye.
+Row 3 THROB: a floating heart-like organ with three valves on top, swollen veins,
+pulsing deep blue #3d7bff light from inside.
+Row 4 WEAVER: a spider-like loom of three long tendrils hanging below a ribbed body,
+three eyes in a row, pale pink #ff9cf0 silk threads between the tendrils.
+```
+
 ## 3. Boss — un unico foglio
 
 Allega di nuovo la spritemap del simbionte come riferimento di stile.
