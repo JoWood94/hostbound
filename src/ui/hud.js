@@ -69,6 +69,13 @@ export function drawHud(run) {
     text('JUMP', px, 432, { color: PAL.orange, size: 10, align: 'center', alpha: a });
   }
 
+  if (run.phaseHint && !run.player.dead) {
+    const a = 0.55 + Math.sin(run.time * 20) * 0.45;
+    const px = run.player.x;
+    strokePoly([px - 9, 434, px, 444, px + 9, 434], PAL.cyan, 3, false);
+    text('PHASE', px, 424, { color: PAL.cyan, size: 10, align: 'center', alpha: a });
+  }
+
   // Held items strip
   let ix = 8;
   for (const id in run.stacks) {

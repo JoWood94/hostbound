@@ -9,7 +9,7 @@ import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spa
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses } from './enemies.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
-import { obstacles, spawnObstacle, spawnGate, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
+import { obstacles, spawnObstacle, spawnGate, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
 import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from './items.js';
 import { activeCombos } from './combos.js';
@@ -326,6 +326,11 @@ function spawnChunk(run, d) {
         spawnObstacle(wantWall ? 'wall' : 'low', other, -60);
       }
     }
+  } else if (d >= 0.4 && roll < 0.72 && run.distance - (run.lastVeil ?? -1e9) > 140 && !obstacles.some((o) => o.y < 120)) {
+    // Rift veil: nothing else on that row, and never two close together
+    // (the phase cooldown must always be ready for it).
+    spawnVeil();
+    run.lastVeil = run.distance;
   } else {
     spawnCoinLine(lane, B.COIN_LINE);
   }
@@ -650,9 +655,11 @@ export function updateRun(run, input, dt) {
   const hwLane = LANE_W * 0.45;
   for (const o of obstacles) {
     if (o.dead) continue;
-    const overlap = Math.abs(o.x - p.x) < hwLane && Math.abs(o.y - PLAYER_Y) < OB_H[o.type] / 2 + 6;
+    const veil = o.type === 'veil';
+    const overlap = (veil || Math.abs(o.x - p.x) < hwLane) && Math.abs(o.y - PLAYER_Y) < OB_H[o.type] / 2 + 6;
     if (overlap && !o.hit) {
-      if (o.type === 'low' && air) o.jumped = true;
+      if (veil && (p.phaseT > 0 || o.phased)) { if (!o.phased) { o.phased = true; run.rs.phaseDodges++; burst(p.x, PLAYER_Y, PAL.cyan, 14, 180, 0.35, 2); } }
+      else if (o.type === 'low' && air) o.jumped = true;
       else if (o.type === 'low' && st.breakLow) {
         o.dead = true;
         burst(o.x, o.y, PAL.orange, 16, 200, 0.4, 2.5);
@@ -685,6 +692,9 @@ export function updateRun(run, input, dt) {
       if ((PLAYER_Y - o.y) / Math.max(1, run.speed) < 0.6) run.jumpHint = true;
     }
   }
+  // Phase hint: a veil will reach me within ~0.5s and I am not phased.
+  run.phaseHint = p.phaseT <= 0 && obstacles.some((o) => o.type === 'veil' && !o.dead && o.y < PLAYER_Y && (PLAYER_Y - o.y) / Math.max(1, run.speed) < 0.5);
+  if (run.phaseHint) tip(run, 'veil', 'SWIPE DOWN TO PHASE', 'Cyan veils cover every lane: phase through them');
   if (run.jumpHint) tip(run, 'jump', 'SWIPE UP TO JUMP', 'Jump clears orange low waves and barriers only');
 
   // Pickups
