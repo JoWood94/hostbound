@@ -5,6 +5,10 @@ import { ctx, W, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { line, text } from '../render/draw.js';
 import { bake, shade, rgba } from '../render/sprites.js';
+import { sheet } from '../render/images.js';
+
+// Generated art: one tile of the cosmic current that flows down every lane.
+const CURRENT = sheet('current', 144, 219);
 
 export const LANES = 5;
 export const PX_PER_M = 10;
@@ -120,6 +124,25 @@ export function drawWorld(distance, activeLane = -1) {
   const tile = trackTile(di);
   const off = scroll % TILE_H;
   for (let y = off - TILE_H; y < H; y += TILE_H) ctx.drawImage(tile.canvas, 0, y, W, TILE_H);
+
+  // Cosmic currents: one plasma river per lane, flowing a bit faster than the
+  // track. Additive and faint: bullets and enemies must stay readable on top.
+  if (CURRENT.ready) {
+    const w = LANE_W * 1.05;
+    const h = (w * CURRENT.cellH) / CURRENT.cell;
+    const o = (scroll * 1.25) % h;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.imageSmoothingEnabled = true;
+    for (let i = 0; i < LANES; i++) {
+      ctx.globalAlpha = i === activeLane ? 0.3 : 0.13;
+      const x = laneX(i) - w / 2;
+      // neighbouring lanes flow out of phase so they do not look copy-pasted
+      const oi = (o + i * h * 0.37) % h;
+      for (let y = oi - h; y < H; y += h) ctx.drawImage(CURRENT.img, x, y, w, h);
+    }
+    ctx.restore();
+  }
 
   // Active lane: cyan floor glow and edge lights
   if (activeLane >= 0) {

@@ -5,6 +5,16 @@ import { boltSprite, enemyOrbSprite, lowWaveSprite, pelletSprite, rocketSprite, 
 import { W, H } from '../core/canvas.js';
 import { LANE_W } from './world.js';
 import { COLOR_PLAYER_BULLET, COLOR_ENEMY_BULLET } from '../render/palette.js';
+import { sheet, drawCell } from '../render/images.js';
+
+// Generated shot sheet (8x2 cells). Each entry: [row, col, K] where K turns the
+// bullet radius into the cell's draw size (how much of the cell the art fills).
+export const SHOTS = sheet('shots_player', 96);
+const S_SPIT = [0, 0, 7], S_GLOB = [0, 1, 4.6], S_PELLET = [0, 2, 12], S_ROCKET = [0, 3, 8.5],
+  S_LARVA = [0, 4, 9], S_ECHO = [0, 5, 3], S_NEEDLE = [0, 6, 7.5];
+function shot(spec, x, y, r, rot, flash = 0) {
+  return drawCell(SHOTS, spec[0], spec[1], x, y, r * spec[2], { rot, flash });
+}
 
 function makePool(max) {
   return {
@@ -70,24 +80,35 @@ export function clearPool(pool) { pool.n = 0; }
 export function drawPlayerBullets() {
   const p = playerBullets;
   const bolt = boltSprite(COLOR_PLAYER_BULLET);
+  const art = SHOTS.ready;
   for (let i = 0; i < p.n; i++) {
     const rot = Math.atan2(p.vx[i], -p.vy[i]);
-    const k = p.r[i] / 3;
+    const r = p.r[i];
+    const k = r / 3;
     const f = p.flags[i];
-    if (f & F_EXPLODE && !(f & F_ROCKET)) drawGlowDot(p.x[i], p.y[i], '#ffd27a', p.r[i] + 2, 0.45);
+    if (f & F_EXPLODE && !(f & F_ROCKET)) drawGlowDot(p.x[i], p.y[i], '#ffd27a', r + 2, 0.45);
     if (p.kind[i] === BIG) {
-      drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, p.r[i], 0.6);
-      drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k, flash: 0.5 });
+      drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, r, 0.6);
+      if (!(art && shot(S_ECHO, p.x[i], p.y[i], r, rot, 0.3))) drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k, flash: 0.5 });
     } else if (f & F_ROCKET) {
-      const sp = Math.hypot(p.vx[i], p.vy[i]);
-      const tx = -p.vx[i] / sp, ty = -p.vy[i] / sp;
-      for (let s2 = 1; s2 <= 3; s2++) drawGlowDot(p.x[i] + tx * 7 * s2, p.y[i] + ty * 7 * s2, s2 === 1 ? '#ffffff' : COLOR_PLAYER_BULLET, 3 - s2 * 0.6, 0.8 - s2 * 0.2);
-      drawSprite(rocketSprite(), p.x[i], p.y[i], { rot });
+      if (art) shot(S_ROCKET, p.x[i], p.y[i], r, rot);
+      else {
+        const sp = Math.hypot(p.vx[i], p.vy[i]);
+        const tx = -p.vx[i] / sp, ty = -p.vy[i] / sp;
+        for (let s2 = 1; s2 <= 3; s2++) drawGlowDot(p.x[i] + tx * 7 * s2, p.y[i] + ty * 7 * s2, s2 === 1 ? '#ffffff' : COLOR_PLAYER_BULLET, 3 - s2 * 0.6, 0.8 - s2 * 0.2);
+        drawSprite(rocketSprite(), p.x[i], p.y[i], { rot });
+      }
     } else if (f & F_RANGE) {
-      drawSprite(pelletSprite(), p.x[i], p.y[i], { sx: k, sy: k });
+      if (!(art && shot(S_PELLET, p.x[i], p.y[i], r, rot))) drawSprite(pelletSprite(), p.x[i], p.y[i], { sx: k, sy: k });
     } else if (f & F_WAVE) {
-      drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, p.r[i] + 1.5, 0.55);
-      drawGlowDot(p.x[i], p.y[i], '#ffffff', p.r[i] * 0.5);
+      // the larva lies sideways in the sheet: turn it so its head leads
+      if (!(art && shot(S_LARVA, p.x[i], p.y[i], r, rot - Math.PI / 2))) {
+        drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, r + 1.5, 0.55);
+        drawGlowDot(p.x[i], p.y[i], '#ffffff', r * 0.5);
+      }
+    } else if (art) {
+      // Isaac-style: the shot's look follows its size, and size follows damage
+      shot(p.pierce[i] > 0 ? S_NEEDLE : r >= 5 ? S_GLOB : S_SPIT, p.x[i], p.y[i], r, rot);
     } else {
       drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k });
     }

@@ -1,9 +1,9 @@
 // Player weapon. Reads the final stats object only, so every item combination
 // composes without special cases. Also resolves on-hit effects.
-import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET } from './bullets.js';
+import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, SHOTS } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
-import { ctx } from '../core/canvas.js';
+import { ctx, makeOffscreen } from '../core/canvas.js';
 import { enemySprite, drawSprite } from '../render/sprites.js';
 import { PLAYER_Y } from './player.js';
 import { PAL, COLOR_PLAYER_BULLET as SHOT } from '../render/palette.js';
@@ -22,6 +22,11 @@ export function currentDamage(p, stats) {
   if (stats.ambush && p.ambushT > 0) d *= 1 + 0.75 * stats.ambush;
   return d;
 }
+
+// Isaac tears: a shot's size follows its damage. sqrt keeps it sane: x2 damage
+// is x1.41 size, x4 is x2. Clamped so weak side shots stay visible and huge
+// builds do not cover the whole lane.
+export function dmgScale(dmg) { return Math.max(0.7, Math.min(2.2, Math.sqrt(dmg))); }
 
 // ---------------------------------------------------------------------------
 // Wingmen: friendly drones in neighbouring lanes
@@ -230,7 +235,7 @@ function fireProjectiles(p, stats) {
 
   // ECHO: every Nth volley is one huge piercing round.
   if (!stats.hasScatter && stats.echo && p.shotCount % stats.echo === 0) {
-    const bi = spawn(playerBullets, p.x, y, 0, -stats.bulletSpeed * 0.9, stats.bulletSize * 2.4, dmg * stats.echoMul, BIG, stats.pierce + 3);
+    const bi = spawn(playerBullets, p.x, y, 0, -stats.bulletSpeed * 0.9, stats.bulletSize * 2.4 * dmgScale(dmg), dmg * stats.echoMul, BIG, stats.pierce + 3);
     if (bi >= 0) { tagLane(bi, p.lane); playerBullets.flags[bi] = flags & ~F_ROCKET; }
     sfx.shoot();
     return;
@@ -243,10 +248,11 @@ function fireProjectiles(p, stats) {
     let vx, vy;
     if (pt.angle !== undefined) { vx = Math.sin(pt.angle) * speed; vy = -Math.cos(pt.angle) * speed; }
     else { vx = (laneX(pt.lane) - p.x) / travel; vy = -speed; }
-    const size = (stats.hasScatter ? 2.4 + stats.bulletSize * 0.25 : stats.bulletSize) * (idx === 0 || stats.hasScatter ? 1 : 0.85);
+    const shotDmg = dmg * pt.mul / (strands > 1 ? strands * 0.8 : 1);
+    const size = (stats.hasScatter ? 2.4 + stats.bulletSize * 0.25 : stats.bulletSize) * dmgScale(shotDmg);
     const pierce = stats.pierce + (stats.buckshot ? 1 : 0);
     for (let k = 0; k < strands; k++) {
-      const bi = spawn(playerBullets, p.x + side, y, vx, vy, rocket ? 4 : size, dmg * pt.mul / (strands > 1 ? strands * 0.8 : 1), 0, pierce);
+      const bi = spawn(playerBullets, p.x + side, y, vx, vy, rocket ? 4 * dmgScale(shotDmg) : size, shotDmg, 0, pierce);
       if (bi < 0) continue;
       tagLane(bi, p.lane);
       playerBullets.flags[bi] = flags;
@@ -302,7 +308,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
   const dps = stats.fireRate * rateMul * currentDamage(p, stats) * 1.15 * surge;
   const tick = p.laserTick <= 0;
   if (tick) { p.laserTick += 0.1; p.laserCount = (p.laserCount || 0) + 1; }
-  const width = (4 + stats.bulletSize * 0.9) * widthMul;
+  const width = (4 + stats.bulletSize * 0.9) * widthMul * dmgScale(currentDamage(p, stats));
   const phase = p.beamT * 5;
   for (const spec of lockTargets(p, stats, pattern(p, stats))) {
     const pts = buildPath(p, spec, stats.hasSine, phase);
@@ -485,12 +491,52 @@ function poly(pts, color, width, alpha) {
   ctx.globalAlpha = 1;
 }
 
+// Beam texture: the living nerve-fibre slice from the shot sheet, as a
+// repeating pattern laid along every segment of the beam's path.
+let beamPat = null;
+function beamPattern() {
+  if (beamPat || !SHOTS.ready) return beamPat;
+  const c = SHOTS.cell;
+  const { canvas, ctx: g } = makeOffscreen(c, c);
+  g.drawImage(SHOTS.img, 5 * c, c, c, c, 0, 0, c, c);
+  beamPat = ctx.createPattern(canvas, 'repeat');
+  return beamPat;
+}
+function texturedBeam(pts, w, alpha, t) {
+  const pat = beamPattern();
+  if (!pat) return false;
+  const bw = w * 2.8;                       // the cord fills ~35% of the slice
+  const k = bw / SHOTS.cell;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = pat;
+  let run = t * 260;                        // pattern flows up the beam
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const x0 = pts[i], y0 = pts[i + 1], dx = pts[i + 2] - x0, dy = pts[i + 3] - y0;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.5) continue;
+    ctx.save();
+    ctx.translate(x0, y0);
+    ctx.rotate(Math.atan2(dx, -dy));
+    pat.setTransform(new DOMMatrix().translateSelf(-bw / 2, run).scaleSelf(k, k));
+    ctx.fillRect(-bw / 2, -len - 1, bw, len + 2);
+    ctx.restore();
+    run -= len;
+  }
+  ctx.restore();
+  return true;
+}
+
 export function drawWeaponFx() {
+  const t = performance.now() / 1000;
   for (const b of beams) {
     const flick = 0.85 + Math.random() * 0.15;
     poly(b.pts, SHOT, b.w * 2.2 * flick, 0.22 * b.a);
-    poly(b.pts, SHOT, b.w * flick, 0.6 * b.a);
-    poly(b.pts, '#f4ffd8', Math.max(1, b.w * 0.35), 0.95 * b.a);
+    if (!texturedBeam(b.pts, b.w * flick, b.a, t)) {
+      poly(b.pts, SHOT, b.w * flick, 0.6 * b.a);
+      poly(b.pts, '#f4ffd8', Math.max(1, b.w * 0.35), 0.95 * b.a);
+    }
     drawGlowDot(b.pts[0], b.pts[1], SHOT, 4 + b.w * 0.4, 0.9 * b.a);
   }
   for (const r of rails) {
