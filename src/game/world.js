@@ -15,11 +15,11 @@ export const DISTRICT_LEN = 1000;
 const PLAYER_ROW = H * 0.78;
 
 export const DISTRICTS = [
-  { name: 'NEON ROW', bg: '#0a0008', floor: 'rgba(255,43,214,0.025)', sleeper: '#3a1030', rail: '#7b3fd6', wall: '#ff2bd6', wallFill: '#14020f' },
-  { name: 'ACID DOCKS', bg: '#030a04', floor: 'rgba(182,255,43,0.03)', sleeper: '#1f3512', rail: '#8fd61f', wall: '#b6ff2b', wallFill: '#071205' },
-  { name: 'CHROME SPINE', bg: '#03050d', floor: 'rgba(61,123,255,0.035)', sleeper: '#18244a', rail: '#3d7bff', wall: '#9ab8ff', wallFill: '#060a18' },
-  { name: 'RED SECTOR', bg: '#0d0203', floor: 'rgba(255,31,75,0.03)', sleeper: '#3d0d16', rail: '#c8183c', wall: '#ff1f4b', wallFill: '#180408' },
-  { name: 'THE VOID', bg: '#040006', floor: 'rgba(166,77,255,0.03)', sleeper: '#24103a', rail: '#7d3bd1', wall: '#a64dff', wallFill: '#0b0414' },
+  { name: 'NEON ROW', bg: '#060004', floor: 'rgba(255,43,214,0.025)', sleeper: '#3a1030', rail: '#7b3fd6', wall: '#ff2bd6', wallFill: '#14020f' },
+  { name: 'ACID DOCKS', bg: '#020502', floor: 'rgba(182,255,43,0.03)', sleeper: '#1f3512', rail: '#8fd61f', wall: '#b6ff2b', wallFill: '#071205' },
+  { name: 'CHROME SPINE', bg: '#020308', floor: 'rgba(61,123,255,0.035)', sleeper: '#18244a', rail: '#3d7bff', wall: '#9ab8ff', wallFill: '#060a18' },
+  { name: 'RED SECTOR', bg: '#090102', floor: 'rgba(255,31,75,0.03)', sleeper: '#3d0d16', rail: '#c8183c', wall: '#ff1f4b', wallFill: '#180408' },
+  { name: 'THE VOID', bg: '#020003', floor: 'rgba(166,77,255,0.03)', sleeper: '#24103a', rail: '#7d3bd1', wall: '#a64dff', wallFill: '#0b0414' },
 ];
 
 export const districtIndex = (distance) => Math.floor(distance / DISTRICT_LEN) % DISTRICTS.length;
@@ -67,6 +67,19 @@ function trackTile(di) {
         c.fillStyle = rgba(D.rail, 0.24); c.fillRect(rx - 0.4, 0, 0.8, TILE_H);
       }
     }
+    // Filth: rust streaks, oil stains, the odd dried blood smear (deterministic per district)
+    let seed = 17 + di * 101;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    for (let k = 0; k < 9; k++) {
+      const x = MARGIN + rnd() * (W - MARGIN * 2), y = rnd() * TILE_H, r = 4 + rnd() * 12;
+      const kind = rnd();
+      const col = kind < 0.25 ? 'rgba(90,8,14,0.35)' : kind < 0.6 ? 'rgba(70,40,20,0.3)' : 'rgba(0,0,0,0.45)';
+      const g = c.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = g;
+      c.beginPath(); c.ellipse(x, y, r, r * (0.4 + rnd() * 0.8), rnd() * 3, 0, Math.PI * 2); c.fill();
+      if (kind < 0.25) { c.fillStyle = 'rgba(90,8,14,0.3)'; c.fillRect(x - 0.6, y, 1.2, 6 + rnd() * 14); }
+    }
     // Dividers: raised metal rails with a neon strip and glowing studs
     for (let i = 0; i <= LANES; i++) {
       const x = MARGIN + i * LANE_W;
@@ -89,8 +102,8 @@ function trackTile(di) {
       c.fillStyle = 'rgba(255,255,255,0.05)'; c.fillRect(x0 + (side ? 1 : w - 3), 0, 2, TILE_H);   // pipe
       for (let k = 0; k < 6; k++) {
         const wy = 6 + k * 15;
-        const lit = (k * 7 + side * 3 + di) % 4 !== 0;
-        c.fillStyle = lit ? rgba(k % 3 === 0 ? D.wall : '#ffd27a', 0.55) : 'rgba(255,255,255,0.05)';
+        const lit = (k * 7 + side * 3 + di) % 3 === 0;
+        c.fillStyle = lit ? rgba(k % 3 === 0 ? D.wall : '#d8b060', 0.35) : 'rgba(255,255,255,0.03)';
         c.fillRect(x0 + 3, wy, w - 7, 6);
       }
       // sign
@@ -126,7 +139,7 @@ export function drawWorld(distance, activeLane = -1) {
   for (let y = lo - gap; y < H; y += gap) {
     const g = ctx.createLinearGradient(0, y - 26, 0, y + 26);
     g.addColorStop(0, rgba(D.wall, 0));
-    g.addColorStop(0.5, rgba(D.wall, 0.07));
+    g.addColorStop(0.5, rgba(D.wall, 0.045));
     g.addColorStop(1, rgba(D.wall, 0));
     ctx.fillStyle = g;
     ctx.fillRect(0, y - 26, W, 52);
@@ -143,6 +156,18 @@ export function drawWorld(distance, activeLane = -1) {
     ctx.fillRect(sx, sy, 1, 26);
   }
   ctx.globalAlpha = 1;
+
+  // Darkness: only the area around the ship is lit; the far track sinks into black.
+  {
+    const lx = activeLane >= 0 ? laneX(activeLane) : W / 2;
+    const g = ctx.createRadialGradient(lx, PLAYER_ROW, 30, lx, PLAYER_ROW - 80, 520);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(0.3, 'rgba(4,0,3,0.3)');
+    g.addColorStop(0.75, 'rgba(4,0,3,0.66)');
+    g.addColorStop(1, 'rgba(2,0,2,0.85)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   // Distance markers every 100 m on the walls
   const step = 100 * PX_PER_M;

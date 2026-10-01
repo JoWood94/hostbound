@@ -19,7 +19,7 @@ for (let i = 0; i < GRAIN_TILES; i++) {
   for (let p = 0; p < d.length; p += 4) {
     const v = Math.random() * 255;
     d[p] = d[p + 1] = d[p + 2] = v;
-    d[p + 3] = Math.random() < 0.12 ? 40 : 0;
+    d[p + 3] = Math.random() < 0.16 ? 46 : 0;
   }
   g.ctx.putImageData(img, 0, 0);
   grain.push(g.canvas);
@@ -31,7 +31,7 @@ const vig = makeOffscreen(W, H);
   const c = vig.ctx;
   const gr = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.75);
   gr.addColorStop(0, 'rgba(0,0,0,0)');
-  gr.addColorStop(1, 'rgba(0,0,0,0.65)');
+  gr.addColorStop(1, 'rgba(0,0,0,0.85)');
   c.fillStyle = gr;
   c.fillRect(0, 0, W, H);
 }

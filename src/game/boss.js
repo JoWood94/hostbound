@@ -4,7 +4,8 @@
 import { ctx, W, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
-import { bossSprite, prismEmitterSprite, drawSprite } from '../render/sprites.js';
+import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
+import { look } from './enemies.js';
 const PLAYER_ROW = H * 0.78;
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
@@ -269,11 +270,9 @@ export function drawBoss(b, alpha) {
   }
 
   // Live details
+  const eyeCol = b.state === 'telegraph' ? '#ffffff' : '#d9c45a';
   if (id === 'sentinel') {
-    const pulse = 6 + Math.sin(t * 4) * 1.5;
-    ring(x, y, 12 + Math.sin(t * 2) * 2, b.color, 1.5, 0.7);
-    drawGlowDot(x, y, PAL.orange, pulse);
-    drawGlowDot(x + Math.sin(t * 1.3) * 3, y, PAL.white, 2.5);
+    drawEye(x, y, 13 + Math.sin(t * 3) * 0.8, eyeCol, look.x, look.y, b.hitFlash > 0 ? 0.5 : 0);
   } else if (id === 'hive') {
     for (const [cx, k] of [[-62, 0], [0, 1], [62, 2]]) {
       drawGlowDot(x + cx, y, b.color, 5 + Math.sin(t * 6 + k * 2) * 2, 0.9);
@@ -284,11 +283,12 @@ export function drawBoss(b, alpha) {
     const aim = b.state === 'telegraph' ? 0.9 : 0.25;
     line(x, y, tx, H - 30, b.color, 1.2, aim * 0.6);
     ring(tx, PLAYER_ROW, 16 + Math.sin(t * 10) * 2, b.color, 1.5, aim);
-    line(x - 11, y, x + 11, y, b.color, 1.5);
-    line(x, y - 11, x, y + 11, b.color, 1.5);
-    drawGlowDot(x, y, PAL.red, 4.5 + Math.sin(t * 8));
+    drawEye(x, y - 4, 10, eyeCol, tx, PLAYER_ROW, 0);
   } else if (id === 'warden') {
-    drawGlowDot(x, y - 4, PAL.red, 5 + Math.sin(t * 6) * 1.5);
+    // beating heart: double pulse
+    const beat = Math.max(0, Math.sin(t * 7)) ** 6 + Math.max(0, Math.sin(t * 7 - 0.9)) ** 6 * 0.6;
+    drawGlowDot(x, y - 4, PAL.red, 6 + beat * 4);
+    drawGlowDot(x, y - 4, '#ffffff', 2 + beat * 1.5, 0.8);
   }
   if (b.poison > 0) drawGlowDot(x + hw * 0.8, y - hh - 6, PAL.acid, 3);
 }

@@ -136,270 +136,411 @@ function hazard(c, x, y, w, h, color, step = 4) {
 }
 
 // ---------------------------------------------------------------------------
-// Player ships: one silhouette per ship type, nose up. The pilot's animal mask
-// shows through the canopy (Hotline nod). Engine points get live flames.
+// BIOMASS art language: organic hulls (smooth blobs), dark flesh tinted by the
+// entity's neon colour, bone plates with seams, bioluminescent veins, nodules,
+// translucent membranes. Eyes are drawn live (they track the player).
 // ---------------------------------------------------------------------------
-function canopy(c, cx, cy, rx, ry, glass) {
-  c.beginPath(); c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-  const g = c.createLinearGradient(cx, cy - ry, cx, cy + ry);
-  g.addColorStop(0, shade(glass, 0.5)); g.addColorStop(0.5, rgba(glass, 0.55)); g.addColorStop(1, shade(glass, -0.6));
-  c.fillStyle = g; c.fill();
-  c.strokeStyle = shade(glass, 0.3); c.lineWidth = 0.8; c.stroke();
-  // pilot mask seen through the glass
-  c.fillStyle = 'rgba(244,240,255,0.85)';
-  circle(c, cx, cy + ry * 0.15, Math.min(rx, ry) * 0.48); c.fill();
-  path(c, [cx - rx * 0.45, cy - ry * 0.05, cx - rx * 0.55, cy - ry * 0.55, cx - rx * 0.15, cy - ry * 0.2]); c.fill();
-  path(c, [cx + rx * 0.45, cy - ry * 0.05, cx + rx * 0.55, cy - ry * 0.55, cx + rx * 0.15, cy - ry * 0.2]); c.fill();
-  c.strokeStyle = PAL.magenta; c.lineWidth = 0.7;
-  c.beginPath(); c.moveTo(cx - rx * 0.35, cy + ry * 0.05); c.lineTo(cx - rx * 0.1, cy + ry * 0.1);
-  c.moveTo(cx + rx * 0.35, cy + ry * 0.05); c.lineTo(cx + rx * 0.1, cy + ry * 0.1); c.stroke();
-  // glint
-  c.strokeStyle = 'rgba(255,255,255,0.7)'; c.lineWidth = 0.8;
-  c.beginPath(); c.ellipse(cx - rx * 0.3, cy - ry * 0.35, rx * 0.25, ry * 0.18, -0.5, Math.PI, Math.PI * 1.6); c.stroke();
+function mix(a, b, t) {
+  const A = rgb(a), B = rgb(b);
+  const m = (i) => Math.round(A[i] + (B[i] - A[i]) * t).toString(16).padStart(2, '0');
+  return `#${m(0)}${m(1)}${m(2)}`;
 }
-function nozzle(c, x, y, w, h, col) {
-  rrect(c, x - w / 2, y, w, h, Math.min(w, h) * 0.35);
-  plate(c, '#9a9aaa', y, y + h, -0.85, -0.45);
+// Smooth closed (or open) curve through points (Catmull-Rom as Béziers).
+function blob(c, pts, close = true) {
+  const n = pts.length / 2;
+  const P = (i) => { const k = close ? ((i % n) + n) % n : Math.max(0, Math.min(n - 1, i)); return [pts[k * 2], pts[k * 2 + 1]]; };
+  c.beginPath();
+  const [sx, sy] = P(0);
+  c.moveTo(sx, sy);
+  const last = close ? n : n - 1;
+  for (let i = 0; i < last; i++) {
+    const [x0, y0] = P(i - 1), [x1, y1] = P(i), [x2, y2] = P(i + 1), [x3, y3] = P(i + 2);
+    c.bezierCurveTo(x1 + (x2 - x0) / 6, y1 + (y2 - y0) / 6, x2 - (x3 - x1) / 6, y2 - (y3 - y1) / 6, x2, y2);
+  }
+  if (close) c.closePath();
+}
+// Flesh: dark, wet, lit from the top-left, tinted by the neon colour.
+function flesh(c, col, cx, cy, r, light = 0.2) {
+  // Grim palette: dried blood and bruise, a sickly yellow sheen, only a hint of neon.
+  const base = mix('#24090f', col, 0.12);
+  const g = c.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.05, cx, cy, r * 1.15);
+  g.addColorStop(0, mix(base, '#d9c792', light * 0.7));
+  g.addColorStop(0.45, base);
+  g.addColorStop(1, mix(base, '#000000', 0.8));
+  c.fillStyle = g;
+  c.fill();
+}
+function bioEdge(c, col, lw = 1.2, blur = 7) {
+  c.save();
+  c.shadowColor = col; c.shadowBlur = blur;
+  c.strokeStyle = rgba(col, 0.6); c.lineWidth = lw * 0.85; c.stroke();
+  c.restore();
+}
+// Bone plate filling the current path: yellowed, filthy, with grime specks.
+let grimeSeed = 1;
+function bone(c, y0, y1) {
+  const g = c.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, '#cdbb8e'); g.addColorStop(0.5, '#8a7553'); g.addColorStop(1, '#2e2216');
+  c.fillStyle = g; c.fill();
+  c.save(); c.clip();
+  c.fillStyle = 'rgba(40,18,8,0.55)';
+  for (let k = 0; k < 6; k++) {
+    grimeSeed = (grimeSeed * 9301 + 49297) % 233280;
+    const rx = (grimeSeed / 233280 - 0.5) * 40, ry = y0 + ((grimeSeed * 7) % 100) / 100 * (y1 - y0);
+    c.beginPath(); c.arc(rx, ry, 0.6 + (k % 3) * 0.5, 0, Math.PI * 2); c.fill();
+  }
+  c.restore();
+  c.strokeStyle = 'rgba(30,14,8,0.9)'; c.lineWidth = 0.8; c.stroke();
+}
+// Surgical stitches across a wound line (Fear & Hunger body horror).
+function sutures(c, x1, y1, x2, y2, n = 4) {
+  c.strokeStyle = '#3a0c10'; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+  c.strokeStyle = '#d8cfb4'; c.lineWidth = 0.6;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, x = x1 + dx * t, y = y1 + dy * t;
+    c.beginPath(); c.moveTo(x - nx * 2, y - ny * 2); c.lineTo(x + nx * 2, y + ny * 2); c.stroke();
+  }
+}
+// An open gash: a dark wet slit with a red rim.
+function gash(c, x, y, w, h = 2) {
+  c.beginPath(); c.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
+  c.fillStyle = '#140205'; c.fill();
+  c.strokeStyle = '#7a0d18'; c.lineWidth = 0.8; c.stroke();
+}
+function vein(c, pts, col, w = 0.9, a = 0.75) {
+  c.save();
+  blob(c, pts, false);
+  c.shadowColor = col; c.shadowBlur = 5;
+  c.strokeStyle = rgba(col, a); c.lineWidth = w; c.stroke();
+  c.restore();
+}
+function nodule(c, x, y, r, col) {
+  circle(c, x, y, r);
+  const g = c.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, col); g.addColorStop(1, mix(col, '#000000', 0.6));
+  c.save(); c.shadowColor = col; c.shadowBlur = r * 2.5; c.fillStyle = g; c.fill(); c.restore();
+}
+function membrane(c, pts, col, a = 0.22) {
+  blob(c, pts);
+  c.fillStyle = rgba(col, a); c.fill();
+  c.strokeStyle = rgba(col, 0.55); c.lineWidth = 0.7; c.stroke();
+}
+function socket(c, x, y, r) {
+  circle(c, x, y, r + 1.2); c.fillStyle = '#12040c'; c.fill();
+  c.strokeStyle = 'rgba(0,0,0,0.8)'; c.lineWidth = 1; c.stroke();
+}
+// Spine segments down the middle, bone-coloured.
+function spine(c, x, y0, y1, w, n) {
+  for (let i = 0; i < n; i++) {
+    const t = i / n, h = (y1 - y0) / n;
+    c.beginPath(); c.ellipse(x, y0 + h * (i + 0.5), w * (1 - t * 0.35), h * 0.62, 0, 0, Math.PI * 2);
+    bone(c, y0 + h * i, y0 + h * (i + 1));
+  }
+}
+// Pilot inside a translucent sac (mask nod kept from the earlier design).
+function pilotSac(c, cx, cy, rx, ry, col) {
+  c.beginPath(); c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  const g = c.createRadialGradient(cx, cy - ry * 0.3, 0, cx, cy, ry);
+  g.addColorStop(0, rgba(col, 0.55)); g.addColorStop(1, rgba(col, 0.12));
+  c.fillStyle = g; c.fill();
   c.strokeStyle = rgba(col, 0.8); c.lineWidth = 0.8; c.stroke();
-  c.fillStyle = shade(col, 0.2);
-  c.fillRect(x - w * 0.3, y + h - 1.4, w * 0.6, 1.4);
+  c.fillStyle = 'rgba(244,240,255,0.8)';
+  circle(c, cx, cy + ry * 0.15, Math.min(rx, ry) * 0.5); c.fill();
+  path(c, [cx - rx * 0.45, cy, cx - rx * 0.55, cy - ry * 0.5, cx - rx * 0.12, cy - ry * 0.15]); c.fill();
+  path(c, [cx + rx * 0.45, cy, cx + rx * 0.55, cy - ry * 0.5, cx + rx * 0.12, cy - ry * 0.15]); c.fill();
+  c.strokeStyle = PAL.magenta; c.lineWidth = 0.7;
+  c.beginPath(); c.moveTo(cx - rx * 0.32, cy + ry * 0.1); c.lineTo(cx - rx * 0.08, cy + ry * 0.14);
+  c.moveTo(cx + rx * 0.32, cy + ry * 0.1); c.lineTo(cx + rx * 0.08, cy + ry * 0.14); c.stroke();
 }
 
+// ---------------------------------------------------------------------------
+// Player bio-ships (nose up)
+// ---------------------------------------------------------------------------
 const SHIP_ART = {
-  // Swept-wing interceptor
+  // HUSK: a broad beetle-skull carapace, two bone mandibles forward (the guns),
+  // bat-wing ribs swept back with torn membrane, an open ribcage over a glowing organ.
   stock: (c, col) => {
-    path(c, [0, -28, 5, -14, 22, 6, 22, 13, 8, 10, 6, 20, -6, 20, -8, 10, -22, 13, -22, 6, -5, -14]);
-    plate(c, col, -28, 20, -0.86, -0.5); neon(c, col, 1.6, 9);
-    path(c, [0, -24, 3, -12, 3, 14, -3, 14, -3, -12]); c.fillStyle = shade(col, -0.7); c.fill();
-    panelLine(c, 5, -12, 18, 8, 0.3); panelLine(c, -5, -12, -18, 8, 0.3); panelLine(c, -8, 10, 8, 10, 0.25);
-    rivets(c, [-15, 7, 15, 7, -10, 3, 10, 3]);
-    for (const wx of [-21, 21]) glow(c, wx, 9.5, 2.6, wx < 0 ? PAL.red : PAL.acid);
-    canopy(c, 0, -10, 4.4, 7.5, PAL.cyan);
-    nozzle(c, -4.5, 17, 5.5, 6, col); nozzle(c, 4.5, 17, 5.5, 6, col);
-  },
-  // Long, thin, forward-swept stealth
-  ghost: (c, col) => {
-    path(c, [0, -30, 3, -6, 18, -12, 20, -8, 6, 8, 4, 22, -4, 22, -6, 8, -20, -8, -18, -12, -3, -6]);
-    plate(c, '#cfd6ff', -30, 22, -0.9, -0.62); neon(c, col, 1.3, 10);
-    panelLine(c, 0, -26, 0, 18, 0.35);
-    panelLine(c, 3, -6, 17, -10, 0.3); panelLine(c, -3, -6, -17, -10, 0.3);
-    for (const wx of [-19, 19]) glow(c, wx, -10, 2, col);
-    canopy(c, 0, -12, 3.4, 7, '#9ad8ff');
-    nozzle(c, 0, 19, 6, 6, col);
-  },
-  // Wide armoured gunship, four engines, twin cannons
-  tank: (c, col) => {
-    rrect(c, -20, -16, 40, 34, 6); plate(c, col, -16, 18, -0.85, -0.55); neon(c, col, 1.8, 8);
-    path(c, [-10, -16, -6, -26, 6, -26, 10, -16]); plate(c, col, -26, -16, -0.8, -0.45); neon(c, col, 1.2, 5);
-    for (const gx of [-14, 14]) { rrect(c, gx - 2, -27, 4, 13, 1.2); plate(c, '#aaa', -27, -14, -0.85, -0.5); glow(c, gx, -27, 2, col); }
-    hazard(c, -18, 10, 36, 4, col, 3);
-    for (const px of [-12, 12]) { rrect(c, px - 6, -10, 12, 16, 2); c.strokeStyle = rgba(col, 0.4); c.lineWidth = 0.8; c.stroke(); }
-    rivets(c, [-17, -13, 17, -13, -17, 7, 17, 7, -6, 7, 6, 7]);
-    canopy(c, 0, -5, 5, 6, PAL.cyan);
-    for (const ex of [-15, -6, 6, 15]) nozzle(c, ex, 18, 5.5, 5, col);
-  },
-  // Organic bio-ship: curved hull, pods and veins
-  viral: (c, col) => {
-    c.beginPath();
-    c.moveTo(0, -28);
-    c.bezierCurveTo(10, -22, 12, -6, 20, 2);
-    c.bezierCurveTo(24, 8, 16, 16, 8, 12);
-    c.bezierCurveTo(6, 20, -6, 20, -8, 12);
-    c.bezierCurveTo(-16, 16, -24, 8, -20, 2);
-    c.bezierCurveTo(-12, -6, -10, -22, 0, -28);
-    c.closePath();
-    plate(c, col, -28, 20, -0.88, -0.55); neon(c, col, 1.5, 10);
-    c.strokeStyle = rgba(col, 0.45); c.lineWidth = 0.8;
-    c.beginPath(); c.moveTo(0, -20); c.bezierCurveTo(6, -6, 12, 2, 18, 4); c.moveTo(0, -20); c.bezierCurveTo(-6, -6, -12, 2, -18, 4); c.stroke();
-    for (const [px, py, r] of [[-13, 6, 3.4], [13, 6, 3.4], [0, 4, 2.6]]) { circle(c, px, py, r); c.fillStyle = '#0c1406'; c.fill(); glow(c, px, py, r * 0.9, col); }
-    canopy(c, 0, -11, 4.2, 6.5, PAL.acid);
-    nozzle(c, 0, 15, 6, 5, col);
-  },
-  // Fractured silhouette, sliced and offset like a corrupted file
-  glitch: (c, col) => {
-    const hull = [0, -28, 6, -12, 20, 4, 14, 12, 6, 10, 4, 20, -4, 20, -6, 10, -14, 12, -20, 4, -6, -12];
-    c.save(); c.translate(-1.5, 0); path(c, hull); c.strokeStyle = rgba(PAL.cyan, 0.7); c.lineWidth = 1.2; c.stroke(); c.restore();
-    c.save(); c.translate(1.5, 0); path(c, hull); c.strokeStyle = rgba(PAL.magenta, 0.7); c.lineWidth = 1.2; c.stroke(); c.restore();
-    path(c, hull); plate(c, col, -28, 20, -0.88, -0.6);
-    for (const [y0, dx] of [[-16, 2], [-2, -3], [8, 2.5]]) {
-      c.save(); c.beginPath(); c.rect(-24, y0, 48, 3); c.clip();
-      c.translate(dx, 0); path(c, hull); c.fillStyle = shade(col, -0.3); c.fill(); c.restore();
+    // swept-back rib wings with membrane between
+    for (const s of [-1, 1]) {
+      membrane(c, [s * 12, -6, s * 25, 2, s * 26, 14, s * 19, 10, s * 15, 18, s * 10, 8], col, 0.16);
+      for (const [x2, y2] of [[25, 3], [26, 14], [16, 19]]) {
+        c.beginPath(); c.moveTo(s * 11, -4); c.quadraticCurveTo(s * (x2 * 0.7), y2 * 0.2 - 4, s * x2, y2);
+        c.strokeStyle = '#a8946c'; c.lineWidth = 1.8; c.stroke();
+        c.strokeStyle = 'rgba(30,14,8,0.85)'; c.lineWidth = 0.5; c.stroke();
+      }
     }
-    path(c, hull); neon(c, col, 1.4, 9);
-    canopy(c, 0, -9, 4.2, 6.8, PAL.white);
-    nozzle(c, -4, 17, 5, 5, PAL.cyan); nozzle(c, 4, 17, 5, 5, PAL.magenta);
+    // mandibles: curved bone prongs pointing forward
+    for (const s of [-1, 1]) {
+      blob(c, [s * 6, -16, s * 12, -20, s * 10, -29, s * 6, -31, s * 7, -24], true);
+      bone(c, -31, -16);
+      nodule(c, s * 7.5, -29, 1.4, col);
+    }
+    // carapace: wide skull-shield
+    blob(c, [0, -21, 13, -19, 21, -9, 19, 6, 10, 15, 0, 19, -10, 15, -19, 6, -21, -9, -13, -19]);
+    flesh(c, col, 0, -2, 20, 0.22); bioEdge(c, col, 1.4, 7);
+    // brow ridge plate
+    blob(c, [0, -20, 11, -17, 15, -11, 0, -9, -15, -11, -11, -17]); bone(c, -20, -9);
+    // open ribcage over the core organ
+    c.beginPath(); c.ellipse(0, 4, 8, 9, 0, 0, Math.PI * 2); c.fillStyle = '#120306'; c.fill();
+    nodule(c, 0, 5, 3.4, '#c0182c');
+    for (const y of [-1, 3, 7, 11]) {
+      c.beginPath(); c.moveTo(-8, y); c.quadraticCurveTo(0, y - 3, 8, y);
+      c.strokeStyle = '#b9a47c'; c.lineWidth = 1.3; c.stroke();
+    }
+    sutures(c, -17, -4, -12, 10, 4); gash(c, 14, 6, 2.6, 1);
+    pilotSac(c, 0, -13, 3.8, 4.6, col);
+    for (const x of [-7, 7]) nodule(c, x, 16, 2.3, PAL.magenta);
+  },
+  // GHOST: translucent jellyfish mantle, frilled rim, faint organs inside
+  ghost: (c, col) => {
+    for (const x of [-9, -3, 3, 9]) vein(c, [x, 6, x * 1.3, 16, x * 0.8, 26], col, 1, 0.55);
+    blob(c, [0, -29, 10, -22, 15, -8, 16, 4, 10, 8, 4, 5, 0, 9, -4, 5, -10, 8, -16, 4, -15, -8, -10, -22]);
+    const g = c.createRadialGradient(0, -14, 2, 0, -8, 20);
+    g.addColorStop(0, rgba('#ffffff', 0.5)); g.addColorStop(1, rgba(col, 0.12));
+    c.fillStyle = g; c.fill(); bioEdge(c, col, 1.2, 10);
+    vein(c, [-10, -18, -4, -10, 0, -2], col, 0.7, 0.5); vein(c, [10, -18, 4, -10, 0, -2], col, 0.7, 0.5);
+    pilotSac(c, 0, -15, 4, 6.4, '#9ad8ff');
+    nodule(c, 0, -2, 2.2, col);
+  },
+  // ISOPOD: segmented armour plates, stubby legs, twin mandible cannons
+  tank: (c, col) => {
+    for (const s of [-1, 1]) for (const y of [-8, 0, 8]) { c.strokeStyle = mix(col, '#2c0c22', 0.5); c.lineWidth = 2.4; c.beginPath(); c.moveTo(s * 16, y); c.quadraticCurveTo(s * 22, y + 2, s * 23, y + 6); c.stroke(); }
+    for (const s of [-1, 1]) { blob(c, [s * 6, -18, s * 9, -27, s * 12, -18, s * 10, -12], true); bone(c, -27, -12); }
+    blob(c, [0, -22, 14, -16, 18, -2, 17, 12, 10, 20, 0, 22, -10, 20, -17, 12, -18, -2, -14, -16]);
+    flesh(c, col, 0, -2, 20); bioEdge(c, col, 1.6, 8);
+    for (let i = 0; i < 5; i++) {
+      const y = -15 + i * 7.5;
+      c.beginPath(); c.ellipse(0, y, 15.5 - Math.abs(i - 2) * 1.5, 4.2, 0, 0, Math.PI * 2);
+      bone(c, y - 4, y + 4);
+    }
+    pilotSac(c, 0, -15, 4.2, 4.6, PAL.cyan);
+    for (const x of [-15, -6, 6, 15]) nodule(c, x, 20, 2, PAL.magenta);
+  },
+  // SPORE: a stalk carrying glowing spore pods
+  viral: (c, col) => {
+    blob(c, [0, -26, 6, -16, 7, 0, 5, 16, 0, 20, -5, 16, -7, 0, -6, -16]);
+    flesh(c, col, 0, -2, 14); bioEdge(c, col, 1.3, 8);
+    for (const [x, y, r] of [[-15, -4, 6], [15, -4, 6], [-12, 9, 5], [12, 9, 5], [0, 10, 4]]) {
+      vein(c, [0, y * 0.5, x * 0.6, y, x, y], col, 0.9, 0.6);
+      circle(c, x, y, r); flesh(c, col, x, y, r, 0.3); bioEdge(c, col, 0.9, 6);
+      nodule(c, x, y, r * 0.45, col);
+    }
+    pilotSac(c, 0, -14, 4, 6, PAL.acid);
+    nodule(c, 0, 18, 2.4, PAL.magenta);
+  },
+  // MUTANT: the manta, but torn and re-stitched out of phase
+  glitch: (c, col) => {
+    c.save(); c.translate(-1.6, 0); SHIP_ART.stock(c, PAL.cyan); c.restore();
+    c.save(); c.globalAlpha = 0.85; c.translate(1.6, 0); SHIP_ART.stock(c, col); c.restore();
+    for (const [y, dx] of [[-16, 3], [0, -3], [10, 2.5]]) {
+      c.save(); c.beginPath(); c.rect(-26, y, 52, 3); c.clip(); c.translate(dx, 0);
+      SHIP_ART.stock(c, PAL.white); c.restore();
+    }
   },
 };
 
-// Engine exhaust points per ship (sprite coordinates), for live flames.
+// Engine glands per ship (sprite coordinates), for live flames.
 export const SHIP_ENGINES = {
-  stock: [[-4.5, 24], [4.5, 24]],
-  ghost: [[0, 25]],
-  tank: [[-15, 23], [-6, 23], [6, 23], [15, 23]],
+  stock: [[-7, 18], [7, 18]],
+  ghost: [[0, 12]],
+  tank: [[-15, 22], [-6, 22], [6, 22], [15, 22]],
   viral: [[0, 20]],
-  glitch: [[-4, 22], [4, 22]],
+  glitch: [[-7, 18], [7, 18]],
 };
 
 export function shipSprite(id, color) {
   const art = SHIP_ART[id] || SHIP_ART.stock;
-  return bake(`ship:${id}:${color}`, 50, 62, (c) => art(c, color));
+  return bake(`ship:${id}:${color}`, 54, 62, (c) => art(c, color));
 }
 
 // ---------------------------------------------------------------------------
-// Enemies
+// Enemies: bio-creatures. Eye spots get live pupils (see EYES).
 // ---------------------------------------------------------------------------
 const ENEMY_ART = {
+  // A floating eye on four veined membrane wings
   drone: (c, col) => {
-    c.strokeStyle = '#2b2236'; c.lineWidth = 3;
-    for (const [dx, dy] of [[-11, -11], [11, -11], [-11, 11], [11, 11]]) { c.beginPath(); c.moveTo(0, 0); c.lineTo(dx, dy); c.stroke(); }
-    for (const [dx, dy] of [[-11, -11], [11, -11], [-11, 11], [11, 11]]) {
-      circle(c, dx, dy, 5.6); c.fillStyle = 'rgba(0,0,0,0.55)'; c.fill(); neon(c, col, 0.9, 4);
-      circle(c, dx, dy, 1.4); c.fillStyle = shade(col, 0.3); c.fill();
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      membrane(c, [dx * 4, dy * 3, dx * 15, dy * 6, dx * 16, dy * 15, dx * 7, dy * 11], col, 0.24);
+      vein(c, [dx * 5, dy * 4, dx * 12, dy * 9, dx * 15, dy * 14], col, 0.7, 0.6);
     }
-    const hex = []; for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; hex.push(Math.cos(a) * 9, Math.sin(a) * 9); }
-    path(c, hex); plate(c, col, -9, 9); neon(c, col, 1.5, 6);
-    const hex2 = []; for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; hex2.push(Math.cos(a) * 5.5, Math.sin(a) * 5.5); }
-    path(c, hex2); c.strokeStyle = rgba(col, 0.4); c.lineWidth = 0.7; c.stroke();
-    circle(c, 0, 0, 3.6); c.fillStyle = '#100810'; c.fill();
-    glow(c, 0, 1, 3.4, PAL.orange, '#fff3d0');
+    circle(c, 0, 0, 9.5); flesh(c, col, 0, 0, 10, 0.25); bioEdge(c, col, 1.3, 7);
+    sutures(c, -8, -5, -3, -8, 3); sutures(c, 3, 8, 8, 5, 3);
+    vein(c, [-8, -3, -5, -1, -4, 2], '#9a1020', 0.6, 0.7); vein(c, [7, 4, 5, 2, 3, 3], '#9a1020', 0.6, 0.7);
+    socket(c, 0, 0, 4.4);
   },
+  // A ray with gill slits and three spit glands
   sweeper: (c, col) => {
-    const wing = [0, 12, 26, -5, 19, -12, 0, -6, -19, -12, -26, -5];
-    path(c, wing); plate(c, col, -12, 12); neon(c, col, 1.5, 7);
-    panelLine(c, 0, -6, 0, 12, 0.3); panelLine(c, 0, 4, 22, -6); panelLine(c, 0, 4, -22, -6);
-    rivets(c, [-14, -6, 14, -6, -8, -2, 8, -2]);
-    for (const gx of [-12, 0, 12]) {
-      rrect(c, gx - 2, 7 - Math.abs(gx) * 0.55, 4, 7, 1.2); c.fillStyle = '#1a1414'; c.fill();
-      glow(c, gx, 13 - Math.abs(gx) * 0.55, 2.2, col);
-    }
-    c.beginPath(); c.ellipse(0, -1, 3.4, 5, 0, 0, Math.PI * 2);
-    const g = c.createLinearGradient(0, -6, 0, 4); g.addColorStop(0, '#ffe2b8'); g.addColorStop(1, shade(col, -0.2));
-    c.fillStyle = g; c.fill();
+    blob(c, [0, -9, 12, -8, 26, -2, 22, 4, 10, 7, 0, 12, -10, 7, -22, 4, -26, -2, -12, -8]);
+    flesh(c, col, 0, -2, 22); bioEdge(c, col, 1.4, 8);
+    for (const s of [-1, 1]) for (let k = 0; k < 3; k++) { c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 1; c.beginPath(); c.moveTo(s * (9 + k * 3.5), -5); c.quadraticCurveTo(s * (10 + k * 3.5), -1, s * (9 + k * 3.5), 3); c.stroke(); }
+    spine(c, 0, -8, 6, 2.6, 3);
+    for (const gx of [-12, 0, 12]) nodule(c, gx, 7 + (gx ? 0 : 3), 2.4, col);
+    socket(c, -5, -4, 1.8); socket(c, 5, -4, 1.8);
   },
+  // An armoured crab: bone shell, claws, glowing maw that spits low waves
   crusher: (c, col) => {
-    rrect(c, -18, -14, 36, 26, 5); plate(c, col, -14, 12); neon(c, col, 1.6, 7);
-    hazard(c, -16, 4, 32, 6, col, 3);
-    for (const vx of [-9, -3, 3, 9]) panelLine(c, vx, -11, vx, -5, 0.5);
-    rivets(c, [-15, -11, 15, -11, -15, 1, 15, 1]);
-    rrect(c, -5, -6, 10, 9, 2); c.fillStyle = '#0d120a'; c.fill();
-    glow(c, 0, -1.5, 4, col);
-    rrect(c, -13, 12, 26, 3.5, 1.5); c.fillStyle = shade(col, 0.2); c.fill();
-    c.save(); c.shadowColor = col; c.shadowBlur = 8; c.fillRect(-13, 12, 26, 3.5); c.restore();
+    for (const s of [-1, 1]) { blob(c, [s * 12, 4, s * 20, 8, s * 19, 16, s * 13, 14], true); bone(c, 4, 16); }
+    blob(c, [0, -16, 14, -13, 19, -2, 15, 9, 0, 13, -15, 9, -19, -2, -14, -13]);
+    flesh(c, col, 0, -2, 18); bioEdge(c, col, 1.5, 8);
+    blob(c, [0, -15, 12, -12, 15, -4, 0, -2, -15, -4, -12, -12]); bone(c, -15, -2);
+    c.strokeStyle = 'rgba(40,24,16,0.8)'; c.lineWidth = 0.7;
+    for (const x of [-6, 0, 6]) { c.beginPath(); c.moveTo(x, -14); c.lineTo(x * 1.2, -3); c.stroke(); }
+    gash(c, -12, 1, 3, 1); sutures(c, 9, -1, 15, 3, 3);
+    blob(c, [-10, 7, 0, 5, 10, 7, 0, 12]); c.fillStyle = '#12040c'; c.fill();
+    c.save(); c.shadowColor = col; c.shadowBlur = 8; c.strokeStyle = col; c.lineWidth = 1.4; c.stroke(); c.restore();
+    socket(c, -7, -7, 2); socket(c, 7, -7, 2);
   },
+  // A tick: ridged abdomen, small head (legs are live)
   hopper: (c, col) => {
-    const d = [0, -10, 10, 0, 0, 10, -10, 0];
-    path(c, d); plate(c, col, -10, 10); neon(c, col, 1.5, 6);
-    path(c, [0, -5, 5, 0, 0, 5, -5, 0]); c.strokeStyle = rgba(col, 0.45); c.lineWidth = 0.7; c.stroke();
-    glow(c, 0, 0, 3.2, col);
+    blob(c, [0, -4, 9, -1, 11, 6, 6, 11, 0, 12, -6, 11, -11, 6, -9, -1]);
+    flesh(c, col, 0, 4, 11); bioEdge(c, col, 1.2, 6);
+    for (const y of [2, 6]) { c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(-8, y); c.quadraticCurveTo(0, y + 3, 8, y); c.stroke(); }
+    blob(c, [0, -11, 5, -8, 4, -3, -4, -3, -5, -8]); bone(c, -11, -3);
+    socket(c, 0, -7, 1.9);
   },
+  // A parasite stinger diving head-first (pointing down)
   kamikaze: (c, col) => {
-    const body = [0, 17, 6, -1, 11, -12, 4, -8, 0, -13, -4, -8, -11, -12, -6, -1];
-    path(c, body); plate(c, col, -13, 17, -0.75, -0.35); neon(c, col, 1.4, 7);
-    panelLine(c, 0, -10, 0, 14, 0.35);
-    hazard(c, -4, 4, 8, 4, PAL.red, 2);
-    glow(c, 0, 12, 2.6, '#ffffff', '#ffffff');
+    membrane(c, [-3, -12, -11, -14, -9, -6, -3, -6], col, 0.3);
+    membrane(c, [3, -12, 11, -14, 9, -6, 3, -6], col, 0.3);
+    blob(c, [0, -14, 5, -8, 6, 2, 3, 10, 0, 17, -3, 10, -6, 2, -5, -8]);
+    flesh(c, col, 0, 0, 12, 0.3); bioEdge(c, col, 1.2, 7);
+    for (const y of [-6, -1, 4]) { c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(-5, y); c.quadraticCurveTo(0, y + 2, 5, y); c.stroke(); }
+    nodule(c, 0, 13, 2.2, '#ffffff');
+    socket(c, 0, -9, 1.7);
   },
+  // A vertebral bar studded with eye-pods; the gap marker sits under it
   wall: (c, col) => {
-    rrect(c, -31, -8, 62, 16, 4); plate(c, col, -8, 8); neon(c, col, 1.6, 7);
-    for (const sx of [-15.5, 0, 15.5]) panelLine(c, sx, -6, sx, 6, 0.45);
-    for (const tx of [-24, -8, 8, 24]) {
-      circle(c, tx, 0, 3.6); c.fillStyle = '#120a1a'; c.fill();
-      glow(c, tx, 0.5, 2.8, col);
-      rrect(c, tx - 1.3, 3, 2.6, 6, 1); c.fillStyle = '#2a2236'; c.fill();
-    }
-    rivets(c, [-28, -5, 28, -5, -28, 5, 28, 5]);
-    // safe-spot marker: right under it
+    blob(c, [-31, -5, -15, -8, 0, -6, 15, -8, 31, -5, 31, 5, 15, 7, 0, 5, -15, 7, -31, 5]);
+    flesh(c, col, 0, 0, 30, 0.15); bioEdge(c, col, 1.4, 8);
+    for (const x of [-15.5, 0, 15.5]) { c.beginPath(); c.ellipse(x, 0, 3, 6.5, 0, 0, Math.PI * 2); bone(c, -6, 6); }
+    for (const x of [-24, -8, 8, 24]) socket(c, x, 0, 2.8);
     c.strokeStyle = '#ffffff'; c.lineWidth = 1.4;
     c.beginPath(); c.moveTo(-4, 10); c.lineTo(0, 13.5); c.lineTo(4, 10); c.stroke();
   },
+  // A beetle: two bone elytra, head with mandibles and a horn cannon (legs live)
   tank: (c, col) => {
-    for (const tx of [-15, 15]) { rrect(c, tx - 5, -21, 10, 42, 3); c.fillStyle = '#121414'; c.fill(); c.strokeStyle = rgba(col, 0.5); c.lineWidth = 0.8; c.stroke(); }
-    rrect(c, -11, -17, 22, 34, 4); plate(c, col, -17, 17); neon(c, col, 1.5, 6);
-    rivets(c, [-8, -14, 8, -14, -8, 14, 8, 14]);
-    panelLine(c, -11, -8, 11, -8, 0.3); panelLine(c, -11, 10, 11, 10, 0.3);
-    rrect(c, -2.4, 4, 4.8, 18, 1.5); plate(c, '#9aa', 4, 22, -0.8, -0.4);
-    circle(c, 0, -1, 8.5); plate(c, col, -9, 8, -0.75, -0.35); neon(c, col, 1.2, 5);
-    glow(c, 0, -1, 3, col);
+    blob(c, [0, -20, 11, -16, 14, 0, 11, 15, 0, 19, -11, 15, -14, 0, -11, -16]);
+    flesh(c, col, 0, 0, 18); bioEdge(c, col, 1.5, 7);
+    for (const s of [-1, 1]) { blob(c, [s * 1, -15, s * 11, -12, s * 13, 2, s * 9, 13, s * 1, 15], true); bone(c, -15, 15); }
+    c.strokeStyle = 'rgba(30,18,12,0.9)'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, -16); c.lineTo(0, 15); c.stroke();
+    blob(c, [0, 14, 7, 17, 5, 23, 0, 21, -5, 23, -7, 17]); flesh(c, col, 0, 18, 7, 0.3); bioEdge(c, col, 1, 5);
+    for (const s of [-1, 1]) { c.strokeStyle = '#d8c6ac'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(s * 4, 21); c.quadraticCurveTo(s * 7, 25, s * 3, 26); c.stroke(); }
+    nodule(c, 0, 24, 2, col);
   },
 };
-const ENEMY_SIZE = { drone: [36, 36], sweeper: [56, 32], crusher: [44, 40], hopper: [30, 30], kamikaze: [28, 38], wall: [66, 30], tank: [42, 48] };
+const ENEMY_SIZE = { drone: [38, 38], sweeper: [58, 32], crusher: [46, 40], hopper: [30, 30], kamikaze: [28, 38], wall: [68, 30], tank: [42, 54] };
+
+// Live eye positions [x, y, radius] in sprite coordinates.
+export const EYES = {
+  drone: [[0, 0, 4]], sweeper: [[-5, -4, 1.7], [5, -4, 1.7]], crusher: [[-7, -7, 1.9], [7, -7, 1.9]],
+  hopper: [[0, -7, 1.7]], kamikaze: [[0, -9, 1.6]], wall: [[-24, 0, 2.6], [-8, 0, 2.6], [8, 0, 2.6], [24, 0, 2.6]],
+  tank: [[-3, 17, 1.4], [3, 17, 1.4]],
+};
 
 export function enemySprite(type, color) {
   const [w, h] = ENEMY_SIZE[type];
   return bake(`enemy:${type}:${color}`, w, h, (c) => ENEMY_ART[type](c, color));
 }
 
+// A live eye: glowing iris, slit pupil looking toward (tx, ty).
+export function drawEye(x, y, r, color, tx, ty, blink = 0) {
+  const dx = tx - x, dy = ty - y;
+  const d = Math.hypot(dx, dy) || 1;
+  const ox = (dx / d) * r * 0.38, oy = (dy / d) * r * 0.38;
+  ctx.save();
+  ctx.shadowColor = color; ctx.shadowBlur = r * 2.5;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(x, y, r, r * (1 - blink), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  if (blink < 0.8) {
+    ctx.fillStyle = '#0a0006';
+    ctx.beginPath(); ctx.ellipse(x + ox, y + oy, r * 0.28, r * 0.7 * (1 - blink), 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.arc(x - r * 0.3, y - r * 0.35, r * 0.18, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Bosses (static bodies; eyes, aim lines, rotation are drawn live)
+// Bosses: big bio-forms (eyes and hearts live)
 // ---------------------------------------------------------------------------
 const BOSS_ART = {
+  // A fortress of flesh around one giant eye, a row of spitting teeth below
   sentinel: (c, col, hw, hh) => {
-    const outer = [-hw, 0, -hw * 0.5, -hh, hw * 0.5, -hh, hw, 0, hw * 0.5, hh, -hw * 0.5, hh];
-    path(c, outer); plate(c, col, -hh, hh); neon(c, col, 2.2, 10);
-    path(c, outer.map((v, i) => v * (i % 2 ? 0.62 : 0.7))); c.strokeStyle = rgba(col, 0.35); c.lineWidth = 1; c.stroke();
-    for (const sx of [-1, 1]) {
-      path(c, [sx * hw * 0.62, -hh * 0.55, sx * hw * 0.92, 0, sx * hw * 0.62, hh * 0.55]);
-      c.fillStyle = shade(col, -0.7); c.fill(); c.strokeStyle = rgba(col, 0.6); c.lineWidth = 1; c.stroke();
-      rivets(c, [sx * hw * 0.7, -hh * 0.3, sx * hw * 0.7, hh * 0.3, sx * hw * 0.82, 0]);
+    blob(c, [-hw, 0, -hw * 0.6, -hh, 0, -hh * 1.1, hw * 0.6, -hh, hw, 0, hw * 0.6, hh, 0, hh * 0.9, -hw * 0.6, hh]);
+    flesh(c, col, 0, 0, hw * 0.9, 0.15); bioEdge(c, col, 2, 10);
+    for (const s of [-1, 1]) for (let k = 0; k < 4; k++) {
+      const x = s * (30 + k * 16);
+      c.beginPath(); c.moveTo(x, -hh * 0.8 + k * 3); c.quadraticCurveTo(x + s * 8, 0, x, hh * 0.8 - k * 3);
+      c.strokeStyle = '#cdb99c'; c.lineWidth = 3; c.stroke();
+      c.strokeStyle = 'rgba(40,24,16,0.8)'; c.lineWidth = 0.7; c.stroke();
     }
-    for (let k = -2; k <= 2; k++) { circle(c, k * 34, hh - 5, 3.5); c.fillStyle = '#100810'; c.fill(); c.strokeStyle = col; c.lineWidth = 1; c.stroke(); }
-    circle(c, 0, 0, 19); c.fillStyle = '#0d0610'; c.fill(); neon(c, col, 1.4, 6);
+    for (let k = -2; k <= 2; k++) { path(c, [k * 34 - 4, hh - 4, k * 34, hh + 6, k * 34 + 4, hh - 4]); bone(c, hh - 4, hh + 6); }
+    sutures(c, -hw * 0.75, -8, -hw * 0.45, 10, 6); sutures(c, hw * 0.45, -12, hw * 0.78, 6, 6);
+    gash(c, -24, 14, 7, 1.6); gash(c, 30, -14, 5, 1.4);
+    vein(c, [-hw * 0.5, -6, -30, -10, -20, -4], '#9a1020', 1, 0.7); vein(c, [hw * 0.5, 6, 30, 10, 20, 4], '#9a1020', 1, 0.7);
+    socket(c, 0, 0, 17);
   },
+  // Three translucent egg sacs on flesh strands (larvae glow live)
   hive: (c, col) => {
-    c.strokeStyle = '#26301a'; c.lineWidth = 4;
-    c.beginPath(); c.moveTo(-62, 0); c.lineTo(62, 0); c.stroke();
+    vein(c, [-62, 0, -30, -6, 0, 0, 30, -6, 62, 0], col, 4, 0.5);
     for (const cx of [-62, 0, 62]) {
       const r = cx === 0 ? 27 : 23;
-      const hex = []; for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; hex.push(cx + Math.cos(a) * r, Math.sin(a) * r); }
-      path(c, hex); plate(c, col, -r, r); neon(c, col, 1.8, 8);
-      const inner = []; for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; inner.push(cx + Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55); }
-      path(c, inner); c.fillStyle = '#0c1206'; c.fill(); c.strokeStyle = rgba(col, 0.5); c.lineWidth = 1; c.stroke();
-      for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; panelLine(c, cx + Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55, cx + Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9, 0.35); }
+      blob(c, [cx, -r, cx + r * 0.85, -r * 0.45, cx + r, r * 0.3, cx + r * 0.5, r * 0.9, cx, r, cx - r * 0.5, r * 0.9, cx - r, r * 0.3, cx - r * 0.85, -r * 0.45]);
+      const g = c.createRadialGradient(cx, -r * 0.3, 2, cx, 0, r * 1.1);
+      g.addColorStop(0, rgba('#ffffff', 0.35)); g.addColorStop(0.5, rgba(col, 0.28)); g.addColorStop(1, rgba('#1a0614', 0.95));
+      c.fillStyle = g; c.fill(); bioEdge(c, col, 1.8, 9);
+      for (let k = 0; k < 5; k++) { const a = (k / 5) * Math.PI * 2; vein(c, [cx + Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9, cx + Math.cos(a + 0.4) * r * 0.5, Math.sin(a + 0.4) * r * 0.5], col, 0.7, 0.5); }
     }
   },
+  // A predator skull: bone cranium, jaw, one socket that aims at you
   hunter: (c, col, hw, hh) => {
-    const hull = [-hw, -hh * 0.4, -hw * 0.4, -hh, hw * 0.4, -hh, hw, -hh * 0.4, hw * 0.6, hh, hw * 0.15, hh * 0.6, -hw * 0.15, hh * 0.6, -hw * 0.6, hh];
-    path(c, hull); plate(c, col, -hh, hh); neon(c, col, 2, 9);
-    for (const sx of [-1, 1]) {
-      rrect(c, sx * hw * 0.62 - 8, -hh * 0.6, 16, hh * 1.3, 4); plate(c, '#888', -hh, hh, -0.85, -0.5);
-      c.strokeStyle = rgba(col, 0.6); c.lineWidth = 1; c.stroke();
-      glow(c, sx * hw * 0.62, hh * 0.75, 5, col);
-    }
-    panelLine(c, -hw * 0.4, -hh, 0, hh * 0.6, 0.3); panelLine(c, hw * 0.4, -hh, 0, hh * 0.6, 0.3);
-    rivets(c, [-hw * 0.8, -hh * 0.35, hw * 0.8, -hh * 0.35, -30, -hh * 0.8, 30, -hh * 0.8]);
-    circle(c, 0, 0, 15); c.fillStyle = '#120408'; c.fill(); neon(c, col, 1.2, 5);
+    blob(c, [-hw, -hh * 0.3, -hw * 0.5, -hh, 0, -hh * 1.05, hw * 0.5, -hh, hw, -hh * 0.3, hw * 0.65, hh * 0.5, hw * 0.25, hh, -hw * 0.25, hh, -hw * 0.65, hh * 0.5]);
+    flesh(c, col, 0, 0, hw * 0.9, 0.12); bioEdge(c, col, 1.8, 9);
+    blob(c, [-hw * 0.45, -hh * 0.75, 0, -hh * 0.95, hw * 0.45, -hh * 0.75, hw * 0.55, hh * 0.1, 0, hh * 0.3, -hw * 0.55, hh * 0.1]); bone(c, -hh, hh * 0.3);
+    for (const s of [-1, 1]) { blob(c, [s * hw * 0.62, -6, s * hw * 0.82, 0, s * hw * 0.62, 14, s * hw * 0.48, 4], true); bone(c, -6, 14); }
+    for (let k = -3; k <= 3; k++) { path(c, [k * 9 - 3, hh * 0.3, k * 9, hh * 0.3 + 7, k * 9 + 3, hh * 0.3]); bone(c, hh * 0.3, hh * 0.3 + 7); }
+    gash(c, -hw * 0.3, hh * 0.55, 6, 1.4); sutures(c, hw * 0.2, -hh * 0.9, hw * 0.4, -hh * 0.5, 4);
+    socket(c, 0, -4, 13);
   },
+  // An infested crystal: the shard is clean, the roots are flesh
   prism: (c, col) => {
-    const t = [0, -30, 30, 22, -30, 22];
+    for (const s of [-1, 1]) vein(c, [0, 16, s * 18, 22, s * 32, 18], col, 2.4, 0.7);
     path(c, [0, -30, 0, 4, -30, 22]); c.fillStyle = shade(col, -0.35); c.fill();
     path(c, [0, -30, 30, 22, 0, 4]); c.fillStyle = shade(col, -0.6); c.fill();
     path(c, [-30, 22, 0, 4, 30, 22]); c.fillStyle = shade(col, -0.15); c.fill();
-    path(c, t); neon(c, col, 2, 10);
-    panelLine(c, 0, -30, 0, 4, 0.5); panelLine(c, -30, 22, 0, 4, 0.5); panelLine(c, 30, 22, 0, 4, 0.5);
+    path(c, [0, -30, 30, 22, -30, 22]); neon(c, col, 2, 10);
+    blob(c, [-18, 18, 0, 12, 18, 18, 10, 26, -10, 26]); flesh(c, col, 0, 20, 18, 0.2); bioEdge(c, col, 1, 6);
+    for (const x of [-9, 0, 9]) nodule(c, x, 21, 2, col);
   },
+  // A ribcage gate with a beating heart (heart is live)
   warden: (c, col, hw, hh) => {
-    const body = [-hw, -hh, hw, -hh, hw * 0.8, hh, -hw * 0.8, hh];
-    path(c, body); plate(c, col, -hh, hh); neon(c, col, 2.2, 10);
+    blob(c, [-hw, -hh, 0, -hh * 1.1, hw, -hh, hw * 0.85, hh, 0, hh * 1.05, -hw * 0.85, hh]);
+    flesh(c, col, 0, 0, hw, 0.12); bioEdge(c, col, 2, 10);
     for (let k = -2; k <= 2; k++) {
-      const ex = k * 34;
-      rrect(c, ex - 5, -hh + 6, 10, hh * 2 - 8, 2); c.fillStyle = shade(col, -0.75); c.fill();
-      c.strokeStyle = rgba(col, 0.5); c.lineWidth = 0.8; c.stroke();
-      rrect(c, ex - 3, hh - 6, 6, 9, 1.5); c.fillStyle = '#1a0e06'; c.fill();
-      glow(c, ex, hh + 1, 3, col);
+      const x = k * 34;
+      c.beginPath(); c.moveTo(x - 10, -hh + 4); c.quadraticCurveTo(x + 8, 0, x - 4, hh - 2);
+      c.strokeStyle = '#d6c3a5'; c.lineWidth = 5; c.stroke();
+      c.strokeStyle = 'rgba(40,24,16,0.8)'; c.lineWidth = 1; c.stroke();
+      nodule(c, x - 4, hh - 1, 2.6, col);
     }
-    hazard(c, -hw * 0.9, -hh + 1, hw * 1.8, 4, col, 4);
-    circle(c, 0, -4, 10); c.fillStyle = '#140606'; c.fill(); neon(c, PAL.red, 1.2, 6);
+    sutures(c, -hw * 0.9, 0, -hw * 0.6, 0, 5); sutures(c, hw * 0.6, 4, hw * 0.9, 4, 5);
+    vein(c, [-hw * 0.8, -hh * 0.6, -40, -4, -14, 0], '#9a1020', 1.2, 0.7);
+    vein(c, [hw * 0.8, -hh * 0.6, 40, -4, 14, 0], '#9a1020', 1.2, 0.7);
+    socket(c, 0, -4, 10);
   },
 };
 
 export function bossSprite(id, color, hw, hh) {
-  const w = hw * 2 + 16, h = hh * 2 + 24;
-  return bake(`boss:${id}:${color}`, w, h, (c) => BOSS_ART[id](c, color, hw, hh));
+  const w = hw * 2 + 16, h = hh * 2 + 30;
+  return bake(`bossbio:${id}:${color}`, w, h, (c) => BOSS_ART[id](c, color, hw, hh));
 }
 export function prismEmitterSprite(color, hw) {
-  return bake(`prismbar:${color}`, hw * 2 + 8, 12, (c) => {
-    rrect(c, -hw, -3, hw * 2, 6, 3); plate(c, '#999', -3, 3, -0.85, -0.5); neon(c, color, 1.2, 6);
-    for (let k = -2; k <= 2; k++) glow(c, k * 34, 0, 3.2, '#ffffff');
+  return bake(`prismbarbio:${color}`, hw * 2 + 8, 14, (c) => {
+    blob(c, [-hw, 0, -hw * 0.5, -4, 0, -3, hw * 0.5, -4, hw, 0, hw * 0.5, 4, 0, 3, -hw * 0.5, 4]);
+    flesh(c, color, 0, 0, hw, 0.2); bioEdge(c, color, 1.2, 6);
+    for (let k = -2; k <= 2; k++) nodule(c, k * 34, 0, 2.8, '#ffffff');
   });
 }
 

@@ -13,7 +13,7 @@ import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
 import { SKIP_COINS } from '../game/balance.js';
 
-const VERSION = 'v1.1';
+const VERSION = 'v1.2';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
@@ -70,15 +70,52 @@ function itemCard(id, x, y, w, h, it, { price = null, sold = false, afford = tru
 }
 
 // ---------------------------------------------------------------------------
+// Logo (direction B: neon script over a chrome block, orange horizon)
+// ---------------------------------------------------------------------------
+function drawLogo(t) {
+  const gl = Math.random() < 0.03 ? (Math.random() - 0.5) * 6 : 0;
+  // horizon band
+  ctx.fillStyle = 'rgba(29,6,25,0.9)';
+  ctx.fillRect(0, 70, W, 110);
+  ctx.save();
+  ctx.shadowColor = PAL.orange; ctx.shadowBlur = 12;
+  ctx.fillStyle = PAL.orange; ctx.fillRect(0, 179, W, 2);
+  ctx.restore();
+  // OVERDRIFT: chrome block, skewed, stacked shadows
+  ctx.save();
+  ctx.translate(W / 2 + gl, 196);
+  ctx.transform(1, 0, -0.18, 1, 0, 0);
+  ctx.font = '46px "Russo One", Impact, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#2a1640'; ctx.fillText('OVERDRIFT', 0, 6);
+  ctx.fillStyle = '#6a4a88'; ctx.fillText('OVERDRIFT', 0, 3);
+  const g = ctx.createLinearGradient(0, -22, 0, 22);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.48, '#cfc6dc'); g.addColorStop(0.52, '#8a7aa0'); g.addColorStop(1, '#e9e4f2');
+  ctx.fillStyle = g; ctx.fillText('OVERDRIFT', 0, 0);
+  ctx.restore();
+  // Neon: script, tilted, glowing, flickers now and then
+  const flick = Math.random() < 0.02 ? 0.35 : 1;
+  ctx.save();
+  ctx.translate(W / 2 - 58, 138);
+  ctx.rotate(-0.14);
+  ctx.font = '72px Yellowtail, cursive';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = flick;
+  ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 26;
+  ctx.fillStyle = PAL.magenta; ctx.fillText('Neon', 0, 0);
+  ctx.shadowBlur = 6; ctx.shadowColor = '#ffffff';
+  ctx.fillStyle = '#ffd0f4'; ctx.fillText('Neon', 0, 0);
+  ctx.restore();
+  // tagline
+  text('RUN · SHOOT · MUTATE', W / 2, 228, { color: PAL.cyan, size: 9, align: 'center' });
+}
+
+// ---------------------------------------------------------------------------
 // Menu
 // ---------------------------------------------------------------------------
 export function drawMenu(save, t, boardIdx) {
   dim(0.55);
-  const pulse = 0.7 + Math.sin(t * 4) * 0.3;
-  const gl = Math.random() < 0.04 ? (Math.random() - 0.5) * 8 : 0;
-  text('NEON', W / 2 + gl, 130, { color: PAL.magenta, size: 52, align: 'center' });
-  text('OVERDRIFT', W / 2 - gl, 178, { color: PAL.cyan, size: 40, align: 'center' });
-  line(W * 0.2, 206, W * 0.8, 206, PAL.acid, 2);
+  drawLogo(t);
 
   // Board selector
   const b = BOARDS[boardIdx];

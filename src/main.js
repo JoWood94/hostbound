@@ -7,7 +7,7 @@ import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset } from './render/fx.js';
 import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/bullets.js';
 import { drawPlayer } from './game/player.js';
-import { drawEnemies, drawTelegraphs, spawnEnemy, enemies } from './game/enemies.js';
+import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles } from './game/obstacles.js';
 import { drawPickups } from './game/pickups.js';
@@ -40,6 +40,8 @@ let comboPage = 0;
 
 applySettings(save.settings);
 setHaptics(save.settings.haptics);
+// Logo fonts (direction B). Offline the canvas falls back to system fonts.
+if (document.fonts) { document.fonts.load('64px Yellowtail').catch(() => {}); document.fonts.load('48px "Russo One"').catch(() => {}); }
 
 function ensureAudio() {
   unlockAudio();
@@ -163,6 +165,7 @@ function render(alpha) {
     drawArchive(save, archiveTab, archiveSel, comboPage);
   } else {
     const r = run;
+    look.x = r.player.x; look.y = PLAYER_Y;
     drawWorld(r.distance, r.player.lane);
     drawTelegraphs();
     drawBossTelegraph(r.boss);

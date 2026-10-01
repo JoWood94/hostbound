@@ -322,7 +322,20 @@ Item nuovi: AFTERBURNER (SPEED), LOADED DICE (LUCK). LUCKY CHIP ora dà LUCK +2.
 - Poi: la carta mostra nome ed effetto; archivio → scheda COMBOS; pausa → combo attive.
 - Le combo che dipendono dal vettore valgono solo se l'effetto esiste davvero.
 
+Fatto (v1.1–1.2) — SHOT SPEED e direzione artistica:
+- SHOT SPEED (quinta stat): velocità colpi, portata SCATTER, lunghezza onda, razzi, carica RAIL.
+  Le élite scartano di mezza corsia quando colpite: colpi veloci le puniscono.
+- Direzione artistica: **Hotline Miami × Fear & Hunger, al neon**. Tutto è biomassa:
+  carne color sangue secco, ossa ingiallite e sporche, suture e ferite, vene di sangue,
+  occhi gialli malati che seguono la navicella, creature che respirano.
+  Navicelle bio (HUSK teschio-scarabeo con mandibole, GHOST medusa, TANK isopode,
+  VIRAL spore, GLITCH mutante). Pista sporca (ruggine, olio, sangue), luci fioche,
+  oscurità che lascia illuminata solo la zona della navicella.
+- Logo: direzione B (script neon "Neon" su blocco cromato "OVERDRIFT", orizzonte arancione)
+  anche nel menu. Canvas design: claude.ai/artifact/WAqL1KcuScZXjNKzidUSrR.
+
 Backlog:
+- Icona PWA con la nuova navicella bio.
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.
 - Più boss (uno per distretto).

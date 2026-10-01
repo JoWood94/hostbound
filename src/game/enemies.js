@@ -9,7 +9,10 @@
 import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, ring } from '../render/draw.js';
-import { enemySprite, drawSprite } from '../render/sprites.js';
+import { enemySprite, drawSprite, drawEye, EYES } from '../render/sprites.js';
+
+// Where creature eyes look (the player's ship), set each frame by main.js.
+export const look = { x: 180, y: 500 };
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
@@ -316,26 +319,32 @@ export function drawEnemies(alpha) {
         line(x + sx * 4, y + sy * 3, kx, ky - 3, c, 2, 0.9);
         line(kx, ky - 3, x + sx * 13 * spread, y + sy * 12, c, 1.6, 0.9);
       }
+    } else if (e.type === 'tank') {
+      for (const s of [-1, 1]) for (const k of [-1, 0, 1]) {
+        const sw = Math.sin(t * 9 + k * 2 + (s > 0 ? Math.PI : 0)) * 3;
+        line(x + s * 11, y + k * 9, x + s * 19, y + k * 9 + sw, '#3a1a2a', 2.4, 1);
+        line(x + s * 19, y + k * 9 + sw, x + s * 22, y + k * 9 + 5 + sw, '#3a1a2a', 1.8, 1);
+      }
+    } else if (e.type === 'drone') {
+      // wing membranes flutter: a faint pulse ring
+      ring(x, y, 15 + Math.sin(t * 14) * 1.5, c, 1, 0.18);
     } else if (e.type === 'kamikaze') {
       const len = e.state === 'dive' ? 16 + Math.random() * 10 : 5 + Math.random() * 3;
       drawGlowDot(x, y - 14 - len * 0.4, PAL.amber, 4, 0.9);
       drawGlowDot(x, y - 14 - len, PAL.red, 3, 0.6);
     }
 
-    const scale = (e.minion ? 0.8 : 1) * (e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r)));
+    // Bio-creatures breathe.
+    const breathe = 1 + Math.sin(t * 3.2 + e.id) * 0.035;
+    const scale = breathe * (e.minion ? 0.8 : 1) * (e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r)));
     drawSprite(enemySprite(e.type, c), x, y, { sx: scale, sy: scale, flash });
 
-    // Live parts over the body
-    if (e.type === 'drone') {
-      for (const [dx, dy] of [[-11, -11], [11, -11], [-11, 11], [11, 11]]) {
-        const a = t * 22 + dx;
-        line(x + dx - Math.cos(a) * 5, y + dy - Math.sin(a) * 5, x + dx + Math.cos(a) * 5, y + dy + Math.sin(a) * 5, '#ffffff', 1, 0.45);
-      }
-    } else if (e.type === 'tank') {
-      const off = (t * 40) % 6;
-      for (const tx of [-15, 15]) for (let k = -18 + off; k < 20; k += 6) line(x + tx - 4, y + k, x + tx + 4, y + k, '#5a6a64', 1.2, 0.8);
-    } else if (e.type === 'crusher' && e.state === 'telegraph') {
-      drawGlowDot(x, y + 14, c, 4 + Math.sin(t * 30) * 1.5, 0.9);
+    // Live parts over the body: eyes track the ship, telegraph makes them flare.
+    const blink = (Math.sin(t * 0.7 + e.id * 1.7) > 0.985) ? 0.9 : 0;
+    const eyeCol = tele ? '#ffffff' : e.elite ? PAL.amber : '#d9c45a';
+    for (const [ex, ey, er] of EYES[e.type] || []) drawEye(x + ex * scale, y + ey * scale, er * scale * (tele ? 1.25 : 1), eyeCol, look.x, look.y, blink);
+    if (e.type === 'crusher' && e.state === 'telegraph') {
+      drawGlowDot(x, y + 9, c, 4 + Math.sin(t * 30) * 1.5, 0.9);
     }
     if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
   }
