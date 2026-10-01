@@ -8,8 +8,9 @@ import { ITEMS, ITEM_BY_ID, RARITY, CAT_COLOR, SYNERGIES } from '../game/items.j
 import { BOARDS } from '../game/boards.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
+import { todayKey } from '../game/run.js';
 
-const VERSION = 'v0.4';
+const VERSION = 'v0.5';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
@@ -62,15 +63,20 @@ export function drawMenu(save, t, boardIdx) {
   const desc = unlocked ? b.desc : `Unlock: ${ach ? ach.desc : '?'}`;
   wrap(desc, 34).slice(0, 4).forEach((l, i) => text(l, W / 2, 286 + i * 12, { color: PAL.white, size: 9, align: 'center', weight: 'normal', alpha: unlocked ? 0.9 : 0.6 }));
 
-  button('run', 60, 356, W - 120, 52, 'RUN', { color: PAL.cyan, size: 20, disabled: !unlocked });
-  if (unlocked) text('TAP TO RUN', W / 2, 420, { color: PAL.white, size: 9, align: 'center', alpha: pulse });
+  button('run', 60, 348, W - 120, 46, 'RUN', { color: PAL.cyan, size: 20, disabled: !unlocked });
+  const dBest = save.daily.date === todayKey() ? save.daily.best : 0;
+  button('daily', 60, 402, W - 120, 40, 'DAILY RUN', { color: PAL.magenta, size: 13,
+    sub: dBest ? `same seed for everyone · today ${dBest}m` : 'same seed for everyone today' });
+  button('archive', 60, 450, W - 120, 34, 'ARCHIVE', { color: PAL.acid, size: 13 });
 
   const nUnl = unlockedItems(save).length;
-  button('archive', 60, 436, W - 120, 40, 'ARCHIVE', { color: PAL.acid, size: 14, sub: null });
-  text(`${nUnl}/${ITEMS.length} ITEMS · ${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length} GOALS`, W / 2, 486, { color: PAL.mute, size: 8, align: 'center' });
+  text(`${nUnl}/${ITEMS.length} ITEMS · ${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length} GOALS`, W / 2, 494, { color: PAL.mute, size: 8, align: 'center' });
 
-  button('sfx', 60, 500, (W - 128) / 2, 34, `SFX ${save.settings.sfx ? 'ON' : 'OFF'}`, { color: save.settings.sfx ? PAL.white : PAL.dim, size: 11 });
-  button('music', 68 + (W - 128) / 2, 500, (W - 128) / 2, 34, `MUSIC ${save.settings.music ? 'ON' : 'OFF'}`, { color: save.settings.music ? PAL.white : PAL.dim, size: 11 });
+  const bw = (W - 136) / 3;
+  const st = save.settings;
+  button('sfx', 60, 506, bw, 30, `SFX ${st.sfx ? 'ON' : 'OFF'}`, { color: st.sfx ? PAL.white : PAL.dim, size: 10 });
+  button('music', 68 + bw, 506, bw, 30, `MUSIC ${st.music ? 'ON' : 'OFF'}`, { color: st.music ? PAL.white : PAL.dim, size: 10 });
+  button('haptics', 76 + bw * 2, 506, bw, 30, `BUZZ ${st.haptics ? 'ON' : 'OFF'}`, { color: st.haptics ? PAL.white : PAL.dim, size: 10 });
 
   text('SWIPE ◄ ► LANE · ▲ JUMP · ▼ PHASE · TAP ACTIVE', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
   if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 582, { color: PAL.acid, size: 12, align: 'center' });
@@ -201,6 +207,7 @@ export function drawDead(run) {
   const jitter = run.deadT < 0.5 ? (Math.random() - 0.5) * 6 : 0;
   text('SIGNAL LOST', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center' });
   text(`${Math.floor(run.distance)}m`, W / 2, 158, { color: PAL.cyan, size: 30, align: 'center' });
+  if (run.daily) text(`DAILY ${run.dailyKey}${run.newDailyBest ? ' · NEW DAILY BEST' : ''}`, W / 2, 134, { color: PAL.magenta, size: 9, align: 'center' });
   if (run.newBest) text('NEW BEST', W / 2, 186, { color: PAL.acid, size: 12, align: 'center', alpha: 0.6 + Math.sin(run.deadT * 6) * 0.4 });
   const rs = run.rs;
   text(`KILLS ${rs.kills}   BOSSES ${rs.bosses}   ¤${rs.coins}`, W / 2, 212, { color: PAL.white, size: 11, align: 'center' });
@@ -210,8 +217,10 @@ export function drawDead(run) {
     [...new Set(run.newUnlocks)].slice(0, 6).forEach((n, i) => text(n, W / 2, 284 + i * 16, { color: PAL.magenta, size: 11, align: 'center' }));
   }
   if (run.deadT > 0.8) {
-    button('retry', 60, 420, W - 120, 50, 'RETRY', { color: PAL.cyan, size: 18 });
-    button('menu', 60, 482, W - 120, 40, 'MENU', { color: PAL.white, size: 13 });
+    button('retry', 60, 420, W - 120, 50, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PAL.cyan, size: 18 });
+    const hw = (W - 128) / 2;
+    button('menu', 60, 482, hw, 40, 'MENU', { color: PAL.white, size: 13 });
+    button('share', 68 + hw, 482, hw, 40, run.shareMsg || 'SHARE', { color: PAL.magenta, size: 13 });
   }
 }
 

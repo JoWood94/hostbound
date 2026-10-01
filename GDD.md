@@ -242,12 +242,18 @@ Fatto (v0.4):
 - Audio procedurale: SFX + sequencer con BPM che sale; tema diverso per boss e negozio.
 - PWA (icona, manifest, offline) + GitHub Actions per Pages.
 
+Fatto (v0.5):
+- Salto rifatto: ombra a terra, hang in alto, squash, buffer input; onde basse sotto la board.
+- Nemici: Hopper (1500 m), Kamikaze (2000 m), Wall (2500 m), Tank (3000 m).
+- 5 distretti (Neon Row, Acid Docks, Chrome Spine, Red Sector, The Void) ogni 1000 m.
+- Daily run: stesso seed per tutti nella stessa data, board STOCK, best giornaliero.
+- Condividi risultato (share sheet su mobile, appunti su desktop), vibrazione (Android).
+
 Backlog:
-- Nemici: Hopper, Wall, Kamikaze, Tank.
-- Distretti visivi (palette che cambia ogni 1000 m).
-- Daily seed, condivisione screenshot della run.
-- Impostazioni: sensibilità swipe, vibrazione.
 - Bilanciamento prezzi e HP boss dopo test reali.
+- Impostazione sensibilità swipe.
+- Più boss (uno per distretto).
+- Classifica condivisa tra amici (serve un backend: valutare).
 
 ## 15. Rischi
 

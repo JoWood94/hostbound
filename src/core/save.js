@@ -14,7 +14,8 @@ function fresh() {
     discovered: [],        // item ids ever picked up
     extraItems: [],        // items unlocked by decrypting corrupted drops
     board: 'stock',
-    settings: { sfx: true, music: true },
+    settings: { sfx: true, music: true, haptics: true },
+    daily: { date: '', best: 0 },
   };
 }
 
@@ -25,6 +26,7 @@ function migrate(data) {
   const out = { ...base, ...data };
   out.totals = { ...base.totals, ...(data.totals || {}) };
   out.settings = { ...base.settings, ...(data.settings || {}) };
+  out.daily = { ...base.daily, ...(data.daily || {}) };
   out.achievements = { ...(data.achievements || {}) };
   out.discovered = Array.isArray(data.discovered) ? data.discovered : [];
   out.extraItems = Array.isArray(data.extraItems) ? data.extraItems : [];

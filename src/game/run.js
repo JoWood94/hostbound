@@ -8,7 +8,7 @@ import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies } from './enemies.js';
-import { updateWorld, LANES, LANE_W, PX_PER_M } from './world.js';
+import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex } from './world.js';
 import { obstacles, spawnObstacle, spawnGate, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, spawnCoinLine, dropCoins, updatePickups, clearPickups } from './pickups.js';
 import { ITEMS, ITEM_BY_ID, computeStats, rollItems, activeSynergies, RARITY } from './items.js';
@@ -18,15 +18,29 @@ import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeapon
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic } from '../audio/music.js';
+import { buzz } from '../core/haptics.js';
 
 export const EVENT_EVERY = 600;       // metres between boss / market checkpoints
 const PRICE = [18, 30, 45];
 
-export function createRun(save) {
-  const seed = randomSeed();
-  const board = BOARD_BY_ID[save.board] || BOARD_BY_ID.stock;
+// Daily run: same seed for everyone on the same local date, always STOCK board.
+export function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function hashSeed(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+export function createRun(save, opts = {}) {
+  const daily = !!opts.daily;
+  const dailyKey = daily ? todayKey() : null;
+  const seed = daily ? hashSeed(`neon-overdrift:${dailyKey}`) : randomSeed();
+  const board = daily ? BOARD_BY_ID.stock : (BOARD_BY_ID[save.board] || BOARD_BY_ID.stock);
   const run = {
-    seed, rng: makeRng(seed), save, board,
+    seed, rng: makeRng(seed), save, board, daily, dailyKey,
     stacks: {}, stats: null, player: null,
     distance: 0, time: 0, speed: 220,
     spawnT: 2.0, chunkT: 1.5,
@@ -44,6 +58,7 @@ export function createRun(save) {
     corrupt: [],               // item ids picked from corrupted drops, unlocked at next boss kill
     corruptSpawned: 0,
     achT: 0, deadT: 0,
+    district: 0,
   };
   run.stats = computeStats(board, run.stacks);
   run.player = makePlayer(run.stats, board.color);
@@ -98,7 +113,7 @@ export function acquire(run, id, silent = false) {
   if (!run.save.discovered.includes(id)) { run.save.discovered.push(id); writeSave(run.save); }
   run.rs.defItems = ITEMS.filter((x) => x.cat === 'defense' && run.stacks[x.id] > 0).length;
 
-  if (!silent) { sfx.pickup(); toast(run, it.name, it.desc.length < 44 ? it.desc : '', RARITY[it.rarity].color); }
+  if (!silent) { sfx.pickup(); buzz(15); toast(run, it.name, it.desc.length < 44 ? it.desc : '', RARITY[it.rarity].color); }
 
   for (const sy of activeSynergies(run.stacks)) {
     if (run.synergies.has(sy.id)) continue;
@@ -296,6 +311,7 @@ function onBossKilled(run, b) {
   burst(b.x, b.y, PAL.white, 30, 200, 0.8, 3);
   shake(14, 0.6);
   sfx.bossDie();
+  buzz([40, 40, 90]);
   clearPool(enemyBullets);
   run.boss = null;
   run.bossIndex++;
@@ -322,6 +338,7 @@ export function onCrit(run) {
 // ---------------------------------------------------------------------------
 function onHurt(run, result) {
   if (result === 'iframe') return;
+  buzz(result === 'shield' ? 25 : 70);
   if (run.boss) run.bossHit = true;
   sfx[result === 'shield' ? 'shield' : 'hurt']();
 }
@@ -361,6 +378,12 @@ export function updateRun(run, input, dt) {
   if (!run.boss && run.warnT <= 0) run.distance += (run.speed / PX_PER_M) * edt;
   run.rs.distance = run.distance;
   updateWorld(edt, run.speed);
+  const di = districtIndex(run.distance);
+  if (di !== run.district) {
+    run.district = di;
+    toast(run, `ENTERING ${DISTRICTS[di].name}`, '', DISTRICTS[di].wall, 2.6);
+    sfx.select();
+  }
 
   // Checkpoints
   if (!run.pending && !run.boss && run.distance >= run.nextEvent) {
@@ -553,6 +576,7 @@ export function endRun(run) {
   run.mode = 'dead';
   run.deadT = 0;
   sfx.death();
+  buzz([120, 60, 180]);
   const s = run.save;
   const rs = run.rs;
   // Run-only achievements already checked live; merge totals then check the rest.
@@ -562,6 +586,11 @@ export function endRun(run) {
   }
   for (const k of ['kills', 'bosses', 'coins', 'purchases', 'phaseDodges', 'lowJumps', 'obstacles', 'toxinKills']) s.totals[k] += rs[k];
   s.totals.distance += Math.floor(rs.distance);
+  if (run.daily) {
+    if (s.daily.date !== run.dailyKey) s.daily = { date: run.dailyKey, best: 0 };
+    run.newDailyBest = rs.distance > s.daily.best;
+    if (run.newDailyBest) s.daily.best = Math.floor(rs.distance);
+  }
   run.newBest = rs.distance > s.best;
   if (run.newBest) s.best = Math.floor(rs.distance);
   for (const a of checkAchievements(s, null)) {

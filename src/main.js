@@ -19,6 +19,7 @@ import { createRun, updateRun, updateDead, endRun, acquire, pickItem, skipPick, 
 import { drawHud } from './ui/hud.js';
 import { drawMenu, drawArchive, drawPick, drawShop, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
+import { setHaptics, buzz } from './core/haptics.js';
 import { startMusic, setMusic } from './audio/music.js';
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ let archiveTab = 'items';
 let archiveSel = null;
 
 applySettings(save.settings);
+setHaptics(save.settings.haptics);
 
 function ensureAudio() {
   unlockAudio();
@@ -40,12 +42,25 @@ function ensureAudio() {
   startMusic();
 }
 
-function startRun() {
-  save.board = BOARDS[boardIdx].id;
+function startRun(daily = false) {
+  if (!daily) save.board = BOARDS[boardIdx].id;
   writeSave(save);
-  run = createRun(save);
+  run = createRun(save, { daily });
   screen = 'run';
   sfx.select();
+}
+
+async function shareRun(r) {
+  const url = `${location.origin}${location.pathname}`;
+  const where = r.daily ? ` on the DAILY ${r.dailyKey}` : '';
+  const msg = `NEON OVERDRIFT: ${Math.floor(r.distance)}m${where}, ${r.rs.bosses} bosses, ${r.rs.kills} kills. Beat me:`;
+  // Both APIs need a secure context (https). Over plain-http LAN testing they are missing.
+  if (navigator.share) {
+    try { await navigator.share({ title: 'NEON OVERDRIFT', text: msg, url }); } catch { /* cancelled */ }
+    return;
+  }
+  try { await navigator.clipboard.writeText(`${msg} ${url}`); r.shareMsg = 'COPIED'; }
+  catch { r.shareMsg = 'NEEDS HTTPS'; sfx.deny(); }
 }
 
 function toMenu() {
@@ -79,9 +94,11 @@ function update(dt) {
     if (id === 'boardPrev' || input.left) { boardIdx = (boardIdx + BOARDS.length - 1) % BOARDS.length; sfx.lane(); }
     else if (id === 'boardNext' || input.right) { boardIdx = (boardIdx + 1) % BOARDS.length; sfx.lane(); }
     else if ((id === 'run' || id === 'enter' || input.jump) && unlocked) startRun();
+    else if (id === 'daily') startRun(true);
     else if (id === 'archive') { screen = 'archive'; sfx.select(); }
     else if (id === 'sfx') { save.settings.sfx = !save.settings.sfx; applySettings(save.settings); writeSave(save); sfx.select(); }
     else if (id === 'music') { save.settings.music = !save.settings.music; applySettings(save.settings); writeSave(save); sfx.select(); }
+    else if (id === 'haptics') { save.settings.haptics = !save.settings.haptics; setHaptics(save.settings.haptics); writeSave(save); buzz(30); sfx.select(); }
     return;
   }
 
@@ -114,8 +131,9 @@ function update(dt) {
     case 'dead':
       updateDead(run, dt);
       if (run.deadT > 0.8) {
-        if (id === 'retry' || id === 'enter' || input.jump) startRun();
+        if (id === 'retry' || id === 'enter' || input.jump) startRun(run.daily);
         else if (id === 'menu') toMenu();
+        else if (id === 'share') shareRun(run);
       }
       break;
   }
