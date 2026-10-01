@@ -25,6 +25,13 @@ export const ACHIEVEMENTS = [
   { id: 'def_3', name: 'BUNKER', desc: 'Hold 3 defense items in one run', progress: (s, r) => [r ? r.defItems : 0, 3], runOnly: true },
   { id: 'buy_5', name: 'CUSTOMER', desc: 'Buy 5 things at the black market (total)', progress: (s, r) => [T(s, r, 'purchases'), 5] },
   { id: 'toxin_kills_60', name: 'OUTBREAK', desc: 'Kill 60 poisoned enemies (total)', progress: (s, r) => [T(s, r, 'toxinKills'), 60] },
+  { id: 'kills_run_50', name: 'RAMPAGE', desc: 'Destroy 50 enemies in one run', progress: (s, r) => [r ? r.kills : 0, 50], runOnly: true },
+  { id: 'elite_10', name: 'GOLD DIGGER', desc: 'Destroy 10 elite enemies (total)', progress: (s, r) => [T(s, r, 'elites'), 10] },
+  { id: 'elite_25', name: 'GOLD RUSH', desc: 'Destroy 25 elite enemies (total)', progress: (s, r) => [T(s, r, 'elites'), 25] },
+  { id: 'pure_1000', name: 'FLAWLESS', desc: 'Reach 1000m without getting hit', progress: (s, r) => [r ? r.pureDistance : 0, 1000], runOnly: true },
+  { id: 'boss_5', name: 'EXECUTIONER', desc: 'Defeat 5 bosses (total)', progress: (s, r) => [T(s, r, 'bosses'), 5] },
+  { id: 'coins_run_150', name: 'PAYDAY', desc: 'Collect 150 coins in one run', progress: (s, r) => [r ? r.coins : 0, 150], runOnly: true },
+  { id: 'daily_1', name: 'ROUTINE', desc: 'Play a daily run', progress: (s, r) => [s.totals.dailies + (r && r.daily ? 1 : 0), 1] },
   { id: 'discover_18', name: 'COLLECTOR', desc: 'Discover 18 different items', progress: (s) => [s.discovered.length, 18] },
 ];
 

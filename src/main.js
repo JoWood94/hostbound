@@ -12,7 +12,10 @@ import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles } from './game/obstacles.js';
 import { drawPickups } from './game/pickups.js';
 import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.js';
-import { drawWeaponFx } from './game/weapon.js';
+import { drawWeaponFx, drawWingmen } from './game/weapon.js';
+import { line as drawLine, drawGlowDot } from './render/draw.js';
+import { PLAYER_Y } from './game/player.js';
+import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
 import { unlockedBoards } from './game/achievements.js';
 import { createRun, updateRun, updateDead, endRun, acquire, pickItem, skipPick, shopBuy, shopReroll, shopLeave } from './game/run.js';
@@ -165,6 +168,13 @@ function render(alpha) {
     drawEnemies(alpha);
     drawWeaponFx();
     drawPlayerBullets();
+    if (r.railT > 0) {
+      const a = Math.min(1, r.railT * 3);
+      drawLine(r.player.x, PLAYER_Y - 20, r.player.x, 0, PAL.cyan, 10 + Math.random() * 4, 0.35 * a);
+      drawLine(r.player.x, PLAYER_Y - 20, r.player.x, 0, '#ffffff', 3, 0.9 * a);
+      drawGlowDot(r.player.x, PLAYER_Y - 22, PAL.cyan, 10, a);
+    }
+    drawWingmen();
     drawEnemyBullets('low');   // low waves under the board: you jump over them
     if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
     drawEnemyBullets('high');  // normal enemy bullets always on top: readability rule

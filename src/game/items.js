@@ -29,6 +29,9 @@ export function baseStats() {
     magnet: 0, coinMul: 1, luck: 0,
     // misc
     adrenaline: 0, repair: false, damageMul: 1, toxinCoins: false,
+    // movement-driven
+    wingmen: 0, groundPound: 0, slipstream: 0, ambush: 0, chain: 0, leech: 0, bloodPact: 0, interest: 0,
+    aftershock: false, squadron: false, driftKing: false, domino: false, counter: false,
   };
 }
 
@@ -111,6 +114,32 @@ export const ITEMS = [
     desc: 'Damage x2. Max hearts -2 (min 1).',
     apply: (s) => { s.damageMul *= 2; s.maxHearts -= 2; } },
 
+  // ---- movement & lane play ----
+  { id: 'wingman', name: 'WINGMAN', code: 'WNG', cat: 'weapon', rarity: 1, max: 2, unlock: 'kills_run_50',
+    desc: 'A drone flies in the next lane and fires with you. Stack: one each side.',
+    apply: (s, n) => { s.wingmen += n; } },
+  { id: 'pound', name: 'GROUND POUND', code: 'GPD', cat: 'weapon', rarity: 0, max: 3, unlock: null,
+    desc: 'Landing a jump fires a piercing shockwave up your lane.',
+    apply: (s, n) => { s.groundPound += n; } },
+  { id: 'slipstream', name: 'SLIPSTREAM', code: 'SLP', cat: 'weapon', rarity: 0, max: 2, unlock: null,
+    desc: 'Every lane change fires a 3-shot burst.',
+    apply: (s, n) => { s.slipstream += n; } },
+  { id: 'ambush', name: 'AMBUSH', code: 'AMB', cat: 'weapon', rarity: 1, max: 2, unlock: 'elite_10',
+    desc: 'After a phase, +75% damage for 1.5s.',
+    apply: (s, n) => { s.ambush += n; } },
+  { id: 'chain', name: 'CHAIN REACTION', code: 'CHN', cat: 'weapon', rarity: 1, max: 2, unlock: 'elite_25',
+    desc: 'Enemies explode when they die, hurting their neighbours.',
+    apply: (s, n) => { s.chain += n; } },
+  { id: 'leech', name: 'LEECH', code: 'LCH', cat: 'defense', rarity: 2, max: 2, unlock: 'pure_1000',
+    desc: 'Heal 1 heart every 30 kills. Stack: every 22.',
+    apply: (s, n) => { s.leech += n; } },
+  { id: 'blood', name: 'BLOOD PACT', code: 'BLD', cat: 'risk', rarity: 1, max: 2, unlock: 'boss_5',
+    desc: '+25% damage for every red heart you are missing.',
+    apply: (s, n) => { s.bloodPact += n; } },
+  { id: 'interest', name: 'INTEREST', code: 'INT', cat: 'economy', rarity: 0, max: 2, unlock: 'coins_run_150',
+    desc: 'Entering a market pays 15% of your coins (max 15).',
+    apply: (s, n) => { s.interest += n; } },
+
   // ---- actives (one slot, tap to use) ----
   { id: 'emp', name: 'EMP', code: 'EMP', cat: 'active', rarity: 0, max: 1, unlock: null,
     desc: 'ACTIVE: clear all enemy bullets, 8 damage to everything. 10 kills to charge.',
@@ -121,6 +150,9 @@ export const ITEMS = [
   { id: 'overdrive', name: 'OVERDRIVE', code: 'OVD', cat: 'active', rarity: 1, max: 1, unlock: 'boss_2run',
     desc: 'ACTIVE: triple fire rate for 5s. 8 kills to charge.',
     active: { charge: 8 } },
+  { id: 'rail', name: 'RAIL STRIKE', code: 'RAL', cat: 'active', rarity: 1, max: 1, unlock: 'daily_1',
+    desc: 'ACTIVE: a piercing beam down your lane for 1.2s. 10 kills to charge.',
+    active: { charge: 10 } },
   { id: 'patch', name: 'PATCH KIT', code: 'PAT', cat: 'active', rarity: 1, max: 1, unlock: 'obstacles_200',
     desc: 'ACTIVE: heal 1 heart. 18 kills to charge.',
     active: { charge: 18 } },
@@ -145,6 +177,19 @@ export const SYNERGIES = [
   { id: 'jackpot', name: 'JACKPOT', req: ['greed', 'lucky'], desc: 'Crits drop coins.',
     apply: (s) => { s.critCoins = true; } },
 ];
+
+SYNERGIES.push(
+  { id: 'aftershock', name: 'AFTERSHOCK', req: ['pound', 'kickflip'], desc: 'Ground pound hits 3 lanes.',
+    apply: (s) => { s.aftershock = true; } },
+  { id: 'squadron', name: 'SQUADRON', req: ['wingman', 'split'], desc: 'Wingmen fire 50% faster.',
+    apply: (s) => { s.squadron = true; } },
+  { id: 'driftking', name: 'DRIFT KING', req: ['slipstream', 'blink'], desc: 'Phasing fires a burst too.',
+    apply: (s) => { s.driftKing = true; } },
+  { id: 'domino', name: 'DOMINO', req: ['chain', 'frag'], desc: 'Death blasts are bigger.',
+    apply: (s) => { s.domino = true; } },
+  { id: 'counter', name: 'COUNTERSTRIKE', req: ['ambush', 'mirror'], desc: 'Reflected bullets deal triple.',
+    apply: (s) => { s.counter = true; } },
+);
 
 export function activeSynergies(stacks) {
   return SYNERGIES.filter((sy) => sy.req.every((id) => stacks[id] > 0));

@@ -262,6 +262,15 @@ Fatto (v0.6) — bilanciamento:
 - Attivo: bottone arancione dedicato, si carica con le uccisioni. Tutorial contestuale.
 - Salto: indicatore JUMP quando arriva qualcosa di basso; swipe giù in aria = caduta rapida.
 
+Fatto (v0.7):
+- Grafica: sprite pre-renderizzati (src/render/sprites.js) per player, 7 nemici, 5 boss,
+  ostacoli finti 3D, monete, cuori, proiettili. Parti animate live.
+- Hitbox dei boss sulla sagoma (PRISM solo cristallo, HIVE le 3 celle, ecc.).
+- Proiettili nemici sempre più veloci dei nemici e della pista (260+ px/s).
+- 9 item nuovi: WINGMAN, GROUND POUND, SLIPSTREAM, AMBUSH, CHAIN REACTION, LEECH,
+  BLOOD PACT, INTEREST, RAIL STRIKE (attivo). 5 sinergie: AFTERSHOCK, SQUADRON,
+  DRIFT KING, DOMINO, COUNTERSTRIKE. 7 obiettivi nuovi per sbloccarli.
+
 Backlog:
 - Rivalutare il salto dopo il feedback.
 - Impostazione sensibilità swipe.

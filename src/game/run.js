@@ -5,7 +5,7 @@ import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
-import { LOW, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
+import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, NARROW_TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies } from './enemies.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex } from './world.js';
@@ -15,7 +15,7 @@ import { ITEMS, ITEM_BY_ID, computeStats, rollItems, activeSynergies, RARITY, po
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
-import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx } from './weapon.js';
+import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic } from '../audio/music.js';
@@ -42,12 +42,14 @@ export function createRun(save, opts = {}) {
   const board = daily ? BOARD_BY_ID.stock : (BOARD_BY_ID[save.board] || BOARD_BY_ID.stock);
   const run = {
     seed, rng: makeRng(seed), save, board, daily, dailyKey,
+    wasHit: false, leechKills: 0, slipCd: 0, railT: 0, railTick: 0,
     stacks: {}, stats: null, player: null,
     distance: 0, time: 0, speed: 220,
     spawnT: 2.0, chunkT: 1.5,
     coins: 0, coinFrac: 0,
     rs: { distance: 0, kills: 0, bosses: 0, coins: 0, purchases: 0, phaseDodges: 0, lowJumps: 0,
-      obstacles: 0, toxinKills: 0, phases: 0, defItems: 0, bossNoHit: false, boss1Heart: false },
+      obstacles: 0, toxinKills: 0, phases: 0, defItems: 0, bossNoHit: false, boss1Heart: false,
+      elites: 0, pureDistance: 0, daily: false },
     mode: 'play',
     nextEvent: EVENT_EVERY, eventIndex: 0, pending: null, warnT: 0,
     boss: null, bossIndex: 0, bossHit: false, pickDelay: 0,
@@ -63,6 +65,7 @@ export function createRun(save, opts = {}) {
   };
   run.stats = computeStats(board, run.stacks);
   run.player = makePlayer(run.stats, board.color);
+  run.rs.daily = daily;
   // Boss order is shuffled per run (Fisher-Yates on the run seed).
   run.bossOrder = BOSSES.map((_, i) => i);
   for (let i = run.bossOrder.length - 1; i > 0; i--) {
@@ -162,6 +165,11 @@ function useActive(run) {
   } else if (a.id === 'overdrive') {
     run.overdriveT = 5;
     sfx.synergy();
+  } else if (a.id === 'rail') {
+    run.railT = 1.2;
+    run.railTick = 0;
+    sfx.emp();
+    shake(5, 0.3);
   } else if (a.id === 'patch') {
     if (p.hearts < run.stats.maxHearts) p.hearts++; else p.blueHearts++;
     sfx.heart();
@@ -258,6 +266,10 @@ function startBoss(run) {
 function openShop(run) {
   run.mode = 'shop';
   run.toasts = [];
+  if (run.stats.interest) {
+    const gain = Math.min(15 * run.stats.interest, Math.floor(run.coins * 0.15 * run.stats.interest));
+    if (gain > 0) { run.coins += gain; toast(run, `INTEREST +¤${gain}`, '', PAL.acid, 3); }
+  }
   setMusic('shop');
   const items = rollItems(run.rng, unlockedItems(run.save), run.stacks, 3, run.stats.luck);
   const free = run.freeShop;
@@ -367,6 +379,7 @@ export function onCrit(run) {
 function onHurt(run, result) {
   if (result === 'iframe') return;
   buzz(result === 'shield' ? 25 : 70);
+  run.wasHit = true;
   if (run.boss) run.bossHit = true;
   sfx[result === 'shield' ? 'shield' : 'hurt']();
 }
@@ -451,7 +464,15 @@ export function updateRun(run, input, dt) {
   updatePlayer(p, input, dt, st);
   if (p.ev.jump) sfx.jump();
   if (p.ev.lane) sfx.lane();
-  if (p.ev.phase) { sfx.phase(); run.rs.phases++; }
+  if (p.ev.phase) {
+    sfx.phase(); run.rs.phases++;
+    if (st.ambush) p.ambushT = 1.5;
+    if (st.driftKing && st.slipstream) slipBurst(p, st);
+  }
+  if (p.ambushT > 0) p.ambushT -= dt;
+  if (run.slipCd > 0) run.slipCd -= dt;
+  if (p.ev.lane && st.slipstream && run.slipCd <= 0) { slipBurst(p, st); run.slipCd = 0.2; }
+  if (p.ev.land && st.groundPound) { groundPound(p, st); sfx.explode(); shake(3, 0.12); }
   if (p.ev.shield) sfx.shield();
   if (p.ev.land) {
     sfx.land();
@@ -467,6 +488,16 @@ export function updateRun(run, input, dt) {
     }
   }
   updateWeapon(p, st, dt, run.overdriveT > 0 ? 3 : 1);
+  if (st.wingmen) updateWingmen(p, st, dt);
+  if (run.railT > 0) {
+    run.railT -= dt;
+    run.railTick -= dt;
+    while (run.railTick <= 0) {
+      run.railTick += 0.04;
+      spawn(playerBullets, p.x, PLAYER_Y - 20, 0, -1000, 6, currentDamage(p, st) * 1.5, BIG, 99);
+    }
+  }
+  if (!run.wasHit) run.rs.pureDistance = run.distance;
   steerBullets(st, dt);
 
   // World
@@ -507,7 +538,7 @@ export function updateRun(run, input, dt) {
     }
     if (isPhased(p)) {
       run.rs.phaseDodges++;
-      if (st.mirror) spawn(playerBullets, eb.x[i], eb.y[i], 0, -480, 4, 2 * st.damageMul, 0, 1);
+      if (st.mirror) spawn(playerBullets, eb.x[i], eb.y[i], 0, -480, 4, 2 * st.damageMul * (st.counter ? 3 : 1), 0, 1);
       burst(eb.x[i], eb.y[i], PAL.white, 4, 90, 0.2, 1.5);
       kill(eb, i); i--;
       continue;
@@ -596,6 +627,19 @@ export function updateRun(run, input, dt) {
     if (e.noReward) continue;
     run.rs.kills++;
     if (e.poisoned) run.rs.toxinKills++;
+    if (st.chain) {
+      const radius = (34 + 10 * st.chain) * (st.domino ? 1.5 : 1);
+      const dmg = currentDamage(p, st) * 1.2 * st.chain;
+      addRing(e.x, e.y, radius);
+      for (const o of enemies) if (!o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < radius + o.r) damageEnemy(o, dmg);
+      sfx.explode();
+    }
+    if (st.leech) {
+      run.leechKills++;
+      const need = st.leech >= 2 ? 22 : 30;
+      if (run.leechKills >= need && p.hearts < st.maxHearts) { p.hearts++; run.leechKills = 0; sfx.heart(); toast(run, 'LEECH +1', '', PAL.red, 1.5); }
+      else run.leechKills = Math.min(run.leechKills, need);
+    }
     const n = 1 + (st.toxinCoins && e.poisoned ? 1 : 0) + (TYPES[e.type].wide ? 1 : 0) + (e.elite ? 2 : 0);
     if (e.elite) run.rs.elites = (run.rs.elites || 0) + 1;
     dropCoins(e.x, e.y, n);
@@ -642,7 +686,8 @@ export function endRun(run) {
     const rw = rewardOf(a.id);
     if (rw) run.newUnlocks.push(rw.name);
   }
-  for (const k of ['kills', 'bosses', 'coins', 'purchases', 'phaseDodges', 'lowJumps', 'obstacles', 'toxinKills']) s.totals[k] += rs[k];
+  for (const k of ['kills', 'bosses', 'coins', 'purchases', 'phaseDodges', 'lowJumps', 'obstacles', 'toxinKills', 'elites']) s.totals[k] += rs[k] || 0;
+  if (run.daily) s.totals.dailies++;
   s.totals.distance += Math.floor(rs.distance);
   if (run.daily) {
     if (s.daily.date !== run.dailyKey) s.daily = { date: run.dailyKey, best: 0 };

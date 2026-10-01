@@ -11,7 +11,7 @@ import { heart } from './hud.js';
 import { todayKey } from '../game/run.js';
 import { SKIP_COINS } from '../game/balance.js';
 
-const VERSION = 'v0.6';
+const VERSION = 'v0.7';
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;

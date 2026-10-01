@@ -2,7 +2,8 @@
 // composes without special cases. Also resolves on-hit effects.
 import { playerBullets, spawn, kill, BIG } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
-import { LANE_W } from './world.js';
+import { LANE_W, LANES, laneX } from './world.js';
+import { enemySprite, drawSprite } from '../render/sprites.js';
 import { PLAYER_Y } from './player.js';
 import { PAL } from '../render/palette.js';
 import { burst } from '../render/fx.js';
@@ -16,8 +17,55 @@ const rings = [];
 export function currentDamage(p, stats) {
   let d = stats.damage * stats.damageMul;
   if (stats.adrenaline && p.hearts === 1) d *= 2;
+  if (stats.bloodPact) d *= 1 + 0.25 * stats.bloodPact * Math.max(0, stats.maxHearts - p.hearts);
+  if (stats.ambush && p.ambushT > 0) d *= 1 + 0.75 * stats.ambush;
   return d;
 }
+
+// ---------------------------------------------------------------------------
+// Wingmen: friendly drones in neighbouring lanes
+// ---------------------------------------------------------------------------
+const wingmen = [];
+export function updateWingmen(p, stats, dt) {
+  const lanes = [];
+  for (const o of [-1, 1, -2, 2]) {
+    const l = p.lane + o;
+    if (l >= 0 && l < LANES && lanes.length < stats.wingmen) lanes.push(l);
+  }
+  while (wingmen.length < lanes.length) wingmen.push({ x: p.x, fireT: 0.3, t: Math.random() * 6 });
+  wingmen.length = lanes.length;
+  lanes.forEach((l, i) => {
+    const w = wingmen[i];
+    w.t += dt;
+    w.x += (laneX(l) - w.x) * Math.min(1, dt * 12);
+    w.fireT -= dt;
+    if (w.fireT <= 0) {
+      w.fireT += 1 / (stats.fireRate * (stats.squadron ? 0.75 : 0.5));
+      spawn(playerBullets, w.x, PLAYER_Y - 30, 0, -stats.bulletSpeed, 2.4, currentDamage(p, stats) * 0.6, 0, stats.pierce);
+    }
+  });
+}
+export function drawWingmen() {
+  for (const w of wingmen) {
+    const y = PLAYER_Y - 16 + Math.sin(w.t * 4) * 2;
+    drawSprite(enemySprite('drone', PAL.cyan), w.x, y, { sx: 0.55, sy: 0.55 });
+    for (const dx of [-6, 6]) line(w.x + dx - Math.cos(w.t * 30) * 3, y - 6, w.x + dx + Math.cos(w.t * 30) * 3, y - 6, PAL.white, 1, 0.5);
+  }
+}
+
+// Movement-driven shots
+export function groundPound(p, stats) {
+  const lanes = stats.aftershock ? [p.lane - 1, p.lane, p.lane + 1] : [p.lane];
+  for (const l of lanes) {
+    if (l < 0 || l >= LANES) continue;
+    spawn(playerBullets, laneX(l), PLAYER_Y - 10, 0, -620, 6, currentDamage(p, stats) * 2 * stats.groundPound, BIG, 20);
+  }
+  rings.push({ x: p.x, y: PLAYER_Y, r: 34, t: 0.25 });
+}
+export function slipBurst(p, stats) {
+  for (const sp of [560, 640, 720]) spawn(playerBullets, p.x, PLAYER_Y - 14, 0, -sp, 2.6, currentDamage(p, stats) * 0.7 * stats.slipstream, 0, stats.pierce);
+}
+export function addRing(x, y, r) { rings.push({ x, y, r, t: 0.25 }); }
 
 // Fires if the timer allows. `rateMul` is used by OVERDRIVE.
 export function updateWeapon(p, stats, dt, rateMul = 1) {
@@ -182,4 +230,4 @@ export function drawWeaponFx() {
   for (const r of rings) ring(r.x, r.y, r.r * (1 - r.t * 2), PAL.orange, 2, r.t / 0.25);
 }
 
-export function clearWeaponFx() { arcs.length = 0; rings.length = 0; }
+export function clearWeaponFx() { arcs.length = 0; rings.length = 0; wingmen.length = 0; }

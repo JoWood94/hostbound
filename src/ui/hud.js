@@ -55,6 +55,10 @@ export function drawHud(run) {
     text(ready ? 'TAP!' : `${run.active.charge}/${run.active.max} KILLS`, bx + bw / 2, by + 33, { color: ready ? PAL.orange : PAL.mute, size: ready ? 11 : 8, align: 'center' });
   }
 
+  if (run.player.ambushT > 0) {
+    text('AMBUSH', run.player.x, 470, { color: PAL.amber, size: 9, align: 'center', alpha: Math.min(1, run.player.ambushT * 2) });
+  }
+
   // Jump hint: something low is about to reach you in your lane.
   if (run.jumpHint && !run.player.dead) {
     const a = 0.55 + Math.sin(run.time * 20) * 0.45;

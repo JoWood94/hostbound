@@ -8,7 +8,7 @@ function fresh() {
     best: 0,
     totals: {
       runs: 0, kills: 0, bosses: 0, distance: 0, coins: 0, purchases: 0,
-      phaseDodges: 0, lowJumps: 0, obstacles: 0, toxinKills: 0,
+      phaseDodges: 0, lowJumps: 0, obstacles: 0, toxinKills: 0, elites: 0, dailies: 0,
     },
     achievements: {},      // id -> true
     discovered: [],        // item ids ever picked up
