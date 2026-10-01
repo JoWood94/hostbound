@@ -431,7 +431,7 @@ function addCoins(run, n) {
 
 function openPick(run, kind) {
   const n = 3 + (run.stats.extraChoices || 0);
-  run.pickChoices = rollItems(run.rng, unlockedItems(run.save), run.stacks, n, run.stats.luck);
+  run.pickChoices = rollItems(run.rng, unlockedItems(run.save), run.stacks, n, run.stats.luck, { source: kind });
   run.pickKind = kind;
   if (run.pickChoices.length) { run.mode = 'pick'; run.toasts = []; sfx.select(); return true; }
   // Pool exhausted: a level-up still pays out a heart.

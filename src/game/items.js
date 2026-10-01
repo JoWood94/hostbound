@@ -263,20 +263,54 @@ export function computeStats(board, stacks) {
 }
 
 // Weighted pick of `n` distinct items from the unlocked pool.
-export function rollItems(rng, unlocked, stacks, n, luck = 0, exclude = []) {
+// Two sources of items, two roles:
+//   'level' (every level-up): frequent and small. COMMON and RARE only, no fire
+//            modes, no actives. Items you already own come back more often, so
+//            level-ups build a stack, Vampire Survivors style.
+//   'boss'  (boss loot): rare and transformative. Fire modes, actives and EPICs
+//            only drop here; COMMONs are unlikely; at least one card is RARE+;
+//            with no fire mode yet, one card is a fire mode (the pivot).
+const BOSS_ONLY = new Set(['mode', 'active']);
+const SOURCE_WEIGHT = {
+  level: [60, 30, 0],
+  boss: [12, 30, 22],
+};
+export function rollItems(rng, unlocked, stacks, n, luck = 0, { source = 'boss', exclude = [] } = {}) {
   const pool = ITEMS.filter((it) => unlocked.includes(it.id)
     && (stacks[it.id] || 0) < it.max
-    && !exclude.includes(it.id));
+    && !exclude.includes(it.id)
+    && (source === 'boss' || !BOSS_ONLY.has(it.cat))
+    && SOURCE_WEIGHT[source][it.rarity] > 0);
+  const weight = (it) => SOURCE_WEIGHT[source][it.rarity]
+    * (it.rarity > 0 ? 1 + luck * 0.3 : 1)
+    * (source === 'level' && stacks[it.id] ? 1.6 : 1);
+  const take = (cands) => {
+    const ws = cands.map(weight);
+    let r = rng.next() * ws.reduce((x, y) => x + y, 0);
+    let i = 0;
+    while (i < ws.length - 1 && r > ws[i]) { r -= ws[i]; i++; }
+    return cands[i];
+  };
   const out = [];
-  while (out.length < n && pool.length) {
-    const weights = pool.map((it) => RARITY[it.rarity].weight * (it.rarity > 0 ? 1 + luck * 0.3 : 1));
-    let total = weights.reduce((a, b) => a + b, 0);
-    let r = rng.next() * total;
-    let idx = 0;
-    while (r > weights[idx]) { r -= weights[idx]; idx++; }
-    out.push(pool[idx]);
-    pool.splice(idx, 1);
+  const grab = (filter) => {
+    const cands = pool.filter((it) => !out.includes(it) && filter(it));
+    if (cands.length && out.length < n) out.push(take(cands));
+  };
+  if (source === 'boss') {
+    const hasMode = ITEMS.some((it) => it.cat === 'mode' && stacks[it.id]);
+    if (!hasMode) grab((it) => it.cat === 'mode');
+    if (!out.some((it) => it.rarity > 0)) grab((it) => it.rarity > 0);
   }
+  // At most one fire mode per offer: the other cards stay varied.
+  const oneMode = (it) => it.cat !== 'mode' || !out.some((o) => o.cat === 'mode');
+  while (out.length < n) {
+    const before = out.length;
+    grab(oneMode);
+    if (out.length === before) grab(() => true);   // tiny pools: take anything left
+    if (out.length === before) break;
+  }
+  // the guaranteed cards must not always sit on top
+  for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(rng.next() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
   return out;
 }
 

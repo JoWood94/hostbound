@@ -146,6 +146,10 @@ Bomb (pulisce schermo), Time Slow 3 s, Overdrive (sparo x3 per 5 s), Heal.
 - Cellule per salire dal livello L: `10 + 8·(L−1)` (balance.js `xpNeed`). Un giocatore fermo in corsia arriva al livello 6 in ~4 minuti; chi raccoglie le file sale più in fretta.
 - **SKIP** cura 1 cuore (se manca); se il pool è esaurito il livello cura comunque.
 - Restano il **bottino dei boss** (scelta 1 di 3) e i **chip corrotti** (decriptati battendo il boss).
+- **Due fonti, due ruoli** (`rollItems(..., { source })`):
+  - *Livelli* — frequenti e piccoli: solo COMMON e RARE di arma, difesa, economia e rischio; niente modalità di sparo, niente attivi, niente EPIC. Gli oggetti che possiedi già tornano più spesso (×1,6): i livelli costruiscono gli stack. Misurato: 66% COMMON, 34% RARE.
+  - *Boss* — rari e trasformativi: le **modalità di sparo**, gli **attivi** e gli **EPIC** escono solo qui; COMMON improbabili; almeno una carta RARE o meglio; se non hai ancora una modalità, una carta lo è (il primo boss è la svolta della build); mai più di una modalità per offerta. Misurato: 17% COMMON, 76% RARE, 7% EPIC, sempre una modalità se non ne hai.
+  - Il boss lascia anche 12 + 4·n cellule: di solito il bottino è seguito subito da un livello.
 - Un boss alla fine di ogni distretto (ogni 1000 m); niente più negozio, niente pause economiche.
 - Item legati alle monete: GREED = più cellule (sali prima), MAGNET le attira, **MUTAGEN** (ex INTEREST, stesso id) aggiunge una scelta a livelli e bottini. L'obiettivo ex "compra 5 cose" (stesso id, sblocca LUCKY CHIP) ora è "raggiungi il livello 8 in una run".
 - **Cellule e ostacoli non si sovrappongono mai**: entrambi scorrono alla velocità della pista, quindi chi compare per secondo controlla l'altro; nessuna cellula entro 46 px da un muro nella sua corsia. Le cellule sopra un filo arancio sono permesse apposta: le prendi saltando (rischio). Le file sparse scelgono una corsia senza muri in arrivo.
