@@ -16,11 +16,12 @@ import { drawWeaponFx, drawWingmen } from './game/weapon.js';
 import { line as drawLine, drawGlowDot } from './render/draw.js';
 import { PLAYER_Y } from './game/player.js';
 import { runBot } from './debug/bot.js';
+import { runBench } from './debug/bench.js';
 import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
 import { ITEM_BY_ID, rollItems } from './game/items.js';
 import { unlockedBoards, unlockedItems } from './game/achievements.js';
-import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, EVENT_EVERY } from './game/run.js';
+import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, EVENT_EVERY, drawHusks } from './game/run.js';
 import { drawHud } from './ui/hud.js';
 import { drawMenu, drawArchive, drawPick, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
@@ -252,6 +253,7 @@ function render(alpha) {
       drawGlowDot(r.player.x, PLAYER_Y - 22, PAL.cyan, 10, a);
     }
     drawWingmen();
+    drawHusks(r);
     drawEnemyBullets('low');   // low waves under the board: you jump over them
     if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
     else drawPlayerDeath(r.player, r.deadT);
@@ -294,6 +296,8 @@ if (new URLSearchParams(location.search).has('debug')) {
     playerY: PLAYER_Y,
     // Test player: __game.bot((run) => { run.distance = 6000; }, 60, { log: true })
     bot: (setup, seconds, opts) => runBot(window.__game, setup, seconds, opts),
+    // Damage bench: __game.bench(['split', 'converge'], { lanes: [2] }) -> total damage in 10 s
+    bench: (ids, opts) => runBench(window.__game, ids, opts),
     get pickups() { return pickups; },
     obstacle: (type, lane, y = 200) => spawnObstacle(type, lane, y),
     boss: (def, index = 0) => { run.boss = makeBoss(index, def, 1); run.nextEvent = 1e9; },

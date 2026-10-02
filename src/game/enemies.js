@@ -362,11 +362,15 @@ export function updateEnemies(dt, difficulty) {
     } else e.jinkOff = 0;
     if (e.jinkCd > 0) e.jinkCd -= dt;
     if (e.shellCd > 0) e.shellCd -= dt;
-    // WRAITH: a slowed enemy's schedule runs 30% slower for a moment (its
-    // warnings only get longer, never shorter).
+    // WRAITH / PARALYTIC: a slowed enemy's schedule runs slower for a moment
+    // (30% / 25%; a PARALYTIC freeze stops it). Its warnings only get longer,
+    // never shorter, and low waves still go through the jump ledger when fired.
+    if (e.freezeCd > 0) e.freezeCd -= dt;
+    if (e.freezeT > 0) { e.freezeT -= dt; e.slowT = Math.max(e.slowT || 0, dt); }
     if (e.slowT > 0) {
       e.slowT -= dt;
-      const lag = 0.3 * (dt * timeMul(d)) / TICK;
+      const lag = (e.freezeT > 0 ? 1 : e.slowK || 0.3) * (dt * timeMul(d)) / TICK;
+      if (e.slowT <= 0) e.slowK = 0;
       if (e.fireAt !== undefined) e.fireAt += lag;
       if (e.restUntil !== undefined) e.restUntil += lag;
       if (e.teleAt !== undefined) e.teleAt += lag;

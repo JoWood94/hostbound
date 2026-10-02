@@ -49,6 +49,9 @@ export function baseStats() {
     // v1.2: stack thresholds, synergy levels, evolutions
     twinTime: 0.6, seekReach: 1, pierceRamp: 0, fragReach: false, arcMul: 0.35, arcLanes: false,
     toxinSpread: 0, critPierce: 0, critCoinsP: 0.3, syn: {}, evo: {},
+    // v1.2 traits
+    ricochet: 0, bounces: 1, converge: 0, slingshot: 0, paralytic: 0, overkill: 0, husk: 0, cull: 0,
+    metabolism: 0, metabCap: 0.35, heartbeat: 0, bloodrush: 0,
   };
 }
 
@@ -289,6 +292,42 @@ export const ITEMS = [
   { id: 'parasite', name: 'PARASITE', code: 'PRS', cat: 'risk', rarity: 1, max: 1, unlock: 'level_15', conflicts: ['glass'],
     desc: 'Every level costs a heart (never the last). Level-ups offer two more choices.',
     apply: (s) => { s.parasite = true; s.extraChoices += 2; } },
+  // =====================================================================
+  // v1.2 (DESIGN_V1.2.md part 2): traits. Stack 2 changes the shape.
+  // ---- trajectory ----
+  { id: 'ricochet', name: 'RICOCHET', code: 'RCO', cat: 'weapon', rarity: 1, max: 2, unlock: null,
+    desc: 'Shots that miss bounce off the top edge and come back down through the enemies. Stack: the bounce veers into the next lane.',
+    apply: (s, n) => { s.ricochet += n; } },
+  { id: 'converge', name: 'CONVERGENCE', code: 'CNV', cat: 'weapon', rarity: 0, max: 2, unlock: null, needs: ['split', 'scatter'],
+    desc: 'Side shots converge on your lane at the enemy line. Stack: one volley converges, the next opens.',
+    apply: (s, n) => { s.converge += n; } },
+  { id: 'slingshot', name: 'SLINGSHOT', code: 'SLS', cat: 'weapon', rarity: 0, max: 2, unlock: null,
+    desc: 'Shots fired just after a lane change are 30% faster and stronger. Stack: one more shot into the lane beyond.',
+    apply: (s, n) => { s.slingshot += n; } },
+  // ---- on hit ----
+  { id: 'paralytic', name: 'PARALYTIC', code: 'PRL', cat: 'weapon', rarity: 1, max: 2, unlock: null,
+    desc: 'Hits numb: enemies wait 25% longer between attacks (bosses half). Stack: 5 hits freeze an enemy for 0.5 s.',
+    apply: (s, n) => { s.paralytic += n; } },
+  { id: 'overkill', name: 'OVERKILL', code: 'OVK', cat: 'weapon', rarity: 1, max: 2, unlock: null,
+    desc: 'Damage beyond a kill carries on to the next enemy in the lane. Stack: half of it to the lanes beside too.',
+    apply: (s, n) => { s.overkill += n; } },
+  { id: 'husk', name: 'HUSK', code: 'HSK', cat: 'defense', rarity: 0, max: 2, unlock: null,
+    desc: 'A kill leaves a husk in its lane that blocks 1 enemy shot for 3 s. Stack: 2 shots.',
+    apply: (s, n) => { s.husk += n; } },
+  { id: 'cull', name: 'CULL', code: 'CUL', cat: 'weapon', rarity: 1, max: 2, unlock: null,
+    desc: 'Enemies under 12% health die at once (not elites, never bosses). Stack: 18%, elites too.',
+    apply: (s, n) => { s.cull += n; } },
+  // ---- rhythm ----
+  { id: 'metabolism', name: 'METABOLISM', code: 'MTB', cat: 'weapon', rarity: 0, max: 2, unlock: null,
+    desc: 'Firing without being hit builds up to +35% RATE in 3 s; a hit resets it. Stack: a hit only halves it.',
+    apply: (s, n) => { s.metabolism += n; } },
+  { id: 'heartbeat', name: 'HEARTBEAT', code: 'HRT', cat: 'weapon', rarity: 1, max: 2, unlock: null,
+    desc: 'Every 2 s a heavy beat: an extra volley from you and your drones. Stack: every 1.6 s.',
+    apply: (s, n) => { s.heartbeat += n; } },
+  { id: 'bloodrush', name: 'BLOODRUSH', code: 'BRS', cat: 'weapon', rarity: 0, max: 2, unlock: null,
+    desc: 'Kills less than 1 s apart build up to +40% RATE; it fades when you stop. Stack: fades half as fast.',
+    apply: (s, n) => { s.bloodrush += n; } },
+
   // ---- actives (boss loot) ----
   { id: 'blackhole', name: 'BLACK HOLE', code: 'BLH', cat: 'active', rarity: 1, max: 1, unlock: 'elite_50',
     desc: 'ACTIVE: for 1.5 s enemy shots are sucked in and destroyed above you; 8 damage to your lane. 12 kills.',
@@ -389,6 +428,12 @@ export const EVOLUTIONS = [
   { id: 'maelstrom', name: 'MAELSTROM', base: 'undertow', partner: 'magnet', partnerMin: 2,
     desc: 'Phasing pulls everything on screen, hearts too.',
     apply: () => {} },
+  { id: 'pinball', name: 'PINBALL', base: 'ricochet', partner: 'pierce',
+    desc: 'Shots bounce up to 3 times between the top edge and the enemy line.',
+    apply: (s) => { s.bounces = 3; } },
+  { id: 'hypermetabolism', name: 'HYPERMETABOLISM', base: 'metabolism', partner: 'fever',
+    desc: 'METABOLISM builds up to +60% RATE and a hit only halves it.',
+    apply: (s) => { s.metabCap = 0.6; } },
 ];
 export const EVO_BY_ID = Object.fromEntries(EVOLUTIONS.map((e) => [e.id, e]));
 const evoReady = (ev, stacks) => (stacks[ev.base] || 0) >= maxOf(ITEM_BY_ID[ev.base], stacks)
@@ -481,6 +526,7 @@ export function rollItems(rng, unlocked, stacks, n, luck = 0, { source = 'boss',
   const pool = ITEMS.filter((it) => unlocked.includes(it.id)
     && (stacks[it.id] || 0) < maxOf(it, stacks)
     && !conflicting(it, stacks)
+    && (!it.needs || it.needs.some((id) => stacks[id] > 0))
     && !exclude.includes(it.id)
     && (source === 'boss' || !BOSS_ONLY.has(it.cat))
     && SOURCE_WEIGHT[source][it.rarity] > 0);
@@ -526,7 +572,8 @@ export function rollItems(rng, unlocked, stacks, n, luck = 0, { source = 'boss',
 export const BASE_DPS = 6;
 export function effectiveDps(s) {
   const dmg = s.damage * s.damageMul;
-  const sideHit = s.homing > 0 ? Math.min(1, 0.5 + 0.25 * s.homing) : 0;
+  // CONVERGENCE lands the side shots on the target (every other volley at x2)
+  const sideHit = s.converge ? (s.converge > 1 ? 0.75 : 1) : s.homing > 0 ? Math.min(1, 0.5 + 0.25 * s.homing) : 0;
   let perShot = dmg + 2 * s.split * dmg * s.sideDamage * sideHit;
   if (s.echo) perShot += (dmg * s.echoMul - dmg) / s.echo;
   if (s.echo && s.evo.thunderclap) perShot += dmg * s.echoMul * 0.3 / s.echo;   // the three small echoes, on other targets
@@ -544,6 +591,14 @@ export function effectiveDps(s) {
   if (s.afterglow) m *= 1 + (s.afterglow > 1 ? 0.3 : 0.18);
   if (s.skyshot) m *= 1 + 0.12 * s.skyshot;              // only in the air: a small share
   if (s.charge) m *= 1.12;
+  // v1.2 traits (rough shares at a typical uptime)
+  if (s.ricochet) m *= s.carrier === 'rail' ? 1.3 : 1 + 0.06 * s.bounces;
+  if (s.slingshot) m *= 1.05;
+  if (s.overkill) m *= 1.04 + 0.03 * (s.overkill - 1);
+  if (s.cull) m *= s.cull > 1 ? 1.12 : 1.07;
+  if (s.metabolism) m *= 1 + s.metabCap * (s.metabolism > 1 || s.metabCap > 0.35 ? 0.8 : 0.6);
+  if (s.heartbeat) m *= (s.heartbeat > 1 ? 1.16 : 1.12) * (s.carrier === 'rail' ? 1.08 : 1);
+  if (s.bloodrush) m *= s.bloodrush > 1 ? 1.2 : 1.14;
   let dps = s.fireRate * perShot * m + s.toxin;
   if (s.shrapnel) dps += dmg * 1.2 * (3 + 2 * (s.shrapnel - 1)) * 0.3;   // ~0.3 kills/s, shards carry enemy HP too
   return dps;

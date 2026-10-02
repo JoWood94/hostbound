@@ -23,9 +23,11 @@ function shotMods(p, stats, consume = true) {
   const charged = p.charged || p.overcharge > 0;
   if (charged && consume) { if (p.overcharge > 0) p.overcharge--; else p.charged = false; p.stillT = 0; }
   const ghost = stats.ghost && p.phaseT > 0;
+  const sling = stats.slingshot && p.slingT > 0;      // SLINGSHOT: just after a lane change
   return {
-    charged,
-    dmg: (charged ? 1.8 : 1) * (ghost ? 2 : 1),
+    charged, sling,
+    speed: sling ? 1.3 : 1,
+    dmg: (charged ? 1.8 : 1) * (ghost ? 2 : 1) * (sling ? 1.3 : 1),
     size: charged ? 2 : 1,
     pierce: (ghost ? 99 : 0) + (stats.skyshot && p.jumpT > 0 ? stats.skyshot : 0),
     flags: ghost && stats.wraith ? F_SLOW : 0,
@@ -239,11 +241,25 @@ function pattern(p, stats) {
     const spread = (stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 0.32 : 0.26) + 0.05 * stats.split;
     const share = stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 0.75 : 0.6;
     for (let i = 0; i < n; i++) out.push({ angle: -spread + (2 * spread * i) / (n - 1), mul: share });
-    return out;
+    return converging(p, stats, out);
   }
   out.push({ lane: aimLane(p, stats), mul: 1 });
   for (let k = 1; k <= stats.split; k++) {
     for (const o of [-k, k]) { const l = p.lane + o; if (l >= 0 && l < LANES) out.push({ lane: l, mul: stats.sideDamage * (stats.carrier === 'bolt' ? 1.5 : 0.8) }); }
+  }
+  return converging(p, stats, out);
+}
+
+// CONVERGENCE: side shots bow out and meet on your aimed lane at the enemy
+// line (x2: every other volley; the others open as usual).
+export const ENEMY_LINE = 150;
+function converging(p, stats, out) {
+  if (!stats.converge || out.length < 2) return out;
+  if (stats.converge > 1 && p.shotCount % 2 === 1) return out;
+  const aim = aimLane(p, stats);
+  for (const pt of out) {
+    if (pt.angle !== undefined) { pt.bow = Math.sin(pt.angle) * 150; delete pt.angle; pt.lane = aim; pt.conv = true; }
+    else if (pt.lane !== aim) { pt.bow = (laneX(pt.lane) - laneX(aim)) * 0.9; pt.lane = aim; pt.conv = true; }
   }
   return out;
 }
@@ -300,6 +316,7 @@ function buildPath(p, spec, wave, phase) {
     let x, y;
     if (spec.angle !== undefined) { x = x0 + Math.sin(spec.angle) * d; y = y0 - Math.cos(spec.angle) * d; }
     else { const k = Math.min(1, d / 110); x = x0 + (laneX(spec.lane) - x0) * k; y = y0 - d; }
+    if (spec.bow) x += spec.bow * Math.sin(Math.PI * Math.min(1, d / Math.max(60, y0 - ENEMY_LINE)));
     if (wave) x += weave(phase + d * 0.026) * LANE_W * Math.min(1, d / 70);
     pts.push(x, y);
     if (y < -10 || x < -10 || x > 370) break;
@@ -332,6 +349,15 @@ function blast(x, y, dmg, stats, skip) {
   for (const o of enemies) if (o !== skip && !o.dead && overlaps(o, x, y, radius)) damageEnemy(o, dmg * 0.45);
 }
 
+// HEARTBEAT: a heavy extra volley (beam: a surge; rail: the charge jumps ahead).
+export function heartbeat(p, stats, hit) {
+  if (stats.carrier === 'beam') p.chargeSurgeT = Math.max(p.chargeSurgeT || 0, 0.3);
+  else if (stats.carrier === 'rail') fireRail(p, stats, hit, 0.4);
+  else fireProjectiles(p, stats, true);
+  for (const w of wingmen) w.fireT = 0;
+  rings.push({ x: p.x, y: PLAYER_Y - 10, r: 26, t: 0.25 });
+}
+
 // Fires if the timer allows. `rateMul` is used by OVERDRIVE. `hit` = {rng, onCrit}.
 export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
   if (stats.carrier === 'beam') { updateBeam(p, stats, dt, rateMul, hit); return; }
@@ -349,11 +375,11 @@ export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
 }
 
 // ---- projectiles (bolt / rocket carriers) ---------------------------------
-function fireProjectiles(p, stats) {
+function fireProjectiles(p, stats, beat = false) {
   const rocket = stats.carrier === 'rocket';
-  const mod = shotMods(p, stats);
-  const dmg = currentDamage(p, stats) * (rocket ? 1.4 : 1) * mod.dmg;
-  const speed = rocket ? 180 * stats.shotSpeed : stats.bulletSpeed;
+  const mod = shotMods(p, stats, !beat);
+  const dmg = currentDamage(p, stats) * (rocket ? 1.4 : 1) * mod.dmg * (beat ? 1.5 : 1);   // HEARTBEAT volleys hit harder
+  const speed = (rocket ? 180 * stats.shotSpeed : stats.bulletSpeed) * mod.speed;
   const y = PLAYER_Y - 14;
   let flags = 0;
   if (stats.hasRocket) flags |= F_EXPLODE;
@@ -369,7 +395,7 @@ function fireProjectiles(p, stats) {
   }
 
   // ECHO: every Nth volley is one huge piercing round (RESONANCE: so is a charged one).
-  if (!stats.hasScatter && ((stats.echo && p.shotCount % stats.echo === 0) || (mod.charged && stats.resonance))) {
+  if (!beat && !stats.hasScatter && ((stats.echo && p.shotCount % stats.echo === 0) || (mod.charged && stats.resonance))) {
     const bi = spawn(playerBullets, p.x, y, 0, -stats.bulletSpeed * 0.9, stats.bulletSize * 2.4 * dmgScale(dmg), dmg * stats.echoMul, BIG, stats.pierce + 3);
     if (bi >= 0) { tagLane(bi, p.lane); playerBullets.flags[bi] = (flags & ~F_ROCKET) | (stats.evo.thunderclap ? F_ECHO : 0); }
     sfx.shoot();
@@ -397,6 +423,8 @@ function fireProjectiles(p, stats) {
     let vx, vy;
     if (pt.angle !== undefined) { vx = Math.sin(pt.angle) * speed; vy = -Math.cos(pt.angle) * speed; }
     else { vx = (laneX(pt.lane) - p.x) / travel; vy = -speed; }
+    // CONVERGENCE: start bowing outward; updateModeBullets bends it onto the lane
+    if (pt.conv) vx += pt.bow * 2.2 / travel;
     const shotDmg = dmg * pt.mul / (strands > 1 ? strands * 0.8 : 1);
     const size = (stats.hasScatter ? 2.4 + stats.bulletSize * 0.25 : stats.bulletSize) * dmgScale(shotDmg) * mod.size * (stats.artillery ? 1.6 : 1);
     const pierce = stats.pierce + (stats.buckshot ? 1 : 0) + mod.pierce;
@@ -411,21 +439,30 @@ function fireProjectiles(p, stats) {
       // the same offset and an enemy holding there was never hit.
       playerBullets.aux[bi] = (stats.hasScatter ? idx * Math.PI : (k / strands) * Math.PI * 2) + p.shotCount * 0.9;
       if (flags & F_RANGE) playerBullets.aux[bi] = y;   // pellets remember where they started
-      if (stats.evo.swarmlord && idx > 0 && pt.lane !== undefined && !(flags & F_WAVE)) {
+      if (pt.conv && !(flags & F_WAVE)) { playerBullets.lane[bi] = -3; playerBullets.aux[bi] = laneX(pt.lane); }
+      else if (stats.evo.swarmlord && idx > 0 && pt.lane !== undefined && !(flags & F_WAVE)) {
         const t = huntFor(pt.lane);
         if (t) { playerBullets.lane[bi] = -2; playerBullets.aux[bi] = t.id; }   // chased in updateModeBullets
       }
     }
   });
+  // SLINGSHOT x2: one more shot into the lane beyond the one you moved to
+  if (mod.sling && stats.slingshot > 1) {
+    const l = p.lane + (p.slingDir || 0);
+    if (l >= 0 && l < LANES && l !== p.lane) {
+      const bi = spawn(playerBullets, p.x, y, (laneX(l) - p.x) / travel, -speed, stats.bulletSize * dmgScale(dmg * 0.5), dmg * 0.5, 0, stats.pierce + mod.pierce);
+      if (bi >= 0) { tagLane(bi, l); playerBullets.flags[bi] = flags & ~F_WAVE; playerBullets.ox[bi] = y; }
+    }
+  }
   if (!rocket) sfx.shoot();
 }
 
 // ---- rail carrier: instant strikes along every path -----------------------
-function fireRail(p, stats, hit) {
+function fireRail(p, stats, hit, beat = 0) {
   if (!hit) return;
-  const mod = shotMods(p, stats);
+  const mod = shotMods(p, stats, !beat);
   const siege = mod.charged && stats.siege;
-  const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * Math.min(4, stats.pierce)) * (siege ? 2.5 / 1.8 : 1) * mod.dmg;
+  const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * Math.min(4, stats.pierce)) * (siege ? 2.5 / 1.8 : 1) * mod.dmg * (beat || 1);
   const specs = lockTargets(p, stats, pattern(p, stats));
   if (stats.twinlink && p.twinT > 0) specs.push({ lane: p.twinLane, mul: 1, fromX: laneX(p.twinLane) });
   specs.push(...armadaSpecs(stats, 0.35));
@@ -444,6 +481,24 @@ function fireRail(p, stats, hit) {
     }
     rails.push({ pts, t: 0.2, w: spec.mul * mod.size });
     if (stats.afterglow) addTrail(pts, 0.35, stats, p);
+    // RICOCHET: the rail reflects off the top edge back down to the enemy line
+    // (x2: into the next lane; PINBALL: once more)
+    if (stats.ricochet && pts.length >= 4) {
+      let x = pts[pts.length - 2];
+      for (let b = 0; b < Math.min(2, stats.bounces); b++) {
+        let tx = x;
+        if (stats.ricochet > 1) {
+          const l = Math.round((x - laneX(0)) / LANE_W);
+          const side = [-1, 1].map((o) => l + o).filter((v) => v >= 0 && v < LANES && enemiesInLane(v).length);
+          if (side.length) tx = laneX(side[0]);
+        }
+        const rpts = [];
+        for (let yy = 0; yy < ENEMY_LINE + 60; yy += 12) rpts.push(x + (tx - x) * Math.min(1, yy / (ENEMY_LINE - 50)), yy);
+        for (const h of hitsAlong(rpts, 6, 99).hits) onHit(h.e, dmg * spec.mul * 0.35, stats, hit, false);
+        rails.push({ pts: rpts, t: 0.2, w: spec.mul * 0.4 });
+        x = tx;
+      }
+    }
     // FISSION: from the first target two rails fork into the side lanes.
     if (stats.fission && hits.length && !spec.fork) {
       const f = hits[0].e;
@@ -485,6 +540,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
   if (p.overchargeT > 0) { surge *= 1.8; widthMul *= 1.4; }
   const ghost = stats.ghost && p.phaseT > 0;
   if (ghost) surge *= 2;
+  if (stats.slingshot && p.slingT > 0) surge *= 1.3;   // SLINGSHOT
   const dps = stats.fireRate * rateMul * currentDamage(p, stats) * 1.15 * surge;
   const tick = p.laserTick <= 0;
   if (tick) { p.laserTick += 0.1; p.laserCount = (p.laserCount || 0) + 1; }
@@ -533,6 +589,42 @@ export function updateModeBullets(stats, dt) {
   const pb = playerBullets;
   for (let i = 0; i < pb.n; i++) {
     const f = pb.flags[i];
+    // CONVERGENCE: bend onto the aimed lane (x = aux) by the enemy line
+    if (pb.lane[i] === -3 && pb.vy[i] < 0) {
+      const tLeft = Math.max(0.05, (pb.y[i] - ENEMY_LINE) / -pb.vy[i]);
+      const want = (pb.aux[i] - pb.x[i]) / tLeft;
+      pb.vx[i] += (want - pb.vx[i]) * Math.min(1, dt * 7);
+      if (pb.y[i] < ENEMY_LINE) pb.lane[i] = -1;
+    }
+    // RICOCHET: bounce off the top edge back down (count in flag bits 10-12);
+    // PINBALL bounces back up from just below the enemy line too. A shot on its
+    // way down never reaches the player row.
+    if (stats.ricochet && pb.lane[i] !== -2) {
+      const nb = (f >> 10) & 7;
+      if (pb.vy[i] < 0 && pb.y[i] < 6 && nb < stats.bounces * 2 - 1) {
+        pb.vy[i] = Math.abs(pb.vy[i]) * 0.9;
+        pb.y[i] = 6;
+        pb.lastHit[i] = -1;
+        pb.dmg[i] *= 0.45;                               // a bounced shot is spent
+        pb.flags[i] = (f & ~(7 << 10)) | (Math.min(7, nb + 1) << 10);
+        pb.lane[i] = -1;
+        pb.vx[i] = 0;
+        // x2: veer into the next lane that holds an enemy (ox = where to come down)
+        let tx = pb.x[i];
+        if (stats.ricochet > 1) {
+          const l = Math.round((pb.x[i] - laneX(0)) / LANE_W);
+          const side = [-1, 1].map((o) => l + o).filter((x) => x >= 0 && x < LANES && enemiesInLane(x).length);
+          if (side.length) tx = laneX(side[Math.floor(Math.random() * side.length)]);
+        }
+        pb.ox[i] = tx;
+      } else if (pb.vy[i] > 0 && nb > 0) {
+        if (!(f & F_WAVE)) pb.vx[i] = Math.max(-400, Math.min(400, (pb.ox[i] - pb.x[i]) * 9));
+        if (pb.y[i] > ENEMY_LINE + 70 && nb < stats.bounces * 2 - 1) {
+          pb.vy[i] = -Math.abs(pb.vy[i]); pb.lastHit[i] = -1; pb.vx[i] = 0; pb.dmg[i] *= 0.8;
+          pb.flags[i] = (f & ~(7 << 10)) | (Math.min(7, nb + 1) << 10);
+        } else if (pb.y[i] > ENEMY_LINE + 110) { kill(pb, i); i--; continue; }
+      }
+    }
     // SHRAPNEL shards chase the enemy they were aimed at (it may be moving).
     if (pb.lane[i] === -2) {
       const t = enemies.find((o) => o.id === pb.aux[i] && !o.dead);
@@ -637,6 +729,20 @@ function onHit(e, dmg, stats, run, primary, flags = 0) {
   }
   damageEnemy(e, d);
   sfx.hit();
+  if (e.dead && stats.overkill) overkill(e, stats, 0);
+  // CULL: finish the weak (never bosses; elites only with two stacks)
+  if (stats.cull && !e.dead && e.type !== 'boss' && (stats.cull > 1 || !e.elite) && e.hp < e.maxHp * (stats.cull > 1 ? 0.18 : 0.12)) {
+    if (damageEnemy(e, e.hp / (e.brandMul || 1) + 0.01)) burst(e.x, e.y, PAL.white, 10, 160, 0.3, 2);
+  }
+  // PARALYTIC: numbs the schedule (bosses: the run turns it into short stuns)
+  if (stats.paralytic && !e.dead) {
+    e.numbT = 0.6;
+    if (e.type !== 'boss') { e.slowT = Math.max(e.slowT || 0, 0.6); e.slowK = Math.max(e.slowK || 0, 0.25); }
+    if (stats.paralytic > 1 && primary && (e.numbHits = (e.numbHits || 0) + 1) >= 5) {
+      e.numbHits = 0;
+      if (!(e.freezeCd > 0)) { e.freezeCd = 2; if (e.type === 'boss') e.numbFreeze = true; else e.freezeT = 0.5; }
+    }
+  }
   // BRAND: the first hit marks the enemy
   if (stats.brand && !e.brandMul && !e.dead) e.brandMul = stats.brand > 1 ? 1.35 : 1.2;
   // EXECUTION: a branded enemy killed by a crit passes the brand on
@@ -644,7 +750,7 @@ function onHit(e, dmg, stats, run, primary, flags = 0) {
     const next = enemies.filter((o) => !o.dead && !o.brandMul).sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))[0];
     if (next) { next.brandMul = e.brandMul; arcs.push({ x1: e.x, y1: e.y, x2: next.x, y2: next.y, t: 0.15 }); }
   }
-  if (flags & F_SLOW) e.slowT = 1;                    // WRAITH
+  if (flags & F_SLOW) { e.slowT = 1; e.slowK = Math.max(e.slowK || 0, 0.3); }   // WRAITH
   if (stats.toxin > 0 || flags & F_TOXIC) {
     const stacks = Math.max(stats.toxin, 1) * (flags & F_TOXIC ? 2 : 1);
     e.poison = Math.min(12, Math.max(e.poison, stacks));
@@ -700,6 +806,24 @@ function onHit(e, dmg, stats, run, primary, flags = 0) {
   return crit;
 }
 const laneOf = (e) => Math.round((e.x - laneX(0)) / LANE_W);
+
+// OVERKILL: what was left over after a kill carries on to the next enemy in
+// the lane (x2: half of it to the nearest enemy in each lane beside too).
+function overkill(e, stats, depth) {
+  const left = -e.hp / (e.brandMul || 1);
+  if (left < 0.05 || depth > 3 || e.overkilled) return;
+  e.overkilled = true;
+  const lane = laneOf(e);
+  const nearestIn = (l) => enemies.filter((o) => !o.dead && o !== e && laneOf(o) === l)
+    .sort((a, b) => Math.abs(a.y - e.y) - Math.abs(b.y - e.y))[0];
+  const hitOne = (t, amt) => {
+    arcs.push({ x1: e.x, y1: e.y, x2: t.x, y2: t.y, t: 0.15 });
+    if (damageEnemy(t, amt)) overkill(t, stats, depth + 1);
+  };
+  const t = nearestIn(lane);
+  if (t) hitOne(t, left);
+  if (stats.overkill > 1) for (const o of [-1, 1]) { const s2 = nearestIn(lane + o); if (s2) hitOne(s2, left * 0.5); }
+}
 
 // Player bullets vs all targets (enemies + boss).
 export function resolvePlayerHits(stats, run) {

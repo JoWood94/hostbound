@@ -1,7 +1,7 @@
 // One run: spawning, collisions, rewards, levels, bosses, actives, achievements.
 // Modes: play | pick (item after a boss or a level-up) | pause | dead
 // Coins are 'cells' on screen: they are experience. Every level offers a pick.
-import { W, H, SAFE_TOP } from '../core/canvas.js';
+import { W, H, SAFE_TOP, ctx } from '../core/canvas.js';
 import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
@@ -20,7 +20,7 @@ import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
-import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine } from './weapon.js';
+import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine, heartbeat } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic, syncMusic } from '../audio/music.js';
@@ -691,6 +691,20 @@ function itemEffects(run, dt) {
       if (pk.kind === 'coin' || (st.evo.maelstrom && (pk.kind === 'heart' || pk.kind === 'blue'))) pk.fly = true;
     }
   }
+  // PARALYTIC on a boss: numbed time turns into short stuns (12.5% of it;
+  // a freeze is a 0.25 s stun, at most every 2 s)
+  const b = run.boss;
+  if (b && st.paralytic) {
+    if (b.freezeCd > 0) b.freezeCd -= dt;
+    if (b.numbT > 0) {
+      b.numbT -= dt;
+      b.numbAcc = (b.numbAcc || 0) + dt * 0.125;
+      if (b.numbAcc >= 0.1) { b.numbAcc -= 0.1; b.stunT = Math.max(b.stunT || 0, 0) + 0.1; }
+    }
+    if (b.numbFreeze) { b.numbFreeze = false; b.stunT = Math.max(b.stunT || 0, 0) + 0.25; }
+  }
+  // HUSK shells fade
+  if (run.husks) for (let i = 0; i < run.husks.length; i++) { const h = run.husks[i]; h.t -= dt; if (h.t <= 0 || h.hp <= 0) { run.husks.splice(i, 1); i--; } }
   // MIRROR FIELD, EVENT HORIZON timers
   if (run.mirrorT > 0) run.mirrorT -= dt;
   if (run.horizonT > 0) run.horizonT -= dt;
@@ -745,6 +759,8 @@ export function onCrit(run) {
 // ---------------------------------------------------------------------------
 function onHurt(run, result) {
   if (result === 'iframe') return;
+  // METABOLISM: a hit resets the build-up (x2 / HYPERMETABOLISM: halves it)
+  if (run.stats.metabolism) run.metabT = run.stats.metabolism > 1 || run.stats.metabCap > 0.35 ? (run.metabT || 0) * 0.5 : 0;
   // SPORE CLOUD: real damage releases spores over your lane and the next ones
   if (run.stats.spore && (result === 'red' || result === 'blue')) {
     run.sporeT = run.stats.spore > 1 ? 1.4 : 0.8;
@@ -872,7 +888,20 @@ export function updateRun(run, input, dt) {
       burst(p.x, PLAYER_Y, PAL.cyan, 14, 160, 0.3, 2);
     }
   }
-  updateWeapon(p, st, dt, run.overdriveT > 0 ? 3 : 1, { rng: run.rng, onCrit: () => onCrit(run) });
+  // Rhythm traits: METABOLISM (no hits), BLOODRUSH (kills close together)
+  let rateMul = run.overdriveT > 0 ? 3 : 1;
+  if (st.metabolism) { run.metabT = Math.min(3, (run.metabT || 0) + dt); rateMul *= 1 + st.metabCap * (run.metabT / 3); }
+  if (st.bloodrush) {
+    if (run.time - (run.lastKillT ?? -9) > 1) run.rush = Math.max(0, (run.rush || 0) - dt * (st.bloodrush > 1 ? 0.25 : 0.5));
+    rateMul *= 1 + 0.4 * (run.rush || 0);
+  }
+  updateWeapon(p, st, dt, rateMul, { rng: run.rng, onCrit: () => onCrit(run) });
+  // HEARTBEAT: a heavy extra volley every 2 s (1.6 s with two stacks)
+  if (st.heartbeat) {
+    run.beatT = (run.beatT || 0) + dt;
+    const every = st.heartbeat > 1 ? 1.6 : 2;
+    if (run.beatT >= every) { run.beatT -= every; heartbeat(p, st, { rng: run.rng, onCrit: () => onCrit(run) }); }
+  }
   if (st.wingmen) updateWingmen(p, st, dt);
   if (run.railT > 0) {
     run.railT -= dt;
@@ -926,6 +955,11 @@ export function updateRun(run, input, dt) {
         }
       }
       if (eaten) { kill(eb, i); i--; continue; }
+    }
+    // HUSK: a shell left by a kill eats shots in its lane
+    if (run.husks && !low) {
+      const h = run.husks.find((o) => o.hp > 0 && Math.abs(eb.x[i] - o.x) < LANE_W * 0.42 && Math.abs(eb.y[i] - o.y) < 12);
+      if (h) { h.hp--; burst(eb.x[i], eb.y[i], PAL.acid, 5, 90, 0.25, 1.5); kill(eb, i); i--; continue; }
     }
     const dx = eb.x[i] - p.x, dy = eb.y[i] - PLAYER_Y;
     const hit = low
@@ -1043,6 +1077,15 @@ export function updateRun(run, input, dt) {
     if (e.type === 'boss') { onBossKilled(run, e); continue; }
     if (e.noReward) continue;
     run.rs.kills++;
+    // BLOODRUSH: a kill within 1 s of the last one builds the rush
+    if (st.bloodrush) { if (run.time - (run.lastKillT ?? -9) <= 1) run.rush = Math.min(1, (run.rush || 0) + 0.2); run.lastKillT = run.time; }
+    // HUSK: one shell per lane, just above the player row
+    if (st.husk) {
+      if (!run.husks) run.husks = [];
+      const lane = Math.max(0, Math.min(LANES - 1, Math.round((e.x - laneX(0)) / LANE_W)));
+      run.husks = run.husks.filter((h) => h.lane !== lane);
+      run.husks.push({ lane, x: laneX(lane), y: PLAYER_Y - 150, t: 3, max: 3, hp: st.husk });
+    }
     if (p.jumpT > 0) run.rs.airKills = (run.rs.airKills || 0) + 1;
     if (e.poisoned) run.rs.toxinKills++;
     // TOXIN 3: a poisoned death infects the nearest neighbour; PANDEMIC: everything near, stacking
@@ -1142,6 +1185,20 @@ export function updateRun(run, input, dt) {
     sfx.heart();
   }
   if (p.dead) endRun(run);
+}
+
+// HUSK shells (drawn with the world, under the player)
+export function drawHusks(run) {
+  if (!run || !run.husks) return;
+  for (const h of run.husks) {
+    const a = Math.min(1, h.t / 0.5) * 0.8;
+    for (let k = 0; k < h.hp; k++) {
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = PAL.acid; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(h.x, h.y - k * 5, LANE_W * 0.32, 6, 0, Math.PI, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 export function endRun(run) {

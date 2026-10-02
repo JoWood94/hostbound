@@ -60,7 +60,7 @@ export function updatePlayer(p, input, dt, stats) {
     if (input.untap) {
       const u = p.tapUndo;
       p.laneFromX = p.x; p.lane = u.lane; p.laneT = 0;
-      p.twinT = 0; p.phaseCd += u.refund; p.stillT = u.stillT; p.laneTimes = u.laneTimes;
+      p.twinT = 0; p.slingT = 0; p.phaseCd += u.refund; p.stillT = u.stillT; p.laneTimes = u.laneTimes;
       p.tapUndo = null;
     } else if (p.tapUndo.t <= 0) p.tapUndo = null;
   }
@@ -73,6 +73,7 @@ export function updatePlayer(p, input, dt, stats) {
       p.laneFromX = p.x;
       // TWIN LINK keeps firing from the lane just left for a moment
       p.twinLane = p.lane; p.twinT = stats.twinTime || 0.6;
+      p.slingT = 0.35; p.slingDir = dir;                // SLINGSHOT window
       p.lane = next;
       p.laneT = 0;
       p.ev.lane = true;
@@ -97,6 +98,7 @@ export function updatePlayer(p, input, dt, stats) {
   if (p.bump) { p.bump *= 0.7; if (Math.abs(p.bump) < 0.005) p.bump = 0; }
   p.time = (p.time || 0) + dt;
   if (p.twinT > 0) p.twinT -= dt;
+  if (p.slingT > 0) p.slingT -= dt;
   if (p.shrinkT > 0) p.shrinkT -= dt;
   if (p.overchargeT > 0) p.overchargeT -= dt;
   // CHARGE: stand still in a lane to charge the next shot
