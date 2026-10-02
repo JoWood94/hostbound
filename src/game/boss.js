@@ -5,7 +5,7 @@ import { ctx, W, H, SAFE_TOP } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
 import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
-import { look, glowLane } from './enemies.js';
+import { look, glowLane, beatClock, onGridSpeed, TICK_SEC } from './enemies.js';
 import { sheet, drawCell } from '../render/images.js';
 
 // Generated boss sheet: 4x5 cells of 256x128, cropped to content by
@@ -18,7 +18,7 @@ import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
 import { enemies, spawnEnemy, newId } from './enemies.js';
 import { sfx } from '../audio/audio.js';
-import { bossHp, bossSpeed } from './balance.js';
+import { bossHp, bossSpeed, timeMul } from './balance.js';
 
 const ALL = [0, 1, 2, 3, 4];
 // Below the status bar and the health bar (name + bar end ~66 px under SAFE_TOP).
@@ -181,17 +181,27 @@ function resolveParts(b, a) {
 
 const ROW_SHOT = { kind: 'rowshot' }, ROW_LOW = { kind: 'rowlow' };
 
+// Boss rhythm lives on the game's tick grid too: an interval written in
+// seconds (at base tempo) becomes a whole number of ticks, shortened by the
+// boss speed, then converted back to seconds at the current tempo.
+const tickNow = () => TICK_SEC / timeMul(bossD);
+let bossD = 0;
+function onTicks(sec, b, min = 1) {
+  const ticks = Math.max(min, Math.round(sec / b.speed / TICK_SEC));
+  return ticks * tickNow();
+}
+
 function buildEvents(b, parts) {
   const ev = [];
   for (const p of parts) {
     if (p.kind === 'volley') for (let i = 0; i < p.shots; i++) ev.push({ t: i * 0.14, part: p, lanes: p.lanes });
-    else if (p.kind === 'sweep') p.lanes.forEach((l, i) => { ev.push({ t: i * p.gap, part: p, lanes: [l] }); ev.push({ t: i * p.gap + 0.07, part: p, lanes: [l] }); });
+    else if (p.kind === 'sweep') p.lanes.forEach((l, i) => { const t = i * onTicks(p.gap, b); ev.push({ t, part: p, lanes: [l] }); ev.push({ t: t + 0.07, part: p, lanes: [l] }); });
     else if (p.kind === 'low' && !p.tele) ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beam') for (let t = 0; t < p.dur; t += 0.045) ev.push({ t, part: p, lanes: p.lanes });
     else if (p.kind === 'summon') ev.push({ t: 0, part: p, lanes: p.lanes });
-    else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * p.gap + t, part: p, lanes: [l] }); });
+    else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * onTicks(p.gap, b) + t, part: p, lanes: [l] }); });
     else if (p.kind === 'rows') {
-      const beat = Math.max(0.3, p.beat / b.speed);
+      const beat = onTicks(p.beat, b, 2);   // a row needs at least a beat to answer
       p.rows.forEach((r, i) => {
         const shots = [], lows = [];
         [...r].forEach((c, l) => { if (c === 'x') shots.push(l); else if (c === 'L') lows.push(l); });
@@ -212,8 +222,8 @@ function fireEvent(b, e, difficulty) {
   for (const l of e.lanes) {
     const x = laneX(l);
     // Row parts share one speed so their spacing on screen is the beat itself.
-    if (p.kind === 'rowshot') spawn(enemyBullets, x, y, 0, rowSpeed(b), 5, 1, 0);
-    else if (p.kind === 'rowlow') spawn(enemyBullets, x, y, 0, rowSpeed(b), 10, 1, LOW);
+    if (p.kind === 'rowshot') spawn(enemyBullets, x, y, 0, onGridSpeed(rowSpeed(b), PLAYER_ROW - y, bossD), 5, 1, 0);
+    else if (p.kind === 'rowlow') spawn(enemyBullets, x, y, 0, onGridSpeed(rowSpeed(b), PLAYER_ROW - y, bossD), 10, 1, LOW);
     else if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 230 + (b.speed - 1) * 70, 10, 1, LOW);
     else if (p.kind === 'beam' || p.kind === 'beamsweep') spawn(enemyBullets, x, y, 0, 460, 5, 1, 0);
     else if (p.kind === 'summon') {
@@ -228,6 +238,7 @@ function fireEvent(b, e, difficulty) {
 
 // Returns true while the boss is alive and fighting.
 export function updateBoss(b, dt, difficulty, playerLane = 2) {
+  bossD = difficulty;
   b.playerLane = playerLane;
   b.prevX = b.x; b.prevY = b.y;
   b.t += dt;
@@ -267,9 +278,11 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
       }
       break;
     case 'telegraph':
-      if (b.stateT >= a.tele / m) {
+      // Armed: the attack starts on the next tick of the shared metronome.
+      if (b.stateT >= a.tele / m && beatClock() >= Math.ceil(b.armAt ?? (b.armAt = beatClock()))) {
         b.state = 'fire';
         b.stateT = 0;
+        b.armAt = undefined;
         b.events = buildEvents(b, b.teleParts);
       }
       break;

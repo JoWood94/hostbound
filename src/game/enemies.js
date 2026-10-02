@@ -47,7 +47,8 @@ export const newId = () => nextId++;
 
 export const enemies = [];
 
-import { bulletSpeed, timeMul, enemyHp } from './balance.js';
+import { timeMul, enemyHp } from './balance.js';
+import { TICK_BASE } from '../core/tempo.js';
 
 // The enemy's lane and its neighbours, clamped to the track.
 const around = (e) => [e.lane - 1, e.lane, e.lane + 1].filter((l) => l >= 0 && l < LANES);
@@ -59,7 +60,7 @@ const others = (e) => [0, 1, 2, 3, 4].filter((l) => l !== e.lane && l < LANES);
 // e.lane (hopper moves) or e.volleys (tank alternates) and stay deterministic.
 export const TYPES = {
   drone: {
-    color: PAL.magenta, r: 11, hp: 2, holdY: 160, telegraph: 0.6, rest: 1.6, volleys: 2, unlockAt: 0,
+    color: PAL.magenta, r: 11, hp: 2, holdY: 160, rest: 1.6, volleys: 2, unlockAt: 0,
     steps: (e) => [
       { lanes: [e.lane], delay: 0.15 },
       { lanes: [e.lane], delay: 0.15 },
@@ -67,7 +68,7 @@ export const TYPES = {
     ],
   },
   sweeper: {
-    color: PAL.orange, r: 11, hp: 4, holdY: 140, telegraph: 0.8, rest: 2.0, volleys: 2, unlockAt: 500,
+    color: PAL.orange, r: 11, hp: 4, holdY: 140, rest: 2.0, volleys: 2, unlockAt: 500,
     // From ~1200 m it sweeps there and back: a pendulum to dodge in time.
     steps: (e) => {
       const a = around(e);
@@ -77,13 +78,13 @@ export const TYPES = {
     },
   },
   crusher: {
-    color: PAL.acid, r: 12, hp: 6, holdY: 120, telegraph: 0.9, rest: 2.4, volleys: 2, unlockAt: 1000,
+    color: PAL.acid, r: 12, hp: 6, holdY: 120, rest: 2.4, volleys: 2, unlockAt: 1000,
     steps: (e) => [{ lanes: around(e), delay: 0, low: true }],
   },
   // One shot, then hops one lane in its direction (bounces off the walls).
   // An arrow shows the next lane. Teaches: track it, do not follow it.
   hopper: {
-    color: PAL.red, r: 11, hp: 3, holdY: 150, telegraph: 0.55, rest: 0.9, volleys: 4, unlockAt: 1500,
+    color: PAL.red, r: 11, hp: 3, holdY: 150, rest: 0.9, volleys: 4, unlockAt: 1500,
     steps: (e) => [{ lanes: [e.lane], delay: 0.12 }, { lanes: [e.lane], delay: 0 }],
     afterVolley: (e) => {
       if (e.lane + e.dir < 0 || e.lane + e.dir >= LANES) e.dir = -e.dir;
@@ -94,13 +95,13 @@ export const TYPES = {
   },
   // Lights its lane, then dives down it. Teaches: leave the lane or kill it first.
   kamikaze: {
-    color: PAL.amber, r: 10, hp: 3, holdY: 110, telegraph: 1.0, rest: 0, volleys: 1, unlockAt: 2000,
+    color: PAL.amber, r: 10, hp: 3, holdY: 110, rest: 0, volleys: 1, unlockAt: 2000,
     dive: 520,
     steps: (e) => [{ lanes: [e.lane], delay: 0 }],
   },
   // Fires every lane except its own. Teaches: get under it.
   wall: {
-    color: PAL.violet, r: 14, hp: 7, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2500,
+    color: PAL.violet, r: 14, hp: 7, holdY: 120, rest: 2.0, volleys: 2, unlockAt: 2500,
     // From ~1600 m it squeezes in rhythm: everything but its lane, then ONLY its
     // lane, then everything else again. Step under it, out, back in.
     steps: (e) => (e.d >= 4
@@ -109,7 +110,7 @@ export const TYPES = {
   },
   // Alternates a low wave on every lane (jump) and shots two lanes out.
   tank: {
-    color: PAL.mint, r: 16, hp: 14, holdY: 110, telegraph: 1.0, rest: 1.8, volleys: 4, unlockAt: 3000,
+    color: PAL.mint, r: 16, hp: 14, holdY: 110, rest: 1.8, volleys: 4, unlockAt: 3000,
     // From ~2000 m the low waves come as a drum roll: jump, jump, jump.
     steps: (e) => (e.volleys % 2 === 0
       ? (e.d >= 5
@@ -122,13 +123,13 @@ export const TYPES = {
 // --- second wave of the Brood: rhythm teachers -----------------------------
 // Lays three eggs down its own lane on a beat: jump, jump, jump (or step out).
 TYPES.brooder = {
-  color: '#ffd23f', r: 12, hp: 4, holdY: 150, telegraph: 0.8, rest: 1.6, volleys: 2, unlockAt: 700,
+  color: '#ffd23f', r: 12, hp: 4, holdY: 150, rest: 1.6, volleys: 2, unlockAt: 700,
   steps: (e) => [0, 1, 2].map((i) => ({ lanes: [e.lane], delay: i < 2 ? 0.42 : 0, low: true })),
 };
 // Locks onto your lane (its own or a neighbour, never further) when the
 // telegraph starts, then fires two needles there. Move after the lock.
 TYPES.stalker = {
-  color: '#ff5c8a', r: 10, hp: 3, holdY: 170, telegraph: 0.75, rest: 1.3, volleys: 3, unlockAt: 1200,
+  color: '#ff5c8a', r: 10, hp: 3, holdY: 170, rest: 1.3, volleys: 3, unlockAt: 1200,
   steps: (e) => {
     const t = Math.max(0, e.lane - 1, Math.min(e.lane + 1, e.target ?? e.lane, LANES - 1));
     return [{ lanes: [t], delay: 0.21 }, { lanes: [t], delay: 0 }];
@@ -137,7 +138,7 @@ TYPES.stalker = {
 // Heartbeat: its lane, then both neighbours, on a steady pulse. Dance in and
 // out of the gap, or stay two lanes away.
 TYPES.throb = {
-  color: PAL.blue, r: 13, hp: 7, holdY: 130, telegraph: 0.9, rest: 1.8, volleys: 2, unlockAt: 1800,
+  color: PAL.blue, r: 13, hp: 7, holdY: 130, rest: 1.8, volleys: 2, unlockAt: 1800,
   steps: (e) => {
     const side = [e.lane - 1, e.lane + 1].filter((l) => l >= 0 && l < LANES);
     return [[e.lane], side, [e.lane], side].map((lanes, i) => ({ lanes, delay: i < 3 ? 0.4 : 0 }));
@@ -145,7 +146,7 @@ TYPES.throb = {
 };
 // Weaves a moving hole through its three lanes, one row per beat.
 TYPES.weaver = {
-  color: '#ff9cf0', r: 13, hp: 8, holdY: 120, telegraph: 1.0, rest: 2.0, volleys: 2, unlockAt: 2300,
+  color: '#ff9cf0', r: 13, hp: 8, holdY: 120, rest: 2.0, volleys: 2, unlockAt: 2300,
   steps: (e) => {
     const win = around(e);
     const path = e.dir > 0 ? [e.lane - 1, e.lane, e.lane + 1, e.lane] : [e.lane + 1, e.lane, e.lane - 1, e.lane];
@@ -191,11 +192,28 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
 // One TICK is half a beat; the tempo steps up once per district (1000 m), like
 // a track changing BPM, instead of drifting continuously.
 // ---------------------------------------------------------------------------
-const TICK = 0.21;
+const TICK = TICK_BASE;
+// The reaction rule. A lane lights up TELE_TICKS before the first shot leaves,
+// and every shot needs TRAVEL_TICKS to reach you, whatever enemy fired it and
+// from whatever height (its speed adapts). So "lit lane" always means the same
+// time to react: learnable, with or without sound. It shortens only when the
+// tempo steps up (one step per district).
+const TELE_TICKS = 4;
+const TRAVEL_TICKS = 8;
 let clock = 0;            // in ticks
 let simT = 0;             // seconds, for the danger glow
-export const beatClock = () => clock;   // ticks; the director schedules on it
+export const beatClock = () => clock;
+// Rhythm-game trick: nudge a shot's speed (a few %) so it reaches the player
+// row exactly on a tick, whatever height it was fired from. Shots fired on the
+// same tick by different enemies then also LAND together, on the music.
+export function onGridSpeed(speed, dist, d) {
+  const tickSec = TICK / timeMul(d);
+  const ticks = Math.max(1, Math.round(clock + dist / speed / tickSec) - clock);
+  return dist / (ticks * tickSec);
+}   // ticks; the director schedules on it
 export const TICK_SEC = TICK;
+// 0 when a lane lights up, 1 when its first shot leaves.
+const teleProgress = (e) => (e.state === 'telegraph' ? Math.max(0, Math.min(1, 1 - (e.fireAt - clock) / TELE_TICKS)) : 1);
 const ticksOf = (sec) => Math.max(1, Math.round(sec / TICK));
 // Lane -> { until, color }: lanes stay lit while a fired volley is still on its
 // way, so the light means "danger now", not "danger was announced".
@@ -205,8 +223,8 @@ const MOUTH = 18;         // shots leave from the creature's mouth, not its bell
 function fire(e, st, d) {
   // One speed for every regular enemy shot, high or low: rhythm is readable
   // only if the spacing on screen matches the spacing in time.
-  const s = bulletSpeed(d);
   const y = e.y + MOUTH;
+  const s = (PLAYER_Y - y) / (TRAVEL_TICKS * TICK / timeMul(d));
   const travel = (PLAYER_Y + 24 - y) / s;
   for (const l of st.lanes) {
     if (st.low) spawn(enemyBullets, laneX(l), y, 0, s, 10, 1, LOW);
@@ -219,11 +237,19 @@ function fire(e, st, d) {
   sfx.enemyShot();
 }
 
+// The warning itself starts on a tick, so every lit lane lasts exactly
+// TELE_TICKS: an enemy that arrives between ticks holds still until the next.
 function startTelegraph(e) {
+  e.state = 'wait';
+  e.stateT = 0;
+  e.teleAt = Math.ceil(clock);
+}
+function beginTelegraph(e) {
   e.target = look.lane;            // target lock (stalker), resolved once per volley
   e.steps = e.T.steps(e);
   e.state = 'telegraph';
   e.stateT = 0;
+  e.fireAt = e.teleAt + TELE_TICKS;
   e.telegraphLanes = allSequenceLanes(e);
   sfx.telegraph();
 }
@@ -244,7 +270,7 @@ export function updateEnemies(dt, difficulty) {
     const e = enemies[i];
     const T = e.T;
     if (e.type === 'boss') continue; // bosses drive themselves
-    const m = timeMul(d) * (e.elite ? 1.15 : 1);   // telegraph/rest only; shots follow the metronome
+    const m = timeMul(d);   // dive speed; everything else runs on the tick clock
     e.prevX = e.x; e.prevY = e.y;
     e.t += dt;
     e.stateT += dt;
@@ -276,14 +302,15 @@ export function updateEnemies(dt, difficulty) {
         if (e.enterT >= 1) { e.y = e.holdY; startTelegraph(e); }
         break;
       }
+      case 'wait':
+        if (clock >= e.teleAt) beginTelegraph(e);
+        break;
       case 'telegraph':
-        if (e.stateT >= T.telegraph / m && T.dive) {
+        if (clock >= e.fireAt && T.dive) {
           e.state = 'dive'; e.stateT = 0; e.telegraphLanes = [e.lane];
           sfx.dive();
-        } else if (e.stateT >= T.telegraph / m) {
-          // Armed: the first shot waits for the next tick of the metronome.
+        } else if (clock >= e.fireAt) {
           e.state = 'fire'; e.stateT = 0; e.step = -1;
-          e.fireAt = Math.ceil(clock);
         }
         break;
       case 'fire':
@@ -294,6 +321,7 @@ export function updateEnemies(dt, difficulty) {
             e.telegraphLanes = [];
             e.state = e.volleys >= e.maxVolleys ? 'leave' : 'rest';
             e.stateT = 0;
+            e.restUntil = clock + ticksOf(T.rest);
             if (e.state === 'rest' && T.afterVolley) T.afterVolley(e);
           } else {
             const st = e.steps[e.step];
@@ -304,7 +332,7 @@ export function updateEnemies(dt, difficulty) {
         }
         break;
       case 'rest':
-        if (e.stateT >= T.rest / m) startTelegraph(e);
+        if (clock >= e.restUntil) startTelegraph(e);
         break;
       case 'dive':
         e.y += T.dive * m * dt;
@@ -372,7 +400,7 @@ export function drawTelegraphs() {
   const lit = new Map();
   for (const e of enemies) {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
-    const prog = e.state === 'telegraph' ? Math.min(1, e.stateT / e.T.telegraph) : 1;
+    const prog = teleProgress(e);
     const a = 0.25 + prog * 0.75;
     for (const l of e.telegraphLanes) if (!lit.has(l) || lit.get(l).a < a) lit.set(l, { a, color: e.T.color });
   }
@@ -381,7 +409,7 @@ export function drawTelegraphs() {
   for (const [l, { a, color }] of lit) glowLane(l, color, a);
   for (const e of enemies) {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
-    const prog = e.state === 'telegraph' ? Math.min(1, e.stateT / e.T.telegraph) : 1;
+    const prog = teleProgress(e);
     const a = 0.12 + prog * 0.4;
     const lowLanes = new Set();
     for (const st of e.steps) if (st.low) for (const l of st.lanes) lowLanes.add(l);
@@ -429,7 +457,7 @@ export function drawEnemies(alpha) {
     const y = e.prevY + (e.y - e.prevY) * alpha;
     const r = e.r;
     const c = e.T.color;
-    const tele = e.state === 'telegraph' && e.stateT > e.T.telegraph * 0.45 && Math.floor(e.stateT * 16) % 2 === 0;
+    const tele = e.state === 'telegraph' && teleProgress(e) > 0.45 && Math.floor(e.stateT * 16) % 2 === 0;
     const flash = e.hitFlash > 0 ? 0.9 : tele ? 0.7 : 0;
     const t = e.t;
 
@@ -473,7 +501,7 @@ export function drawEnemies(alpha) {
 
     // Generated sprite sheet when available
     if (BROOD.ready && BROOD_ROW[e.type] !== undefined) {
-      const warn = e.state === 'telegraph' && e.stateT > e.T.telegraph * 0.35;
+      const warn = e.state === 'telegraph' && teleProgress(e) > 0.35;
       const col = warn ? 4 + (Math.floor(e.stateT * 12) % 2) : Math.floor(t * 6 + e.id) % 4;
       if (e.type === 'kamikaze' && e.state === 'dive') {
         drawGlowDot(x, y - 18, PAL.amber, 4, 0.9);

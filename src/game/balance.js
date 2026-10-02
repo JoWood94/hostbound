@@ -1,3 +1,4 @@
+import { runBpm, BASE_BPM } from '../core/tempo.js';
 // All difficulty and economy curves in one place (pure, no DOM), shared by the
 // game and scripts/balance.mjs. `d` = difficulty = metres / 400.
 // `power` = player effective DPS / base DPS (see items.js powerRatio).
@@ -14,13 +15,8 @@ export const bossHp = (index, power) => Math.round(120 * (1 + 0.5 * index) * Mat
 // Bosses speed up more than regular enemies: they are the run's exams.
 export const bossSpeed = (index) => Math.min(1.75, 1 + 0.12 * index);
 
-// Enemy timing: telegraph/rest shrink and bullets speed up, both capped.
-// Tempo steps once per district (d 2.5 = 1000 m), like a track changing BPM.
-export const timeMul = (d) => 1 + Math.min(0.65, Math.floor(d / 2.5) * 0.13);
-// One speed for all regular enemy shots, stepping up per district. Enemies
-// leave upwards, so they never overtake their own bullets.
-export const bulletSpeed = (d) => 270 + Math.min(150, Math.floor(d / 2.5) * 30);
-
+// Enemy timing follows the gameplay clock's tempo (core/tempo.js): one step per district.
+export const timeMul = (d) => runBpm(d) / BASE_BPM;
 
 // Elites: tougher, faster, one extra volley, more cells. Start around 1000 m.
 export const eliteChance = (d) => Math.max(0, Math.min(0.4, (d - 2.5) * 0.06));

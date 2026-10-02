@@ -1,6 +1,8 @@
 // Procedural darksynth sequencer. 16-step patterns, scheduled ahead with the
-// Web Audio clock. BPM follows difficulty; bosses switch to a harsher pattern.
+// Web Audio clock. In a run it follows the game clock (core/tempo.js); bosses
+// switch to a harsher pattern.
 import { audioCtx, musicOut } from './audio.js';
+import { runBpm } from '../core/tempo.js';
 
 const LOOKAHEAD = 0.12;
 const TICK_MS = 25;
@@ -8,7 +10,7 @@ const TICK_MS = 25;
 let timer = null;
 let step = 0;
 let nextTime = 0;
-let bpm = 112;
+let bpm = 140;
 let mode = 'run';     // 'menu' | 'run' | 'boss'
 let intensity = 0;    // 0..1, adds layers
 let bar = 0;
@@ -146,11 +148,43 @@ function scheduleStep(t, s) {
   }
 }
 
+// The GAME owns the rhythm (it runs muted too); in a run the music follows it.
+// syncMusic() is called every frame with the game clock (ticks = eighth notes)
+// and the real seconds per tick; steps are scheduled at the audio time where
+// the game clock will reach them, so the kick lands with the shots. CHRONO
+// slowing the game slows the music with it. Without a fresh sync (menu,
+// pause) the sequencer free-runs on its own tempo.
+let follow = null;        // { c, at, tps }
+let lastStep = -1;        // last 16th (absolute index) scheduled while following
+export function syncMusic(clockTicks, secPerTick) {
+  const ac = audioCtx();
+  if (!ac) return;
+  follow = { c: clockTicks, at: ac.currentTime, tps: secPerTick };
+  bpm = 60 / (secPerTick * 2);
+}
+
 function tick() {
   const ac = audioCtx();
   if (!ac || ac.state !== 'running') return;
-  if (nextTime < ac.currentTime) nextTime = ac.currentTime + 0.05;
-  while (nextTime < ac.currentTime + LOOKAHEAD) {
+  const now = ac.currentTime;
+  if (follow && now - follow.at < 0.2 && mode !== 'menu') {
+    const timeOf = (n) => follow.at + (n / 2 - follow.c) * follow.tps;   // n = 16th index
+    let n = Math.max(lastStep + 1, Math.floor(follow.c * 2));
+    if (lastStep < 0 || n - lastStep > 64) n = Math.ceil(((now - follow.at) / follow.tps + follow.c) * 2);
+    for (; timeOf(n) < now + LOOKAHEAD; n++) {
+      const t = timeOf(n);
+      lastStep = n;
+      if (t < now - 0.02) continue;      // missed (tab hiccup): skip, never pile up
+      step = ((n % 16) + 16) % 16;
+      bar = Math.floor(n / 16);
+      scheduleStep(Math.max(t, now), step);
+    }
+    nextTime = now + 0.05;
+    return;
+  }
+  lastStep = -1;
+  if (nextTime < now) nextTime = now + 0.05;
+  while (nextTime < now + LOOKAHEAD) {
     scheduleStep(nextTime, step);
     step = (step + 1) % 16;
     if (step === 0) bar++;
@@ -166,7 +200,8 @@ export function startMusic() {
 
 export function setMusic(newMode, difficulty = 0) {
   if (newMode !== mode) { mode = newMode; step = 0; }
-  const base = mode === 'menu' ? 96 : mode === 'boss' ? 138 : 112;
-  bpm = mode === 'run' ? Math.min(150, base + difficulty * 5) : base;
+  // Free-running tempo (menu, or before the first sync); in a run the game clock wins.
+  if (mode === 'menu') { bpm = 96; follow = null; }
+  else if (!follow) bpm = runBpm(difficulty);
   intensity = Math.min(1, difficulty / 6);
 }

@@ -174,25 +174,31 @@ Row 7 TANK (fits in 48x58): a huge beetle with two cracked bone wing-cases, six 
 legs, mandibles and a fleshy horn cannon pointing down.
 ```
 
-## 2b. Nemici — secondo foglio Brood (4 nuovi)
+## 2b. Nemici — secondo foglio Brood (BROODER, STALKER, THROB, WEAVER)
 
-Stesso stile e palette del primo foglio (allegalo come riferimento). 512×256, 8 colonne
-× 4 righe, celle 64×64 (le importo a 128). Colonne come il primo: 0–3 idle, 4–5 avviso
-(occhi accesi, bocca aperta), 6–7 morte.
+Sostituisce gli sprite fatti in codice. **Allega il primo foglio Brood** come
+riferimento: stesso stile, stessa palette, stessa luce. 1024×512, 8 colonne × 4
+righe, celle 128×128 (come il primo foglio una volta importato). Colonne come il
+primo: 1–4 idle, 5–6 avviso (occhi accesi, bocca aperta), 7–8 morte.
 ```
-Match the attached Brood enemy sheet exactly: same dark gritty pixel art, same bruise
-purple and grey-green flesh palette, same lighting and outline. A sprite sheet of 4 new
-alien creatures seen from directly above, 512x256 pixels, 8 columns x 4 rows of 64x64
-cells, flat pure chroma green #00ff00 background, no grid lines, no text.
-Columns 1-4 idle loop, 5-6 attack warning (eyes flare, maw opens), 7-8 death (bursts).
-Row 1 BROODER: a bloated egg sac on six thin legs, translucent dirty yellow #ffd23f eggs
-inside, a dripping ovipositor at the back.
-Row 2 STALKER: a thin eel-like hunter with one huge sighting eye and a barbed snout,
-pinkish red #ff5c8a glow in the eye.
-Row 3 THROB: a floating heart-like organ with three valves on top, swollen veins,
-pulsing deep blue #3d7bff light from inside.
-Row 4 WEAVER: a spider-like loom of three long tendrils hanging below a ribbed body,
-three eyes in a row, pale pink #ff9cf0 silk threads between the tendrils.
+Match the attached Brood enemy sheet exactly: same dark gritty pixel art, same chunky
+pixel size, same bruise purple and grey-green flesh, same bone yellow, same lighting
+and dark outline. A sprite sheet of 4 new alien creatures seen from directly above,
+1024x512 pixels, 8 columns x 4 rows of 128x128 cells, each creature centred and about
+90 px wide, flat pure chroma green #00ff00 background, no grid lines, no text.
+Columns 1-4: idle loop (subtle breathing, limbs shifting). Columns 5-6: attack warning
+(eyes flare white-hot, maw or valves open, glow brightens). Columns 7-8: death (the body
+bursts into gore and ichor, then collapses).
+Row 1 BROODER: a bloated translucent egg sac carried on six thin insect legs, clusters
+of dirty yellow #ffd23f eggs glowing inside, a dripping ovipositor at the back that
+lays eggs downward.
+Row 2 STALKER: a long thin eel-like hunter, one huge sighting eye with a red-pink
+#ff5c8a iris, a barbed needle snout pointing down, a ridge of small spines.
+Row 3 THROB: a floating heart-like organ, three valves on top, swollen veins, deep
+blue #3d7bff light pulsing from inside, a few severed arteries trailing.
+Row 4 WEAVER: a ribbed spider-like body with three long tendrils hanging below, three
+eyes in a row, pale pink #ff9cf0 silk threads strung between the tendrils.
+No green in the creatures.
 ```
 
 ## 3. Boss — un unico foglio

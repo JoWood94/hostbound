@@ -21,7 +21,7 @@ import { makeBoss, updateBoss, BOSSES } from './boss.js';
 import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
-import { setMusic } from '../audio/music.js';
+import { setMusic, syncMusic } from '../audio/music.js';
 import { buzz } from '../core/haptics.js';
 import { ACTIVE_BTN } from '../ui/hud.js';
 
@@ -267,6 +267,15 @@ function openLane(rng) {
   return lanes.length ? rng.pick(lanes) : -1;
 }
 
+const MIN_SAFE = 2;
+function safeToEnter(type, lane) {
+  const covered = coveredLanes();
+  const u = new Set(covered);
+  for (const l of threatLanes(type, lane)) if (l >= 0 && l < LANES) u.add(l);
+  const need = type === 'wall' && covered.size === 0 ? 1 : MIN_SAFE;   // the Wall's point is its one safe lane
+  return LANES - u.size >= need;
+}
+
 // ---------------------------------------------------------------------------
 // Director: plays authored sections (sections.js) back to back on the enemy
 // metronome. A section starts on a beat, its events fire at fixed beats, and
@@ -310,7 +319,16 @@ function direct(run, d) {
   }
   const sec = run.sec;
   while (sec.i < sec.evs.length && sec.evs[sec.i].at <= now) {
-    const ev = sec.evs[sec.i++];
+    const ev = sec.evs[sec.i];
+    // Guard against the tail of the previous section: an enemy enters only if
+    // two lanes stay open (the Wall needs a quiet screen). Otherwise the whole
+    // rest of the section slides later together, keeping its shape.
+    if (ev.kind === 'enemy' && !safeToEnter(ev.type, ev.lane)) {
+      const slide = now - (sec.lastNow ?? now) || 0.5;
+      for (let k = sec.i; k < sec.evs.length; k++) sec.evs[k].at += slide;
+      break;
+    }
+    sec.i++;
     if (ev.kind === 'enemy') {
       if (!TYPES[ev.type] || TYPES[ev.type].unlockAt > run.distance + 400) continue;
       const en = spawnEnemy(ev.type, ev.lane, d, run.rng, { power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
@@ -326,6 +344,7 @@ function direct(run, d) {
       placeCells(ev.lane, ev.n);
     }
   }
+  sec.lastNow = now;
   // Over when every event fired, its enemies are on their last volley (or
   // gone), and its obstacles are past the middle of the screen. The next
   // section's enemies need ~1.5 s to enter and telegraph, so it overlaps only
@@ -580,7 +599,11 @@ export function updateRun(run, input, dt) {
   updatePool(playerBullets, dt);
   updatePool(enemyBullets, edt);
   look.lane = p.lane;
+  const c0 = beatClock();
   updateEnemies(edt, d);
+  // The music follows the game clock (real seconds per tick, so CHRONO slows it).
+  const dc = beatClock() - c0;
+  if (dc > 0) syncMusic(beatClock(), dt / dc);
   updateCorpses(edt, run.speed);
   if (run.boss) updateBoss(run.boss, edt, d, p.lane);
   updateObstacles(edt, run.speed);
