@@ -11,7 +11,13 @@ neighbour into 96 px cells. 8 columns x 2 rows, same cells the game reads:
   row 1: small glob, splash, droplet burst, teardrop, spark burst,
          beam slice (tiles vertically), rail streak, bone chips
 
-Usage: python3 scripts/pixel-shots.py [out.png]   (default: the game's sheet)
+shots_bio (v1.2 carrier bodies):
+  row 0: glaive, glaive (turned), mine, mine about to burst, seed shell,
+         seed shell splitting, husk shell, burst egg sac
+  row 1: maggot, maggot bent, maggot curled (latched), stinger (tip up),
+         stinger stuck (tip down), stuck stinger about to burst, stinger pop
+
+Usage: python3 scripts/pixel-shots.py [sheet] [out.png]   (no args: every sheet)
 """
 import math
 import sys
@@ -397,15 +403,234 @@ def bone_chips():
     return c
 
 
-SHEET = [
-    [spit, slug, pellet, rocket, larva, echo, needle, charged],
-    [small, splash, droplets, teardrop, sparks, beam_slice, rail, bone_chips],
-]
+# ---------------------------------------------------------------------------
+# v1.2 carrier bodies (public/sprites/shots_bio.png)
+# ---------------------------------------------------------------------------
+HOT = (255, 226, 140)   # a stinger about to burst: pale heat, never threat orange
 
 
-def render(out):
-    img = Image.new('RGBA', (COLS * N * SCALE, ROWS * N * SCALE), (0, 0, 0, 0))
-    for r, row in enumerate(SHEET):
+def polar(c, fn):
+    for y in range(N):
+        for x in range(N):
+            dx, dy = x + 0.5 - 16, y + 0.5 - 16
+            fn(x, y, math.hypot(dx, dy), math.atan2(dy, dx))
+
+
+def glaive(phase=0.0):
+    """Three curved bone blades round a green hub, acid on the cutting edge."""
+    c = Cell()
+    def px(x, y, r, a):
+        if r < 2.5 or r > 12:
+            return
+        for k in range(3):
+            centre = k * math.pi * 2 / 3 + phase + r * 0.11      # blades sweep back
+            d = math.atan2(math.sin(a - centre), math.cos(a - centre))
+            half = 0.62 * (1 - (r / 12.5) ** 1.6) + 0.06
+            if abs(d) <= half:
+                lead = d > half * 0.45                            # the leading edge
+                v = 0.3 + 0.5 * (1 - r / 12.5) + (0.25 if d < 0 else 0)
+                c.put(x, y, A if lead and r > 5 else band(v, x, y, BONES, 0.2))
+    polar(c, px)
+    blob(c, 16, 16, 3.2)
+    outline(c); glow(c)
+    return c
+
+
+def glaive_b():
+    return glaive(math.pi / 3)
+
+
+def mine(swollen=False):
+    c = Cell()
+    r = 8.5 if swollen else 7
+    blob(c, 16, 16, r, r * 0.95, lumpy=0.05, seed=2)
+    for (x, y) in ((12, 13), (19, 12), (17, 19), (12, 19), (20, 16)):
+        c.put(x, y, L if not swollen else C)
+        c.put(x + 1, y, M)
+    if swollen:   # glowing cracks
+        for (x0, y0, x1, y1) in ((10, 15, 14, 17), (18, 9, 20, 13), (16, 20, 19, 23)):
+            line(c, x0, y0, x1, y1, C)
+    outline(c); glow(c, steps=(60, 25) if swollen else (42,))
+    return c
+
+
+def mine_swollen():
+    return mine(True)
+
+
+def seed_shell(split=False):
+    c = Cell()
+    parts = [(-7, 3), (0, -2), (7, 3)] if split else [(0, 0)]
+    for (ox, oy) in parts:
+        rx, ry = (2.6, 4) if split else (5, 8)
+        cx, cy = 16 + ox, 16 + oy
+        for y in range(N):
+            for x in range(N):
+                dx, dy = (x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry
+                taper = 1 - max(0, -dy) * 0.35          # pointed top
+                if dx * dx / (taper * taper) + dy * dy <= 1:
+                    v = 0.25 + 0.5 * (0.5 - dx * 0.5) + 0.25 * (1 - dy * dy)
+                    col = band(v, x, y)
+                    if abs(abs(dx) - 0.5) < (0.5 / rx) and abs(dy) < 0.8:
+                        col = D if dx > 0 else M          # two seams down the husk
+                    c.put(x, y, col)
+    outline(c)
+    if not split:
+        smear(c, 16, 26, 2.5, 5)
+    glow(c)
+    return c
+
+
+def seed_split():
+    return seed_shell(True)
+
+
+def husk():
+    """A thin translucent half-moon shell, dithered."""
+    c = Cell()
+    def px(x, y, r, a):
+        if 9 <= r <= 13 and -math.pi < a < 0:
+            dith = BAYER[y % 4][x % 4] / 16
+            alpha = 230 if r > 11.5 else (150 if dith > 0.35 else 90)
+            c.put(x, y, L if r > 12 else A, alpha)
+    polar(c, px)
+    for k in range(5):                                 # cracks
+        a = -math.pi * (0.15 + k * 0.17)
+        c.put(round(16 + math.cos(a) * 11), round(16 + math.sin(a) * 11), D)
+    glow(c, steps=(35,))
+    return c
+
+
+def egg_burst():
+    c = Cell()
+    def px(x, y, r, a):
+        torn = 6 + 1.5 * math.sin(a * 7)
+        if r <= 9 and r >= torn and a > -2.4:
+            c.put(x, y, band(0.3 + 0.4 * (1 - r / 9), x, y))
+    polar(c, px)
+    for (x, y) in ((16, 9), (13, 6), (20, 7), (10, 10), (22, 11)):
+        blob(c, x, y, 1.3, hot=False)
+    outline(c); glow(c)
+    return c
+
+
+def maggot(curve=0.0, curl=False):
+    """A grotesque maggot seen from above, head up: a small dark head with two
+    hooked mandibles, then fat creased segments tapering to the tail."""
+    c = Cell()
+    segs = [(0, 2.5), (3.8, 3.8), (8.2, 4.3), (12.4, 3.8), (16, 3.0), (19, 2.0)]   # (distance from head, radius)
+    pts = []
+    for (d, r) in segs:
+        if curl:
+            a = -math.pi * 0.95 + d / 19 * math.pi * 1.45
+            x, y = 16 + 7.5 * math.cos(a), 17 + 7.5 * math.sin(a)
+        else:
+            x, y = 16 + curve * (d / 19) ** 2 * 6, 6 + d
+        pts.append((x, y, r))
+    for i, (x, y, r) in reversed(list(enumerate(pts))):
+        for yy in range(N):
+            for xx in range(N):
+                dx, dy = (xx + 0.5 - x) / r, (yy + 0.5 - y) / r
+                d2 = dx * dx + dy * dy
+                if d2 <= 1:
+                    v = 0.2 + 0.45 * (0.5 - dx * 0.35 - dy * 0.35) + 0.3 * (1 - d2)
+                    ramp = [O, D, D, M, A] if i == 0 else [D, M, A, L, L]
+                    c.put(xx, yy, band(v, xx, yy, ramp, 0.18))
+        if i:   # a dark crease where the segment meets the one before
+            px0, py0, _ = pts[i - 1]
+            mx, my = (x + px0) / 2, (y + py0) / 2
+            nx, ny = -(y - py0), (x - px0)
+            nl = math.hypot(nx, ny) or 1
+            for k in (-2, -1, 0, 1, 2):
+                c.put(round(mx + nx / nl * k * 1.2), round(my + ny / nl * k * 1.2), D)
+    # hooked mandibles reaching forward from the head
+    hx, hy, hr = pts[0]
+    fx, fy = (pts[0][0] - pts[1][0]), (pts[0][1] - pts[1][1])
+    fl = math.hypot(fx, fy) or 1
+    fx, fy = fx / fl, fy / fl
+    sx, sy = -fy, fx
+    for side in (-1, 1):
+        x0, y0 = hx + sx * side * 1.5 + fx * 1.5, hy + sy * side * 1.5 + fy * 1.5
+        x1, y1 = x0 + fx * 2.5 + sx * side * 0.8, y0 + fy * 2.5 + sy * side * 0.8
+        x2, y2 = x1 + fx * 1.2 - sx * side * 1.4, y1 + fy * 1.2 - sy * side * 1.4
+        line(c, x0, y0, x1, y1, B1); line(c, x1, y1, x2, y2, B2)
+    outline(c); glow(c)
+    return c
+
+
+def maggot_bent():
+    return maggot(1.0)
+
+
+def maggot_curled():
+    return maggot(curl=True)
+
+
+def stinger(flip=False, hot=False):
+    """A barbed bone stinger, tip up (flip: stuck tip down)."""
+    c = Cell()
+    def P(x, y, col, a=255):
+        c.put(x, (N - 1 - y) if flip else y, col, a)
+    for y in range(4, 25):
+        t = (y - 4) / 20
+        w = 0.5 + 2.4 * t ** 1.2
+        for x in range(N):
+            dx = (x + 0.5 - 16) / w
+            if abs(dx) <= 1:
+                ramp = [B0, B1, B2, B3, HOT] if hot else BONES
+                P(x, y, band(0.3 + 0.5 * (0.5 - dx * 0.5) + 0.2 * (1 - t), x, y, ramp, 0.2))
+    for (y, w) in ((10, 3), (15, 4), (20, 5)):                    # barbs pointing back
+        for k in range(w):
+            P(16 - 1 - k, y + k, B2); P(16 + 1 + k, y + k, B1)
+    for y in range(25, 29):                                       # glowing tail
+        for x in (15, 16, 17):
+            P(x, y, HOT if hot else (A if x == 16 else M), 255 if y < 27 else 160)
+    P(16, 3, HOT if hot else A)
+    outline(c)
+    glow(c, col=HOT if hot else A, steps=(70, 30) if hot else (42,))
+    return c
+
+
+def stinger_stuck():
+    return stinger(True)
+
+
+def stinger_hot():
+    return stinger(True, True)
+
+
+def stinger_pop():
+    c = Cell()
+    for k in range(9):
+        a = k / 9 * math.pi * 2
+        r = 6 + (k % 3) * 2.5
+        x, y = 16 + math.cos(a) * r, 16 + math.sin(a) * r
+        line(c, 16 + math.cos(a) * (r - 3), 16 + math.sin(a) * (r - 3), x, y, B2 if k % 2 else B3)
+    blob(c, 16, 16, 3, ramp=[B2, B3, HOT, HOT, C], hot=False)
+    outline(c); glow(c, col=HOT, steps=(60, 25))
+    return c
+
+
+def empty():
+    return Cell()
+
+
+SHEETS = {
+    'shots_player': [
+        [spit, slug, pellet, rocket, larva, echo, needle, charged],
+        [small, splash, droplets, teardrop, sparks, beam_slice, rail, bone_chips],
+    ],
+    'shots_bio': [
+        [glaive, glaive_b, mine, mine_swollen, seed_shell, seed_split, husk, egg_burst],
+        [maggot, maggot_bent, maggot_curled, stinger, stinger_stuck, stinger_hot, stinger_pop, empty],
+    ],
+}
+
+
+def render(name, out):
+    rows = SHEETS[name]
+    img = Image.new('RGBA', (COLS * N * SCALE, len(rows) * N * SCALE), (0, 0, 0, 0))
+    for r, row in enumerate(rows):
         for col, fn in enumerate(row):
             cell = fn()
             for (x, y), rgba in cell.px.items():
@@ -417,4 +642,9 @@ def render(out):
 
 
 if __name__ == '__main__':
-    render(sys.argv[1] if len(sys.argv) > 1 else 'public/sprites/shots_player.png')
+    # pixel-shots.py [sheet] [out.png]; no args: every sheet into public/sprites
+    if len(sys.argv) > 1:
+        render(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else f'public/sprites/{sys.argv[1]}.png')
+    else:
+        for name in SHEETS:
+            render(name, f'public/sprites/{name}.png')

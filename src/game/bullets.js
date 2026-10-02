@@ -11,6 +11,10 @@ import { sheet, drawCell } from '../render/images.js';
 // Generated shot sheet (8x2 cells). Each entry: [row, col, K] where K turns the
 // bullet radius into the cell's draw size (how much of the cell the art fills).
 export const SHOTS = sheet('shots_player', 96);
+// v1.2 carrier bodies (scripts/pixel-shots.py shots_bio): row 0 glaive x2,
+// mine, mine bursting, seed shell, seed splitting, husk, egg; row 1 maggot,
+// maggot bent, maggot curled, stinger, stinger stuck, stinger hot, pop.
+export const BIO = sheet('shots_bio', 96);
 const S_SPIT = [0, 0, 7], S_GLOB = [0, 1, 4.6], S_PELLET = [0, 2, 12], S_ROCKET = [0, 3, 8.5],
   S_LARVA = [0, 4, 9], S_ECHO = [0, 5, 3], S_NEEDLE = [0, 6, 7.5];
 function shot(spec, x, y, r, rot, flash = 0) {
@@ -132,6 +136,7 @@ export function drawPlayerBullets() {
 function drawBody(p, i, sh, r, rot, art) {
   const x = p.x[i], y = p.y[i], t = performance.now() / 1000;
   const C = COLOR_PLAYER_BULLET;
+  if (BIO.ready) { drawBodySprite(p, i, sh, x, y, rot, t); return; }
   if (sh === SH_GLAIVE) {
     // a spinning three-bladed bone disc
     drawGlowDot(x, y, C, r + 3, 0.35);
@@ -189,6 +194,37 @@ function drawBody(p, i, sh, r, rot, art) {
     const lift = 1 + 0.9 * Math.sin(Math.PI * k);
     drawGlowDot(x, y + 10 * Math.sin(Math.PI * k), '#000000', r * 0.8, 0.25);   // shadow
     if (!(art && shot(S_GLOB, x, y, r * lift, rot))) drawGlowDot(x, y, C, r * lift, 0.9);
+  }
+}
+
+// The pixel-art bodies (shots_bio.png). Readability cues that are not art
+// (a stinger's fuse ring) stay drawn on top.
+function drawBodySprite(p, i, sh, x, y, rot, t) {
+  const latched = p.flags[i] & F_LATCH;
+  if (sh === SH_GLAIVE) {
+    drawGlowDot(x, y, COLOR_PLAYER_BULLET, 9, 0.25);
+    drawCell(BIO, 0, Math.floor(t * 20 + i) % 2, x, y, 27, { rot: t * 14 + i });
+  } else if (sh === SH_MINE) {
+    const armed = p.vy[i] === 0;
+    const late = armed && (Math.floor(t * (6 + p.aux[i] * 8)) % 2 === 0 || p.aux[i] > 1.5);
+    drawCell(BIO, 0, late ? 3 : 2, x, y, 30);
+  } else if (sh === SH_LARVA) {
+    if (latched) drawCell(BIO, 1, 2, x, y, 20, { rot: Math.sin(t * 3 + i) * 0.6 });
+    else {
+      const f = Math.floor(t * 8 + i) % 4;   // straight, bent, straight, bent the other way
+      drawCell(BIO, 1, f % 2, x, y, 20, { rot, sx: f === 3 ? -1 : 1 });
+    }
+  } else if (sh === SH_STING) {
+    if (latched) {
+      const left = Math.max(0, Math.min(1, p.ox[i]));
+      ring(x, y, 8 + 12 * left, left < 0.4 ? '#ffd27a' : COLOR_PLAYER_BULLET, 2.2, 0.6 + 0.4 * (1 - left));
+      drawCell(BIO, 1, left < 0.4 ? 5 : 4, x, y + 6, 22);
+    } else drawCell(BIO, 1, 3, x, y, 22, { rot });
+  } else if (sh === SH_LOB) {
+    const k = Math.max(0, Math.min(1, (p.ox[i] - y) / Math.max(1, p.ox[i] - p.aux[i])));
+    const lift = 1 + 0.8 * Math.sin(Math.PI * k);
+    drawGlowDot(x, y + 10 * Math.sin(Math.PI * k), '#000000', 5, 0.3);   // shadow on the track
+    drawCell(BIO, 0, 4, x, y, 26 * lift);
   }
 }
 
