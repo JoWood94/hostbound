@@ -9,7 +9,7 @@ import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC } from './enemies.js';
-import { SECTIONS, mirrorEvent } from './sections.js';
+import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, dropCoins, updatePickups, clearPickups } from './pickups.js';
@@ -48,7 +48,7 @@ export function createRun(save, opts = {}) {
     wasHit: false, leechKills: 0, slipCd: 0, railT: 0, railTick: 0,
     stacks: {}, stats: null, player: null,
     distance: 0, time: 0, speed: 220,
-    chunkT: 1.5, sec: null, secCalmUntil: 0, recentSec: [],
+    chunkT: 1.5, sec: null, secCalmUntil: 0, recentSec: [], lastKind: 'course',
     coins: 0, coinFrac: 0,
     rs: { distance: 0, kills: 0, bosses: 0, coins: 0, purchases: 0, phaseDodges: 0, lowJumps: 0,
       obstacles: 0, toxinKills: 0, phases: 0, defItems: 0, bossNoHit: false, boss1Heart: false,
@@ -287,11 +287,20 @@ const BEAT = 2;            // ticks per beat
 const BIG_ENEMIES = new Set(['crusher', 'throb', 'weaver', 'wall', 'tank']);
 const BREATH = 2;          // beats of calm between sections
 
+// Fight, run, fight, run: combat sections and obstacle courses alternate, so
+// the run breathes between shooting and reading the track.
+const inRange = (x, dist) => x.from <= dist && (x.to === undefined || dist < x.to);
 function pickSection(run) {
-  const pool = SECTIONS.filter((x) => x.from <= run.distance && !run.recentSec.includes(x.id));
+  const wantCourse = run.lastKind === 'combat';
+  const lib = wantCourse ? COURSES : SECTIONS;
+  let pool = lib.filter((x) => inRange(x, run.distance) && !run.recentSec.includes(x.id));
+  if (!pool.length) pool = (wantCourse ? SECTIONS : COURSES).filter((x) => inRange(x, run.distance) && !run.recentSec.includes(x.id));
+  if (!pool.length) pool = SECTIONS.filter((x) => inRange(x, run.distance));
   // Newer sections (unlocked in the last ~1500 m) come up twice as often.
   const weighted = pool.flatMap((x) => (run.distance - x.from < 1500 ? [x, x] : [x]));
-  return run.rng.pick(weighted.length ? weighted : SECTIONS.filter((x) => x.from <= run.distance));
+  const def = run.rng.pick(weighted);
+  run.lastKind = COURSES.includes(def) ? 'course' : 'combat';
+  return def;
 }
 
 function startSection(run, d) {
@@ -315,6 +324,9 @@ function direct(run, d) {
   const now = beatClock();
   if (!run.sec) {
     if (now < run.secCalmUntil) return;
+    // A course comes next: wait until the last fight's enemies have left, so
+    // barriers never combine with a late volley.
+    if (run.lastKind === 'combat' && enemies.some((en) => en.type !== 'boss' && !en.dead && en.state !== 'leave')) return;
     startSection(run, d);
   }
   const sec = run.sec;
