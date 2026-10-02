@@ -25,7 +25,7 @@ const STEPS = [
   { id: 'phase', title: 'SWIPE DOWN TO PHASE', sub: ['CYAN = PHASE: tears cannot be dodged', 'or jumped. Phase also passes shots,', 'never barriers or wires'], color: PAL.cyan },
   { id: 'shots', title: 'LIT LANE = SHOT INCOMING', sub: ['When your lane lights up, leave it.', 'You fire on your own: line up to hit'], color: PAL.magenta },
   { id: 'cells', title: 'GRAB THE GREEN CELLS', sub: ['Cells fill the bar on top.', 'Full bar = level up: pick a mutation'], color: PAL.acid },
-  { id: 'hearts', title: 'HEARTS', sub: ['Every hit costs one.', 'No hearts left: signal lost'], color: PAL.red },
+  { id: 'hearts', title: 'HEARTS', sub: ['Every hit costs one.', 'No hearts left: consumed'], color: PAL.red },
   { id: 'pause', title: 'TAP ‖ TO PAUSE', sub: ['Bottom right, any time.', 'Try it now, then resume'], color: PAL.white },
   { id: 'go', title: 'YOU ARE READY', sub: ['The run starts now'], color: PAL.acid },
 ];

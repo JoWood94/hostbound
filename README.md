@@ -1,4 +1,4 @@
-# NEON OVERDRIFT
+# ABYSS TIDE
 
 Lane runner + bullet hell + roguelike synergies. Mobile first, vanilla JS, Canvas 2D, zero runtime dependencies.
 

@@ -4,8 +4,8 @@
 import { PAL } from '../render/palette.js';
 
 export const BOARDS = [
-  { id: 'stock', name: 'STOCK', color: PAL.cyan, unlock: null,
-    desc: '3 hearts. Balanced interceptor. The ship you stole first.',
+  { id: 'stock', name: 'MASSA', color: PAL.cyan, unlock: null,
+    desc: '3 hearts. The symbiote riding the cosmic currents.',
     apply: () => {}, start: [] },
   // Only STOCK for now: the game is balanced around one character (jump,
   // phase, 5 lanes) before the variants come back. Uncomment to restore.

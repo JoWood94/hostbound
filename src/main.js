@@ -114,10 +114,10 @@ function toastBuild(r) {
 async function shareRun(r) {
   const url = `${location.origin}${location.pathname}`;
   const where = r.daily ? ` on the DAILY ${r.dailyKey}` : '';
-  const msg = `NEON OVERDRIFT: ${Math.floor(r.distance)}m${where}, ${r.rs.bosses} bosses, ${r.rs.kills} kills. Beat me:`;
+  const msg = `ABYSS TIDE: ${Math.floor(r.distance)}m${where}, ${r.rs.bosses} bosses, ${r.rs.kills} kills. Beat me:`;
   // Both APIs need a secure context (https). Over plain-http LAN testing they are missing.
   if (navigator.share) {
-    try { await navigator.share({ title: 'NEON OVERDRIFT', text: msg, url }); } catch { /* cancelled */ }
+    try { await navigator.share({ title: 'ABYSS TIDE', text: msg, url }); } catch { /* cancelled */ }
     return;
   }
   try { await navigator.clipboard.writeText(`${msg} ${url}`); r.shareMsg = 'COPIED'; }

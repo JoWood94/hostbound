@@ -1,10 +1,10 @@
-# NEON OVERDRIFT — prompt per ripartire da zero
+# ABYSS TIDE — prompt per ripartire da zero
 
 Incolla questo messaggio all'inizio di una nuova chat aperta nella cartella del progetto.
 
 ---
 
-Lavoriamo su **NEON OVERDRIFT**, il mio gioco web mobile (portrait, una mano) in JavaScript vanilla + Vite 6 + Canvas 2D, pubblicato su GitHub Pages: https://jowood94.github.io/neon-overdrift/ (repo pubblico `JoWood94/neon-overdrift`, deploy automatico a ogni push su `main`). Versione attuale: **v1.2.0** (tag su GitHub). Parla in italiano.
+Lavoriamo su **ABYSS TIDE** (ex NEON OVERDRIFT; repo e URL restano `neon-overdrift`), il mio gioco web mobile (portrait, una mano) in JavaScript vanilla + Vite 6 + Canvas 2D, pubblicato su GitHub Pages: https://jowood94.github.io/neon-overdrift/ (repo pubblico `JoWood94/neon-overdrift`, deploy automatico a ogni push su `main`). Versione attuale: **v1.2.0** (tag su GitHub). Parla in italiano.
 
 **Prima di tutto leggi** `GDD.md` (regole e stato del gioco, aggiornato), `DESIGN_V1.1.md` (difficoltà e item, con le deviazioni annotate in cima), `ART_PROMPTS.md` (prompt degli sprite) e la memoria del progetto.
 
@@ -34,4 +34,4 @@ Lavoriamo su **NEON OVERDRIFT**, il mio gioco web mobile (portrait, una mano) in
 - Da provare giocando: rampa di difficoltà procedurale (tra distretto 4 e 6 la pressione misurata è piatta), resistenza dei nemici (un giocatore fermo ne uccide circa un terzo al distretto 5), reattività dei comandi dopo il tap anticipato.
 - Da decidere: limitare `?from=` alla sola modalità debug sul sito pubblico.
 - Sprite mancanti: foglio icone dei 32 item v1.1 (`ART_PROMPTS.md` §6b) e foglio icone originale (§6) se non ancora fatto.
-- Idee in coda: nuove razze aliene per i settori (una per distretto), rinominare le 5 varianti (ancora STOCK/GHOST/TANK/VIRAL/GLITCH, testi da "nave"), sfondi in parallasse (prompt in §5).
+- Idee in coda: nuove razze aliene per i settori (una per distretto), rinominare le 4 varianti commentate (GHOST/TANK/VIRAL/GLITCH, testi da "nave"); la base ora si chiama MASSA, sfondi in parallasse (prompt in §5).

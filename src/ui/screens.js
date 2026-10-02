@@ -105,7 +105,7 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Logo (direction B: neon script over a chrome block, orange horizon)
+// Logo: neon script over a chrome block, orange horizon
 // ---------------------------------------------------------------------------
 function drawLogo(t) {
   const gl = Math.random() < 0.03 ? (Math.random() - 0.5) * 6 : 0;
@@ -114,30 +114,30 @@ function drawLogo(t) {
   ctx.shadowColor = PAL.orange; ctx.shadowBlur = 12;
   ctx.fillStyle = PAL.orange; ctx.fillRect(0, 179, W, 2);
   ctx.restore();
-  // OVERDRIFT: chrome block, skewed, stacked shadows
+  // TIDE: chrome block, skewed, stacked shadows
   ctx.save();
   ctx.translate(W / 2 + gl, 196);
   ctx.transform(1, 0, -0.18, 1, 0, 0);
-  ctx.font = '46px "Russo One", Impact, sans-serif';
+  ctx.font = '52px "Russo One", Impact, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#2a1640'; ctx.fillText('OVERDRIFT', 0, 6);
-  ctx.fillStyle = '#6a4a88'; ctx.fillText('OVERDRIFT', 0, 3);
+  ctx.fillStyle = '#2a1640'; ctx.fillText('TIDE', 0, 6);
+  ctx.fillStyle = '#6a4a88'; ctx.fillText('TIDE', 0, 3);
   const g = ctx.createLinearGradient(0, -22, 0, 22);
   g.addColorStop(0, '#ffffff'); g.addColorStop(0.48, '#cfc6dc'); g.addColorStop(0.52, '#8a7aa0'); g.addColorStop(1, '#e9e4f2');
-  ctx.fillStyle = g; ctx.fillText('OVERDRIFT', 0, 0);
+  ctx.fillStyle = g; ctx.fillText('TIDE', 0, 0);
   ctx.restore();
   // Neon: script, tilted, glowing, flickers now and then
   const flick = Math.random() < 0.02 ? 0.35 : 1;
   ctx.save();
-  ctx.translate(W / 2 - 58, 138);
+  ctx.translate(W / 2 - 36, 138);
   ctx.rotate(-0.14);
   ctx.font = '72px Yellowtail, cursive';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.globalAlpha = flick;
   ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 26;
-  ctx.fillStyle = PAL.magenta; ctx.fillText('Neon', 0, 0);
+  ctx.fillStyle = PAL.magenta; ctx.fillText('Abyss', 0, 0);
   ctx.shadowBlur = 6; ctx.shadowColor = '#ffffff';
-  ctx.fillStyle = '#ffd0f4'; ctx.fillText('Neon', 0, 0);
+  ctx.fillStyle = '#ffd0f4'; ctx.fillText('Abyss', 0, 0);
   ctx.restore();
   // tagline
   text('RUN · SHOOT · MUTATE', W / 2, 228, { color: PAL.cyan, size: 9, align: 'center' });
@@ -162,16 +162,12 @@ export function drawMenu(save, t, boardIdx) {
   ctx.strokeRect(66, 238, W - 132, 96);
   ctx.fillStyle = 'rgba(10,0,8,0.85)';
   ctx.fillRect(66, 238, W - 132, 96);
-  // The symbiote (generated art); the procedural ship until the sheet loads.
-  ring(100, 288, 26, unlocked ? b.color : PAL.mute, 1.5, 0.5);
-  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, 100, 288, 58, { alpha: unlocked ? 1 : 0.4 })) {
-    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), 100, 288, { sx: 0.95, sy: 0.95, alpha: unlocked ? 1 : 0.45 });
+  // The protagonist (generated art); procedural fallback until the sheet loads.
+  ring(W / 2, 278, 26, unlocked ? b.color : PAL.mute, 1.5, 0.5);
+  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, W / 2, 278, 58, { alpha: unlocked ? 1 : 0.4 })) {
+    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), W / 2, 278, { sx: 0.95, sy: 0.95, alpha: unlocked ? 1 : 0.45 });
   }
-  text('SHIP', 136, 250, { color: PAL.mute, size: 8 });
-  text(unlocked ? b.name : `${b.name} [LOCKED]`, 136, 266, { color: unlocked ? b.color : PAL.mute, size: 15 });
-  const ach = ACHIEVEMENTS.find((a) => a.id === b.unlock);
-  const desc = unlocked ? b.desc : `Unlock: ${ach ? ach.desc : '?'}`;
-  wrap(desc, 25).slice(0, 4).forEach((l, i) => text(l, 136, 284 + i * 11, { color: PAL.white, size: 8, weight: 'normal', alpha: unlocked ? 0.9 : 0.7 }));
+  text(b.name, W / 2, 322, { color: unlocked ? b.color : PAL.mute, size: 15, align: 'center' });
 
   button('run', 60, 348, W - 120, 46, 'RUN', { color: PAL.cyan, size: 20, disabled: !unlocked });
   const dBest = save.daily.date === todayKey() ? save.daily.best : 0;
@@ -395,7 +391,7 @@ export function drawDead(run) {
   }
   dim(Math.min(0.8, Math.max(0, run.deadT - 0.6) * 1.4));
   const jitter = run.deadT < 0.5 ? (Math.random() - 0.5) * 6 : 0;
-  text('SIGNAL LOST', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center' });
+  text('CONSUMED', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center' });
   text(`${Math.floor(run.distance)}m`, W / 2, 158, { color: PAL.cyan, size: 30, align: 'center' });
   if (run.daily) text(`DAILY ${run.dailyKey}${run.newDailyBest ? ' · NEW DAILY BEST' : ''}`, W / 2, 134, { color: PAL.magenta, size: 9, align: 'center' });
   if (run.newBest) text('NEW BEST', W / 2, 186, { color: PAL.acid, size: 12, align: 'center', alpha: 0.6 + Math.sin(run.deadT * 6) * 0.4 });

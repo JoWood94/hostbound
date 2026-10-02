@@ -1,4 +1,4 @@
-# NEON OVERDRIFT — Game Design Document
+# ABYSS TIDE — Game Design Document
 
 > Infinite runner + bullet hell + roguelike synergies. Mobile first. Vanilla JS. GitHub Pages.
 
