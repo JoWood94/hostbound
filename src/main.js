@@ -46,8 +46,8 @@ let archivePage = 0;
 const MUTE = new URLSearchParams(location.search).has('mute');
 const audioSettings = () => (MUTE ? { ...save.settings, sfx: false, music: false } : save.settings);
 applySettings(audioSettings());
-// Logo fonts (direction B). Offline the canvas falls back to system fonts.
-if (document.fonts) { document.fonts.load('64px Yellowtail').catch(() => {}); document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
+// Logo fonts. Offline the canvas falls back to system fonts.
+if (document.fonts) { document.fonts.load('64px Eater').catch(() => {}); document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
 
 function ensureAudio() {
   unlockAudio();

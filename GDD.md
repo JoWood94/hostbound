@@ -457,7 +457,7 @@ Decisa con l'utente dopo aver scartato il "corridore con maschere" (esperimento 
 - **Nemici**: tante razze aliene (ben più di 5), una per settore, ognuna con boss proprio.
 - **Palette**: il neon attuale ma più sporco e acido, "Japan neon".
 - **Salto e phase**: meccaniche invariate, cambia solo la loro animazione.
-- **Logo**: direzione B (script neon + cromato).
+- **Logo**: ABYSS TIDE alla Carrion: "Abyss" in Eater verde bioluminescente, "TIDE" in carne con vene, i tentacoli del foglio symbiote (riga 0, parte bassa) pendono dalle lettere e escono dai lati con bordo neon; corrente ciano/viola al posto dell'orizzonte.
 
 Fatto: simbionte MASSA generato esternamente (art/source/symbiote_sheet.jpg), pulito con
 scripts/import-sheet.py in public/sprites/symbiote.png (8×4 celle da 128). Usato per volo,
