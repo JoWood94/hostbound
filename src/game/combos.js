@@ -4,7 +4,7 @@
 // them up later, Isaac-style but without needing a wiki:
 //   - not discovered: an offered item only says it RESONATES with something you hold
 //   - discovered (held both once): the name and effect are shown from then on
-import { SYNERGIES, ITEM_BY_ID, computeStats, EVOLUTIONS } from './items.js';
+import { SYNERGIES, ITEM_BY_ID, computeStats, EVOLUTIONS, CARRIER_PAIRS } from './items.js';
 
 // `when(stats)`: the combo only exists if its effect is real for the current
 // shot carrier (e.g. rockets only spiral if rockets are what you fire).
@@ -68,6 +68,10 @@ export const COMBOS = [
   pair('sporecloud', 'toxin', 'MIASMA', 'The spore cloud poisons enemies in it.'),
   pair('momentum', 'slipstream', 'DRIFT', 'Two quick lane changes charge the slipstream burst.'),
   trio('fission', 'shrapnel', 'chain', 'CHAIN FISSION', 'Every kill starts a chain of splitting, exploding shards.'),
+
+  // v1.2 carrier pairs (items.js CARRIER_PAIRS): real only when the pair is
+  // the one shaping the weapon (the two highest-priority carriers held)
+  ...CARRIER_PAIRS.filter((q) => !q.legacy).map((q) => pair(q.a, q.b, q.name, q.desc, `pair:${q.id}`, (s) => s.pair === q.id)),
 
   // v1.2 evolutions: base item at its max stack + partner (items.js EVOLUTIONS)
   ...EVOLUTIONS.map((ev) => ({ ...pair(ev.base, ev.partner, ev.name, ev.desc, `evo:${ev.id}`, (s) => !!s.evo[ev.id]), evo: true })),

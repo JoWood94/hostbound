@@ -353,37 +353,56 @@ function blast(x, y, dmg, stats, skip) {
   for (const o of enemies) if (o !== skip && !o.dead && overlaps(o, x, y, radius)) damageEnemy(o, dmg * 0.45);
 }
 
-// HEARTBEAT: a heavy extra volley (beam: a surge; rail: the charge jumps ahead).
+// HEARTBEAT: a heavy extra volley (beam: a surge; rail: a lighter extra rail).
 export function heartbeat(p, stats, hit) {
   if (stats.carrier === 'beam') p.chargeSurgeT = Math.max(p.chargeSurgeT || 0, 0.3);
-  else if (stats.carrier === 'rail') fireRail(p, stats, hit, 0.4);
-  else if (BIO.has(stats.carrier)) fireBio(p, stats, true);
-  else fireProjectiles(p, stats, true);
+  else fireAs(stats.carrier, p, stats, hit, true);
   for (const w of wingmen) w.fireT = 0;
   rings.push({ x: p.x, y: PLAYER_Y - 10, r: 26, t: 0.25 });
 }
 
+function rateOf(c, stats, rateMul) {
+  let rate = stats.fireRate * rateMul * CARRIER_RATE[c] * (c === 'rail' ? stats.shotSpeed * (stats.modeLv.railgun > 1 ? 1.15 : 1) : 1);
+  if (stats.hasScatter) rate *= c === 'rail' ? 0.85 : 0.4;
+  return rate;
+}
+function fireAs(c, p, stats, hit, beat = false) {
+  if (c === 'rail') fireRail(p, stats, hit, beat ? 0.4 : 0);
+  else if (BIO.has(c)) fireBio(p, stats, beat, c);
+  else fireProjectiles(p, stats, beat, c);
+}
+
 // Fires if the timer allows. `rateMul` is used by OVERDRIVE. `hit` = {rng, onCrit}.
+// Carrier pairs: an ALTERNATING pair takes turns (the wait before a volley is
+// that carrier's own), a TOGETHER pair fires its second carrier on its own
+// timer, both at 60%.
 export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
   weaveFn = stats.modeLv.sine > 1 ? weaveWide : weave;
-  if (stats.carrier === 'beam') { updateBeam(p, stats, dt, rateMul, hit); return; }
+  const mul = stats.duo ? 0.6 : 1;
+  if (stats.duo) {
+    p.fireTimer2 = (p.fireTimer2 ?? 0.3) - dt;
+    if (p.fireTimer2 <= 0) {
+      p.fireTimer2 = Math.max(0, p.fireTimer2 + 1 / rateOf(stats.duo, stats, rateMul * 0.6));
+      fireAs(stats.duo, p, stats, hit);
+    }
+  }
+  if (stats.carrier === 'beam') { updateBeam(p, stats, dt, rateMul * mul, hit); return; }
   beams.length = 0;
-  let rate = stats.fireRate * rateMul * CARRIER_RATE[stats.carrier] * (stats.carrier === 'rail' ? stats.shotSpeed * (stats.modeLv.railgun > 1 ? 1.15 : 1) : 1);
-  if (stats.hasScatter) rate *= stats.carrier === 'rail' ? 0.85 : 0.4;
+  const c = stats.alt ? stats.alt[(p.altI || 0) % 2] : stats.carrier;
+  const rate = rateOf(c, stats, rateMul * mul);
   p.fireTimer -= dt;
-  p.charge = Math.max(0, Math.min(1, 1 - p.fireTimer * rate));
+  p.charge = c === 'rail' ? Math.max(0, Math.min(1, 1 - p.fireTimer * rate)) : 0;
   if (p.fireTimer > 0) return;
-  p.fireTimer += 1 / rate;
-  if (p.fireTimer < 0) p.fireTimer = 0;
   p.shotCount++;
-  if (stats.carrier === 'rail') fireRail(p, stats, hit);
-  else if (BIO.has(stats.carrier)) fireBio(p, stats);
-  else fireProjectiles(p, stats);
+  fireAs(c, p, stats, hit);
+  if (stats.alt) p.altI = (p.altI || 0) + 1;
+  const next = stats.alt ? stats.alt[p.altI % 2] : c;
+  p.fireTimer = Math.max(0, p.fireTimer + 1 / rateOf(next, stats, rateMul * mul));
 }
 
 // ---- projectiles (bolt / rocket carriers) ---------------------------------
-function fireProjectiles(p, stats, beat = false) {
-  const rocket = stats.carrier === 'rocket';
+function fireProjectiles(p, stats, beat = false, carrier = stats.carrier) {
+  const rocket = carrier === 'rocket';
   const mod = shotMods(p, stats, !beat);
   const dmg = currentDamage(p, stats) * (rocket ? 1.4 : 1) * mod.dmg * (beat ? 1.5 : 1);   // HEARTBEAT volleys hit harder
   const speed = (rocket ? 180 * stats.shotSpeed : stats.bulletSpeed) * mod.speed;
@@ -482,16 +501,17 @@ function nearTarget(lane, reach, avoid) {
   return best;
 }
 
-function fireBio(p, stats, beat = false) {
+function fireBio(p, stats, beat = false, c = stats.carrier) {
   const mod = shotMods(p, stats, !beat);
   const dmg = currentDamage(p, stats) * mod.dmg * (beat ? 1.5 : 1);
   const y = PLAYER_Y - 14;
   const lv = stats.modeLv;
-  const traits = (stats.hasRocket && stats.carrier !== 'rocket' ? F_EXPLODE : 0) | mod.flags;
+  // ROCKET's blast rides along, unless a rocket pair already reshapes it
+  const rocketPair = stats.pair === 'kama' || stats.pair === 'claymore' || stats.pair === 'carpet';
+  const traits = (stats.hasRocket && stats.carrier !== 'rocket' && !rocketPair ? F_EXPLODE : 0) | mod.flags;
   const specs = pattern(p, stats);
   if (stats.twinlink && p.twinT > 0) specs.push({ lane: p.twinLane, mul: 1, fromX: laneX(p.twinLane) });
   const laneOfSpec = (sp) => (sp.lane !== undefined ? sp.lane : laneFromAngle(p, sp.angle));
-  const c = stats.carrier;
   if (c === 'glaive') {
     for (const sp of specs) {
       const v0 = 420 * stats.shotSpeed * mod.speed;
@@ -548,8 +568,15 @@ function fireBio(p, stats, beat = false) {
     }
     sfx.shoot();
   } else if (c === 'mortar') {
+    // CARPET (+ ROCKET): every shell splits into three, on three lanes, at 60%
+    const shells = [];
     for (const sp of specs) {
-      const lane = laneOfSpec(sp);
+      const l = laneOfSpec(sp);
+      if (stats.pair === 'carpet') { for (const o of [-1, 0, 1]) if (l + o >= 0 && l + o < LANES) shells.push({ lane: l + o, mul: sp.mul * 0.6, fromX: sp.fromX }); }
+      else shells.push({ lane: l, mul: sp.mul, fromX: sp.fromX });
+    }
+    for (const sp of shells) {
+      const lane = sp.lane;
       // over the front row: the farthest enemy in the lane, else the enemy line
       const row = enemiesInLane(lane);
       const ty = row.length ? row[row.length - 1].y : ENEMY_LINE;
@@ -565,6 +592,46 @@ function fireBio(p, stats, beat = false) {
   }
 }
 
+// Larvae from a point (HATCHERY, WASP NEST, EGG CLUTCH): each finds an enemy
+// within two lanes, the least crowded first.
+export function hatch(x, y, n, each, stats) {
+  if (countShape(SH_LARVA) > 30) return;
+  const lane = Math.max(0, Math.min(LANES - 1, Math.round((x - laneX(0)) / LANE_W)));
+  const crowd = (e) => countShape(SH_LARVA, (i) => playerBullets.aux[i] === e.id);
+  for (let k = 0; k < n; k++) {
+    const t = nearTarget(lane, 2, crowd);
+    const bi = bodyAt(spawn(playerBullets, x, y, (k - (n - 1) / 2) * 90, -200, 3, each, 0, 0), SH_LARVA, t ? -2 : -1);
+    if (bi >= 0 && t) playerBullets.aux[bi] = t.id;
+  }
+}
+// A stinger stuck in `e` straight away (HARPOON, QUEEN).
+function plant(e, dmg, fuse, flags = 0) {
+  const bi = bodyAt(spawn(playerBullets, e.x, e.y, 0, 0, 3, dmg, 0, 0), SH_STING, -1);
+  if (bi < 0) return;
+  playerBullets.flags[bi] = flags | F_LATCH;
+  playerBullets.aux[bi] = e.id;
+  playerBullets.ox[bi] = fuse;
+  playerBullets.vx[bi] = (Math.random() - 0.5) * 14; playerBullets.vy[bi] = (Math.random() - 0.5) * 10;
+}
+// FUSE LINE: mines a rail crosses go off at once, 30% harder.
+function fuseMines(pts, stats, hit) {
+  const pb = playerBullets;
+  for (let i = pb.n - 1; i >= 0; i--) {
+    if (pb.shape[i] !== SH_MINE) continue;
+    let near = false;
+    for (let k = 0; k < pts.length && !near; k += 2) near = Math.abs(pts[k] - pb.x[i]) < 14 && Math.abs(pts[k + 1] - pb.y[i]) < 14;
+    if (!near) continue;
+    burstAt(pb.x[i], pb.y[i] - 20, LANE_W * 0.6, pb.dmg[i] * 1.3, stats, hit, pb.flags[i]);
+    kill(pb, i);
+  }
+}
+// Stingers stuck in `e` burst now (REAPER x1.3, DEPTH CHARGE).
+function popStings(e, mul = 1) {
+  const pb = playerBullets;
+  for (let i = 0; i < pb.n; i++) if (pb.shape[i] === SH_STING && pb.flags[i] & F_LATCH && pb.aux[i] === e.id && pb.ox[i] > 0) { pb.ox[i] = 0.001; pb.dmg[i] *= mul; }
+}
+const stingFuse = (stats) => (stats.modeLv.stinger > 1 ? 0.8 : 1);
+
 // Area burst shared by mines and mortar shells: the nearest enemy takes a
 // primary hit (crits, frag, arcs), the rest of the area a plain one.
 function burstAt(x, y, radius, dmg, stats, hit, flags) {
@@ -573,23 +640,47 @@ function burstAt(x, y, radius, dmg, stats, hit, flags) {
   sfx.explode();
   const inside = enemies.filter((e) => !e.dead && overlaps(e, x, y, radius))
     .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
-  inside.forEach((e, k) => onHit(e, dmg, stats, hit, k === 0, flags & ~F_EXPLODE));
+  inside.forEach((e, k) => { onHit(e, dmg, stats, hit, k === 0, flags & ~F_EXPLODE); if (stats.pair === 'depthcharge') popStings(e); });
   if (flags & F_EXPLODE) blast(x, y, dmg, stats, null);
 }
 
 // Per-frame behaviour of the carrier bodies; after the pool moved them.
+let tetherTick = 0, wireTick = 0;
 export function updateBioShots(p, stats, dt, hit) {
   const pb = playerBullets;
+  tetherTick -= dt; wireTick -= dt;
+  if (stats.pair === 'tripwire') tripwires(p, stats, hit);
   for (let i = 0; i < pb.n; i++) {
     const sh = pb.shape[i];
     if (sh === SH_BOLT) continue;
+    if (sh === SH_MINE && pb.aux[i] === -9) {
+      // CLAYMORE: a launched mine bursts on the first enemy it meets
+      const e = enemies.find((o) => !o.dead && overlaps(o, pb.x[i], pb.y[i], 8));
+      if (e || pb.y[i] < 20) { burstAt(pb.x[i], pb.y[i], LANE_W * 0.6, pb.dmg[i], stats, hit, pb.flags[i] | F_EXPLODE); kill(pb, i); i--; }
+      continue;
+    }
     if (sh === SH_GLAIVE) {
       // decelerates to a halt just past the enemy line, then flies home
       const v0 = 420 * stats.shotSpeed;
       const dec = (v0 * v0) / (2 * Math.max(60, PLAYER_Y - 14 - GLAIVE_TURN));
       const before = pb.vy[i];
       pb.vy[i] += dec * dt * (pb.vy[i] > 0 && stats.modeLv.glaive > 1 ? 1.6 : 1);
-      if (before < 0 && pb.vy[i] >= 0) { pb.lastHit[i] = -1; pb.lane[i] = -1; pb.vx[i] = 0; }
+      if (before < 0 && pb.vy[i] >= 0) {
+        pb.lastHit[i] = -1; pb.lane[i] = -1; pb.vx[i] = 0;
+        // KAMA BOMB: it explodes where it turns; SEEDER: it drops a mine there
+        if (stats.pair === 'kama') blast(pb.x[i], pb.y[i], pb.dmg[i] * 0.8, stats, null);
+        if (stats.pair === 'seeder' && countShape(SH_MINE) < 3) {
+          const bi = bodyAt(spawn(playerBullets, pb.x[i], Math.max(pb.y[i], ENEMY_LINE + 20), 0, 0, 5, pb.dmg[i] * 0.35, 0, 0), SH_MINE, -1);
+          if (bi >= 0) { playerBullets.ox[bi] = playerBullets.y[bi]; playerBullets.aux[bi] = 0; }
+        }
+      }
+      // TETHER (+ LASER): a beam from you to the glaive burns what it crosses
+      if (stats.pair === 'tether') {
+        const seg = [];
+        for (let k = 0; k <= 12; k++) seg.push(p.x + (pb.x[i] - p.x) * k / 12, PLAYER_Y - 22 + (pb.y[i] - PLAYER_Y + 22) * k / 12);
+        beams.push({ pts: seg, w: 2.2, a: 0.55 });
+        if (tetherTick <= 0 && hit) for (const h of hitsAlong(seg, 5, 99).hits) onHit(h.e, currentDamage(p, stats) * stats.fireRate * 0.012, stats, hit, false);
+      }
       if (pb.vy[i] > 0) {
         if (!(pb.flags[i] & F_WAVE)) pb.vx[i] += ((p.x - pb.x[i]) * 4 - pb.vx[i]) * Math.min(1, dt * 6);
         if (pb.y[i] > PLAYER_Y - 24) { burst(pb.x[i], pb.y[i], SHOT, 3, 60, 0.2, 1.5); kill(pb, i); i--; continue; }
@@ -599,8 +690,12 @@ export function updateBioShots(p, stats, dt, hit) {
       if (pb.vy[i] === 0) {
         pb.aux[i] += dt;
         const near = enemies.some((e) => !e.dead && Math.abs(e.x - pb.x[i]) < LANE_W * 0.55 && Math.abs(e.y - pb.y[i]) < 70);
+        if (!near && stats.pair === 'claymore' && enemies.some((e) => !e.dead && e.y < pb.y[i] && Math.abs(e.x - pb.x[i]) < LANE_W * 0.5)) {
+          pb.aux[i] = -9; pb.vy[i] = -520; sfx.shoot(); continue;           // CLAYMORE: launch
+        }
         if (near || pb.aux[i] >= 2) {
           burstAt(pb.x[i], pb.y[i] - 20, LANE_W * 0.6, pb.dmg[i], stats, hit, pb.flags[i]);
+          if (stats.pair === 'eggclutch') hatch(pb.x[i], pb.y[i] - 20, 2, pb.dmg[i] * 0.1, stats);   // EGG CLUTCH
           kill(pb, i); i--; continue;
         }
       }
@@ -623,11 +718,31 @@ export function updateBioShots(p, stats, dt, hit) {
       } else if (pb.ox[i] <= 0) {
         rings.push({ x: e.x, y: e.y, r: 18, t: 0.2 });
         burst(e.x, e.y, '#ffd27a', 8, 140, 0.25, 2);
+        sfx.explode();
         onHit(e, pb.dmg[i], stats, hit, true, pb.flags[i]);
         kill(pb, i); i--; continue;
       }
     }
   }
+  if (tetherTick <= 0) tetherTick = 0.1;
+}
+
+// TRIPWIRE (LASER + SPORE MINE): parked mines in neighbouring lanes are wired;
+// an enemy in the wire's band (the enemy line just above) burns.
+function tripwires(p, stats, hit) {
+  const pb = playerBullets, mines = [];
+  for (let i = 0; i < pb.n; i++) if (pb.shape[i] === SH_MINE && pb.vy[i] === 0 && pb.aux[i] >= 0) mines.push(i);
+  const tick = wireTick <= 0;
+  for (let a = 0; a < mines.length; a++) for (let b = a + 1; b < mines.length; b++) {
+    const i = mines[a], j = mines[b];
+    const dx = Math.abs(pb.x[i] - pb.x[j]);
+    if (dx < LANE_W * 0.6 || dx > LANE_W * 1.4 || Math.abs(pb.y[i] - pb.y[j]) > 70) continue;
+    beams.push({ pts: [pb.x[i], pb.y[i], pb.x[j], pb.y[j]], w: 1.6, a: 0.5 });
+    if (!tick || !hit) continue;
+    const lo = Math.min(pb.x[i], pb.x[j]), hi = Math.max(pb.x[i], pb.x[j]), wy = (pb.y[i] + pb.y[j]) / 2;
+    for (const e of enemies) if (!e.dead && e.x > lo - 6 && e.x < hi + 6 && Math.abs(e.y - (wy - 40)) < 50) onHit(e, currentDamage(p, stats) * stats.fireRate * 0.03, stats, hit, false);
+  }
+  if (tick) wireTick = 0.1;
 }
 
 // ---- rail carrier: instant strikes along every path -----------------------
@@ -645,6 +760,8 @@ function fireRail(p, stats, hit, beat = 0) {
     if (spec.lane !== undefined && (spec.lane < 0 || spec.lane >= LANES)) continue;
     const pts = buildPath(p, spec, stats.hasSine, phase);
     const { hits } = hitsAlong(pts, 6 * mod.size, 99);
+    if (stats.pair === 'harpoon' && spec === specs[0] && hits.length) plant(hits[0].e, dmg * 0.18, stingFuse(stats));   // HARPOON
+    if (stats.pair === 'fuseline') fuseMines(pts, stats, hit);                                              // FUSE LINE
     let ramp = 1;
     for (const { e } of hits) {
       onHit(e, dmg * spec.mul * ramp, stats, hit, true);
@@ -752,7 +869,13 @@ function updateBeam(p, stats, dt, rateMul, hit) {
     }
     if (tick && hit) {
       let ramp = 1;
-      for (const { e } of hits) { onHit(e, dps * 0.1 * spec.mul * ramp, stats, hit, p.laserCount % 3 === 0); ramp *= 1 + stats.pierceRamp; }
+      for (const { e } of hits) { onHit(e, dps * 0.1 * spec.mul * ramp, stats, hit, p.laserCount % 3 === 0); ramp *= 1 + stats.pierceRamp; e.beamed = true; }   // HATCHERY reads `beamed`
+      // CAUTERIZE (+ STINGER): a second on the same enemy plants a charge
+      if (stats.pair === 'cauterize' && spec === specs[0]) {
+        const f = hits[0] && hits[0].e;
+        if (f && f === p.cautE) p.cautT = (p.cautT || 0) + 0.1; else { p.cautE = f; p.cautT = 0; }
+        if (f && p.cautT >= 1) { p.cautT = 0; plant(f, currentDamage(p, stats) * 1.4, 0.15); }
+      }
       const last = hits[hits.length - 1];
       if (last) {
         burst(last.e.x, last.e.y + 8, SHOT, 2, 120, 0.2, 1.5);
@@ -1018,6 +1141,7 @@ export function resolvePlayerHits(stats, run) {
       if (sh === SH_LARVA || sh === SH_STING) {
         // stick: larvae eat for 2 s, stingers burst after their fuse
         if (sh === SH_STING) onHit(e, pb.dmg[i] * 0.1, stats, run, false, pb.flags[i] & ~F_EXPLODE);
+        if (sh === SH_LARVA && stats.pair === 'queen') plant(e, pb.dmg[i] * 0.2, stingFuse(stats));   // QUEEN
         pb.flags[i] = (pb.flags[i] & ~F_WAVE) | F_LATCH;
         pb.lane[i] = -1;                                   // no more chasing or homing
         pb.aux[i] = e.id;
@@ -1026,6 +1150,8 @@ export function resolvePlayerHits(stats, run) {
         break;
       }
       const crit = onHit(e, pb.dmg[i], stats, run, true, pb.flags[i]);
+      if (sh === SH_GLAIVE && pb.vy[i] > 0 && stats.pair === 'reaper') popStings(e, 1.1);                  // REAPER
+      if (stats.pair === 'waspnest' && pb.flags[i] & F_ROCKET) hatch(pb.x[i], pb.y[i], 2, pb.dmg[i] * 0.16, stats);   // WASP NEST
       fission(pb, i, stats, e);
       if (pb.flags[i] & F_ECHO) thunderclap(pb, i, e);
       if (crit && stats.critPierce) pb.pierce[i] = Math.min(255, pb.pierce[i] + stats.critPierce);   // HEADSHOT 3

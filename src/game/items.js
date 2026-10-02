@@ -455,6 +455,37 @@ export const EVOLUTIONS = [
     apply: (s) => { s.metabCap = 0.6; } },
 ];
 export const EVO_BY_ID = Object.fromEntries(EVOLUTIONS.map((e) => [e.id, e]));
+
+// Carrier pairs (v1.2, DESIGN_V1.2.md part 1). Two carriers held: the pair
+// decides what happens. kind F = fusion (one carrier, reshaped: `carrier` is
+// what you fire), A = alternating volleys, I = both fire together at 60%.
+// Pairs not listed fall back to the priority (the other carrier adds nothing,
+// except ROCKET's blast). PULSE LANCE, SCORCHER and DETONATOR come from the
+// shot engine's traits and stay in combos.js.
+export const CARRIER_OF = { laser: 'beam', railgun: 'rail', rockets: 'rocket', glaive: 'glaive', sporemine: 'mine', brood: 'brood', stinger: 'sting', mortar: 'mortar' };
+export const CARRIER_PAIRS = [
+  // v1.1 fusions, built from the shot traits (named in combos.js)
+  { id: 'pulselance', a: 'laser', b: 'railgun', kind: 'F', carrier: 'beam', legacy: true },
+  { id: 'scorcher', a: 'laser', b: 'rockets', kind: 'F', carrier: 'beam', legacy: true },
+  { id: 'detonator', a: 'railgun', b: 'rockets', kind: 'F', carrier: 'rail', legacy: true },
+  { id: 'tether', a: 'laser', b: 'glaive', kind: 'F', carrier: 'glaive', name: 'TETHER', desc: 'A beam ties you to the glaive in flight and burns what it crosses.' },
+  { id: 'tripwire', a: 'laser', b: 'sporemine', kind: 'I', carrier: 'beam', with: 'mine', name: 'TRIPWIRE', desc: 'Beam and mines together; mines side by side are wired with burning laser.' },
+  { id: 'hatchery', a: 'laser', b: 'brood', kind: 'F', carrier: 'beam', name: 'HATCHERY', desc: 'Enemies the beam kills hatch two larvae.' },
+  { id: 'cauterize', a: 'laser', b: 'stinger', kind: 'F', carrier: 'beam', name: 'CAUTERIZE', desc: 'One second of beam on the same enemy plants a charge that bursts.' },
+  { id: 'recoil', a: 'railgun', b: 'glaive', kind: 'A', alt: ['rail', 'glaive'], name: 'RECOIL', desc: 'Rails and glaives take turns: the glaive fills the charge time.' },
+  { id: 'fuseline', a: 'railgun', b: 'sporemine', kind: 'I', carrier: 'rail', with: 'mine', name: 'FUSE LINE', desc: 'Rails and mines together; a rail sets off every mine it crosses.' },
+  { id: 'harpoon', a: 'railgun', b: 'stinger', kind: 'F', carrier: 'rail', name: 'HARPOON', desc: 'Every rail plants a stinger in the first enemy it hits.' },
+  { id: 'kama', a: 'rockets', b: 'glaive', kind: 'F', carrier: 'glaive', name: 'KAMA BOMB', desc: 'The glaive explodes where it turns.' },
+  { id: 'claymore', a: 'rockets', b: 'sporemine', kind: 'F', carrier: 'mine', name: 'CLAYMORE', desc: 'Mines launch at the first enemy in their lane.' },
+  { id: 'waspnest', a: 'rockets', b: 'brood', kind: 'F', carrier: 'rocket', name: 'WASP NEST', desc: 'Rockets release larvae where they hit.' },
+  { id: 'carpet', a: 'rockets', b: 'mortar', kind: 'F', carrier: 'mortar', name: 'CARPET', desc: 'Every shell splits into three, on three lanes.' },
+  { id: 'seeder', a: 'glaive', b: 'sporemine', kind: 'F', carrier: 'glaive', name: 'SEEDER', desc: 'The glaive drops a mine where it turns.' },
+  { id: 'reaper', a: 'glaive', b: 'stinger', kind: 'A', alt: ['sting', 'glaive'], name: 'REAPER', desc: 'Stingers and glaives take turns; a returning glaive sets the stingers off at once, harder.' },
+  { id: 'eggclutch', a: 'sporemine', b: 'brood', kind: 'F', carrier: 'mine', name: 'EGG CLUTCH', desc: 'Mines hatch larvae when they burst.' },
+  { id: 'queen', a: 'brood', b: 'stinger', kind: 'F', carrier: 'brood', name: 'QUEEN', desc: 'Every larva that latches on injects a stinger.' },
+  { id: 'depthcharge', a: 'stinger', b: 'mortar', kind: 'A', alt: ['sting', 'mortar'], name: 'DEPTH CHARGE', desc: 'Stingers and shells take turns; a shell sets off the stingers it lands on.' },
+];
+const PRIORITY = ['beam', 'rail', 'mortar', 'sting', 'glaive', 'rocket', 'brood', 'mine'];
 const evoReady = (ev, stacks) => (stacks[ev.base] || 0) >= maxOf(ITEM_BY_ID[ev.base], stacks)
   && (stacks[ev.partner] || 0) >= (ev.partnerMin || 1);
 export function activeEvolutions(stacks) { return EVOLUTIONS.filter((ev) => ITEM_BY_ID[ev.base] && evoReady(ev, stacks)); }
@@ -506,6 +537,19 @@ export function computeStats(board, stacks) {
   // > rocket > brood > mine > bolt; the others reshape it (pairs: DESIGN_V1.2).
   s.carrier = s.hasBeam ? 'beam' : s.hasRail ? 'rail' : s.hasMortar ? 'mortar' : s.hasSting ? 'sting'
     : s.hasGlaive ? 'glaive' : s.hasRocket ? 'rocket' : s.hasBrood ? 'brood' : s.hasMine ? 'mine' : 'bolt';
+  // The designed pair of the two highest-priority carriers held (if any)
+  // reshapes the weapon. Further carriers follow the priority.
+  s.pair = null; s.alt = null; s.duo = null;
+  const heldC = Object.keys(CARRIER_OF).filter((id) => stacks[id] > 0)
+    .sort((a, b) => PRIORITY.indexOf(CARRIER_OF[a]) - PRIORITY.indexOf(CARRIER_OF[b]));
+  for (let i = 0; i < heldC.length && !s.pair; i++) for (let j = i + 1; j < heldC.length && !s.pair; j++) {
+    const pr = CARRIER_PAIRS.find((q) => (q.a === heldC[i] && q.b === heldC[j]) || (q.a === heldC[j] && q.b === heldC[i]));
+    if (!pr) continue;
+    s.pair = pr.id;
+    if (pr.kind === 'A') { s.alt = pr.alt; s.carrier = pr.alt[0]; }
+    else s.carrier = pr.carrier;
+    if (pr.kind === 'I') s.duo = pr.with;
+  }
   s.shotSpeed = Math.max(0.5, Math.min(2.5, s.shotSpeed));
   s.bulletSpeed = 520 * s.shotSpeed;
   // Derived from SPEED and LUCK, so every source of them counts.
@@ -602,6 +646,9 @@ export function effectiveDps(s) {
   perShot *= 1 + s.crit * (s.critMul - 1);
   const CARRIER_DPS = { bolt: 1, beam: 1.15, rail: 1.05, rocket: 1, glaive: 1.1, mine: 1, brood: 0.95, sting: 1.05, mortar: 1 };
   let m = CARRIER_DPS[s.carrier] ?? 1;
+  if (s.alt) m = (CARRIER_DPS[s.alt[0]] + CARRIER_DPS[s.alt[1]]) / 2;
+  if (s.duo) m = 0.6 * (m + (CARRIER_DPS[s.duo] ?? 1));
+  else if (s.pair && !s.alt && !CARRIER_PAIRS.find((q) => q.id === s.pair).legacy) m *= 1.12;   // a fusion: at most +15% over its best half
   if (s.carrier === 'rail') m *= s.shotSpeed * (s.modeLv.railgun > 1 ? 1.15 : 1);   // shot speed = rail charge rate
   if (s.carrier === 'beam' && s.modeLv.laser > 1) m *= 1.12;
   if (s.hasScatter && s.modeLv.scatter > 1) m *= 1.15;   // ramp-up, at a typical hold

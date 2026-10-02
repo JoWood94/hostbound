@@ -20,7 +20,7 @@ import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
-import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine, heartbeat, updateBioShots } from './weapon.js';
+import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine, heartbeat, updateBioShots, hatch } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic, syncMusic } from '../audio/music.js';
@@ -1105,6 +1105,7 @@ export function updateRun(run, input, dt) {
       }
     }
     if (st.hasBeam) run.rs.laserKills = (run.rs.laserKills || 0) + 1;
+    if (st.pair === 'hatchery' && e.beamed) hatch(e.x, e.y, 2, currentDamage(p, st) * 0.7, st);   // HATCHERY
     if (st.chain) {
       const radius = (34 + 10 * st.chain) * (st.domino || 1);
       const dmg = currentDamage(p, st) * 1.2 * st.chain;
