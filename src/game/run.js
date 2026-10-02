@@ -290,8 +290,14 @@ export function coveredLanes(skip = null) {
 // relative positions are fixed at spawn: whichever comes second checks the
 // other. A cell on a TRIPWIRE is allowed on purpose (jump to grab it: risk).
 // ---------------------------------------------------------------------------
-const CELL_CLEAR = 46;     // px kept free around a barrier, in its lane
-const blockedAt = (lane, y) => obstacles.some((o) => !o.dead && o.type === 'wall' && o.lane === lane && Math.abs(o.y - y) < CELL_CLEAR);
+const CELL_CLEAR = 46;     // px kept free in front of a barrier, in its lane
+// Behind a barrier more room, in time: it hits until it is OB_H/2 + 6 past
+// you, and phase does not pass barriers, so a cell right behind one could
+// never be taken. BEHIND_WALL s to step back in once it has passed.
+const BEHIND_WALL = 0.4;
+let cellBehind = CELL_CLEAR;   // px, follows the track speed (updateRun)
+const tooClose = (wallY, y) => (y > wallY ? y - wallY < CELL_CLEAR : wallY - y < cellBehind);
+const blockedAt = (lane, y) => obstacles.some((o) => !o.dead && o.type === 'wall' && o.lane === lane && tooClose(o.y, y));
 
 function placeCells(lane, n, y0 = -20, gap = 26) {
   for (let i = 0; i < n; i++) {
@@ -308,7 +314,7 @@ function placeWall(lane, y = -30) {
   spawnObstacle('wall', lane, y);
   for (let i = pickups.length - 1; i >= 0; i--) {
     const pk = pickups[i];
-    if (!pk.fly && pk.lane === lane && Math.abs(pk.y - y) < CELL_CLEAR) pickups.splice(i, 1);
+    if (!pk.fly && pk.lane === lane && tooClose(y, pk.y)) pickups.splice(i, 1);
   }
 }
 
@@ -336,8 +342,8 @@ function placeRiskyCells(run, lane, n) {
   placeCells(open.sort((x, y) => Math.abs(x - lane) - Math.abs(y - lane))[0], n);
 }
 // An obstacle row pays the debt: a line across a wire (jump) or a tear
-// (phase), centred on it; else right behind a barrier, in its lane (step back
-// in as soon as it has passed). One draw per row, debt or not (daily run).
+// (phase), centred on it; else behind a barrier, in its lane (step back in
+// once it has passed: phase does not pass barriers). One draw per row, debt or not (daily run).
 const CELL_GAP = 26;
 function layCellsOnRow(run, row, y = -30) {
   const r = run.rng.next();
@@ -349,7 +355,7 @@ function layCellsOnRow(run, row, y = -30) {
   else {
     const walls = lanesOf('B');
     if (!walls.length) return;
-    placeCells(walls[Math.floor(r * walls.length)], n, y - CELL_CLEAR - 4, CELL_GAP);
+    placeCells(walls[Math.floor(r * walls.length)], n, y - cellBehind - 4, CELL_GAP);
   }
   run.cellDebt -= n;
 }
@@ -830,6 +836,7 @@ export function updateRun(run, input, dt) {
   run.time += dt;
   const target = 220 + Math.min(260, 40 * Math.log1p(d * 2));
   run.speed = run.boss || run.warnT > 0 ? target * 0.8 : target;
+  cellBehind = OB_H.wall / 2 + 20 + BEHIND_WALL * run.speed;
   if (!run.boss && run.warnT <= 0 && !run.tutorial) run.distance += (run.speed / PX_PER_M) * edt;
   run.rs.distance = run.distance;
   updateWorld(edt, run.speed);

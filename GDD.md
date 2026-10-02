@@ -229,7 +229,7 @@ Descritti in `DESIGN_V1.2.md` (in cima le deviazioni dal piano). In breve:
   - Il boss lascia anche 12 + 4·n cellule: di solito il bottino è seguito subito da un livello.
 - Un boss alla fine di ogni distretto (ogni 1000 m); niente più negozio, niente pause economiche.
 - Item legati alle monete: GREED = più cellule (sali prima), MAGNET le attira, **MUTAGEN** (ex INTEREST, stesso id) aggiunge una scelta a livelli e bottini. L'obiettivo ex "compra 5 cose" (stesso id, sblocca LUCKY CHIP) ora è "raggiungi il livello 8 in una run".
-- **Cellule e ostacoli non si sovrappongono mai**: entrambi scorrono alla velocità della pista, quindi chi compare per secondo controlla l'altro; nessuna cellula entro 46 px da un muro nella sua corsia. Le cellule sopra un filo arancio sono permesse apposta: le prendi saltando (rischio). Le file sparse scelgono una corsia senza muri in arrivo.
+- **Cellule e ostacoli non si sovrappongono mai**: entrambi scorrono alla velocità della pista, quindi chi compare per secondo controlla l'altro; nessuna cellula entro 46 px davanti a un muro nella sua corsia, né entro 0,4 s (in base alla velocità) dietro: il phase non passa i muri, serve il tempo di rientrare nella corsia. Le cellule sopra un filo arancio sono permesse apposta: le prendi saltando (rischio). Le file sparse scelgono una corsia senza muri in arrivo.
 
 ## 9. Meta progressione (roguelike unlock)
 
