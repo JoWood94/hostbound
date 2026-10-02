@@ -122,75 +122,95 @@ let logoBake = null;
 const logoFlick = [0, 0];
 
 // One canvas per word (so they can flicker separately) plus one for the kana.
+// Everything that glows is baked once (shadowBlur is costly on mobile GPUs);
+// per frame the menu only blits canvases and fills a few plasma ribbons.
 function bakeLogo(k) {
-  const mk = () => { const c = document.createElement('canvas'); c.width = Math.round(LOGO_W * k); c.height = Math.round(LOGO_H * k); const x = c.getContext('2d'); x.setTransform(k, 0, 0, k, 0, 0); return [c, x]; };
+  const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const x = c.getContext('2d'); x.setTransform(k, 0, 0, k, 0, 0); return [c, x]; };
   const size = 42;
-  const [, m] = mk();
+  const [, m] = mk(1, 1);
   m.font = `${size}px ${LOGO_FONT}`;
   const ws = LOGO_PARTS.map((p) => m.measureText(p.word).width);
   const gap = 6, total = ws[0] + ws[1] + gap;
   const xs = [LOGO_W / 2 - total / 2, LOGO_W / 2 - total / 2 + ws[0] + gap];
-  const tube = (x, txt, px, py, col, core) => {
+  const tube = (x, txt, px, py, col, core, halo) => {
     x.save(); x.translate(px, py); x.transform(1, 0, -0.16, 1, 0, 0);   // italic
-    px = 0; py = 0;
     x.textAlign = 'left'; x.textBaseline = 'middle';
-    x.shadowColor = col; x.shadowBlur = 10; x.fillStyle = col; x.fillText(txt, px, py);
-    x.shadowBlur = 3; x.shadowColor = core; x.fillStyle = core; x.globalAlpha = 0.85; x.fillText(txt, px, py);
+    x.shadowColor = col; x.shadowBlur = halo; x.fillStyle = col; x.fillText(txt, 0, 0);   // halo
+    x.shadowBlur = 10; x.fillText(txt, 0, 0);
+    x.shadowBlur = 3; x.shadowColor = core; x.fillStyle = core; x.globalAlpha = 0.85; x.fillText(txt, 0, 0);
     x.globalAlpha = 1; x.shadowBlur = 0;
     // faint RGB split on the glass
     x.globalCompositeOperation = 'lighter'; x.globalAlpha = 0.25;
-    x.fillStyle = '#ff2050'; x.fillText(txt, px + 1.5, py);
-    x.fillStyle = '#2050ff'; x.fillText(txt, px - 1.5, py);
-    x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1;
+    x.fillStyle = '#ff2050'; x.fillText(txt, 1.5, 0);
+    x.fillStyle = '#2050ff'; x.fillText(txt, -1.5, 0);
     x.restore();
   };
   const words = LOGO_PARTS.map((p, i) => {
-    const [c, x] = mk();
+    const [c, x] = mk(LOGO_W, LOGO_H);
     x.font = `${size}px ${LOGO_FONT}`;
-    tube(x, p.word, xs[i], LOGO_CY, p.col, p.core);
+    tube(x, p.word, xs[i], LOGO_CY, p.col, p.core, 18);
     x.globalCompositeOperation = 'destination-out'; x.fillStyle = 'rgba(0,0,0,0.25)';
     for (let y = 0; y < LOGO_H; y += 3) x.fillRect(0, y, LOGO_W, 1);
     return c;
   });
-  const [kc, kx] = mk();
+  const [kc, kx] = mk(LOGO_W, LOGO_H);
   kx.font = `13px ${LOGO_FONT}`;
   const kw = kx.measureText(LOGO_KANA).width;
   // kana sign: small pink tube, letter-spaced under BOUND's right edge
   const spacing = 3;
   let px = xs[1] + ws[1] - (kw + spacing * (LOGO_KANA.length - 1));
-  for (const ch of LOGO_KANA) { tube(kx, ch, px, LOGO_CY + 33, '#ff2bd6', '#ffe0f8'); px += kx.measureText(ch).width + spacing; }
-  return { words, kana: kc, k, x0: xs[0], x1: xs[1] + ws[1] };
+  for (const ch of LOGO_KANA) { tube(kx, ch, px, LOGO_CY + 33, '#ff2bd6', '#ffe0f8', 8); px += kx.measureText(ch).width + spacing; }
+  // Tagline: RGB split, cyan glow and scanlines, baked flat (tilt at blit).
+  const [tc, tx] = mk(TAG_W, TAG_H);
+  tx.font = `13px ${LOGO_FONT}`;
+  tx.textAlign = 'center'; tx.textBaseline = 'middle';
+  tx.globalCompositeOperation = 'lighter'; tx.globalAlpha = 0.7;
+  tx.fillStyle = '#ff2050'; tx.fillText(TAG, TAG_W / 2 - 1.6, TAG_H / 2);
+  tx.fillStyle = '#2050ff'; tx.fillText(TAG, TAG_W / 2 + 1.6, TAG_H / 2 + 0.5);
+  tx.globalCompositeOperation = 'source-over'; tx.globalAlpha = 1;
+  tx.shadowColor = PAL.cyan; tx.shadowBlur = 8;
+  tx.fillStyle = PAL.cyan; tx.fillText(TAG, TAG_W / 2, TAG_H / 2);
+  tx.shadowBlur = 0;
+  tx.globalCompositeOperation = 'destination-out'; tx.fillStyle = 'rgba(0,0,0,0.35)';
+  for (let y = TAG_H / 2 - 7; y < TAG_H / 2 + 8; y += 2) tx.fillRect(0, y, TAG_W, 1);
+  return { words, kana: kc, tag: tc, k };
 }
+const TAG = 'RUN · SHOOT · MUTATE', TAG_W = 300, TAG_H = 40;
 
 // Plasma underline across the whole screen: smooth strands that twist around
 // each other and swell and thin as they flow, like the plasma of the borders.
+// Each strand is one filled ribbon plus one wide faint stroke as its glow.
+const PLASMA = [
+  // colour, amplitude, wavelengths, speed, phase, base width
+  ['#19f0ff', 3.2, 0.035, 0.11, 1.3, 0, 2.6],
+  ['#19f0ff', 2.4, 0.05, 0.08, -1.0, 2.1, 1.4],
+  ['#e020c0', 3.8, 0.042, 0.13, 1.7, 4.2, 1.6],
+  ['#a64dff', 2.0, 0.06, 0.1, -1.5, 1.0, 1.0],
+];
+const PL_N = Math.ceil(W / 6) + 2;
+const plY = new Float32Array(PL_N), plW = new Float32Array(PL_N);
 function plasmaUnderline(y, t) {
-  // strand: colour, amplitude, wavelengths, speed, phase, base width, glow
-  const strands = [
-    ['#19f0ff', 3.2, 0.035, 0.11, 1.3, 0, 2.6, 12],
-    ['#19f0ff', 2.4, 0.05, 0.08, -1.0, 2.1, 1.4, 8],
-    ['#e020c0', 3.8, 0.042, 0.13, 1.7, 4.2, 1.6, 10],
-    ['#a64dff', 2.0, 0.06, 0.1, -1.5, 1.0, 1.0, 6],
-  ];
   ctx.save();
-  ctx.lineCap = 'round';
-  for (const [col, amp, f1, f2, sp, ph, bw, blur] of strands) {
-    const yAt = (x) => y + Math.sin(x * f1 + t * sp + ph) * amp + Math.sin(x * f2 - t * sp * 0.6 + ph * 1.7) * amp * 0.45;
-    const wAt = (x) => bw * (0.55 + 0.45 * Math.sin(x * 0.027 - t * 1.1 + ph * 2.3)) * (0.8 + 0.2 * Math.sin(x * 0.11 + t * 2 + ph));
-    ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = blur; ctx.globalAlpha = 0.85;
-    for (let x = -4; x < W + 4; x += 4) {
-      ctx.lineWidth = Math.max(0.4, wAt(x));
-      ctx.beginPath(); ctx.moveTo(x, yAt(x)); ctx.lineTo(x + 4, yAt(x + 4)); ctx.stroke();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let s = 0; s < PLASMA.length; s++) {
+    const [col, amp, f1, f2, sp, ph, bw] = PLASMA[s];
+    for (let i = 0; i < PL_N; i++) {
+      const x = i * 6 - 6;
+      plY[i] = y + Math.sin(x * f1 + t * sp + ph) * amp + Math.sin(x * f2 - t * sp * 0.6 + ph * 1.7) * amp * 0.45;
+      plW[i] = Math.max(0.4, bw * (0.55 + 0.45 * Math.sin(x * 0.027 - t * 1.1 + ph * 2.3)) * (0.8 + 0.2 * Math.sin(x * 0.11 + t * 2 + ph)));
     }
+    const line = () => { ctx.beginPath(); for (let i = 0; i < PL_N; i++) i ? ctx.lineTo(i * 6 - 6, plY[i]) : ctx.moveTo(-6, plY[0]); };
+    // glow: one wide faint stroke
+    ctx.strokeStyle = col; ctx.globalAlpha = 0.16; ctx.lineWidth = bw * 4 + 3;
+    line(); ctx.stroke();
+    // body: ribbon whose thickness follows plW
+    ctx.globalAlpha = 0.9; ctx.fillStyle = col;
+    ctx.beginPath();
+    for (let i = 0; i < PL_N; i++) { const x = i * 6 - 6; i ? ctx.lineTo(x, plY[i] - plW[i] / 2) : ctx.moveTo(x, plY[i] - plW[i] / 2); }
+    for (let i = PL_N - 1; i >= 0; i--) ctx.lineTo(i * 6 - 6, plY[i] + plW[i] / 2);
+    ctx.closePath(); ctx.fill();
+    if (s === 0) { ctx.strokeStyle = '#e8ffff'; ctx.globalAlpha = 0.8; ctx.lineWidth = 0.9; line(); ctx.stroke(); }
   }
-  // hot core along the main strand
-  ctx.strokeStyle = '#e8ffff'; ctx.shadowBlur = 3; ctx.globalAlpha = 0.8; ctx.lineWidth = 0.9;
-  ctx.beginPath();
-  for (let x = -4; x <= W + 4; x += 4) {
-    const yy = y + Math.sin(x * 0.035 + t * 1.3) * 3.2 + Math.sin(x * 0.11 - t * 0.78) * 1.44;
-    x > -4 ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy);
-  }
-  ctx.stroke();
   ctx.restore();
 }
 
@@ -213,44 +233,25 @@ function drawLogo(t) {
   logoBake.words.forEach((c, i) => {
     const off = logoFlick[i] > 0 && logoFlick[i] % 2 === 0;
     ctx.globalAlpha = off ? 0.25 : 0.94 + Math.sin(t * 3 + i * 2) * 0.06;
-    ctx.shadowColor = LOGO_PARTS[i].col; ctx.shadowBlur = off ? 0 : 18;
     ctx.drawImage(c, ox, oy, LOGO_W, LOGO_H);
   });
-  ctx.globalAlpha = 0.9; ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 8;
+  ctx.globalAlpha = 0.9;
   ctx.drawImage(logoBake.kana, ox, oy, LOGO_W, LOGO_H);
   ctx.restore();
-  // Tagline: the logo's neon type with a VHS look (RGB split, a tracking band,
-  // and now and then a torn slice shifted sideways).
+  // Tagline with a VHS look: jitter, a slow tracking band and now and then a
+  // torn slice shifted sideways.
   ctx.save();
-  ctx.translate(W / 2, 214);
-  ctx.rotate(-0.05);
-  ctx.font = `17px ${LOGO_FONT}`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const tag = 'RUN · SHOOT · MUTATE';
+  ctx.translate(W / 2, 212);
   const jit = Math.random() < 0.06 ? (Math.random() - 0.5) * 3 : 0;
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.7;
-  ctx.fillStyle = '#ff2050'; ctx.fillText(tag, -1.6 + jit, 0);
-  ctx.fillStyle = '#2050ff'; ctx.fillText(tag, 1.6 + jit, 0.5);
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 1;
-  ctx.shadowColor = PAL.cyan; ctx.shadowBlur = 8;
-  ctx.fillStyle = PAL.cyan; ctx.fillText(tag, jit, 0);
-  ctx.shadowBlur = 0;
-  // torn slice
+  const tc = logoBake.tag, tk = logoBake.k;
+  ctx.drawImage(tc, -TAG_W / 2 + jit, -TAG_H / 2, TAG_W, TAG_H);
   if (Math.random() < 0.08) {
-    const sy = -8 + Math.random() * 12, sh = 2 + Math.random() * 3;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(-W / 2, sy, W, sh); ctx.clip();
-    ctx.fillStyle = 'rgba(10,0,8,1)'; ctx.fillRect(-W / 2, sy, W, sh);
-    ctx.fillStyle = PAL.cyan; ctx.fillText(tag, (Math.random() - 0.5) * 10, 0);
-    ctx.restore();
+    const sy = TAG_H / 2 - 6 + Math.random() * 9, sh = 2 + Math.random() * 3;
+    ctx.fillStyle = 'rgba(10,0,8,1)'; ctx.fillRect(-TAG_W / 2, -TAG_H / 2 + sy, TAG_W, sh);
+    ctx.drawImage(tc, 0, sy * tk, tc.width, sh * tk, -TAG_W / 2 + (Math.random() - 0.5) * 10, -TAG_H / 2 + sy, TAG_W, sh);
   }
-  // scanlines and a slow bright tracking band
-  ctx.fillStyle = 'rgba(10,0,8,0.35)';
-  for (let y = -9; y < 10; y += 2) ctx.fillRect(-W / 2, y, W, 1);
-  const by = -10 + ((t * 9) % 20);
-  ctx.fillStyle = 'rgba(200,255,255,0.12)'; ctx.fillRect(-W / 2, by, W, 2);
+  const by = -8 + ((t * 9) % 16);
+  ctx.fillStyle = 'rgba(200,255,255,0.12)'; ctx.fillRect(-TAG_W / 2, by, TAG_W, 2);
   ctx.restore();
 }
 
