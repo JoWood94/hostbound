@@ -3,13 +3,15 @@
 //   wall : magenta field-line barrier, change lane
 //   veil : a rift curtain across ALL lanes, cannot be dodged or jumped: PHASE
 //          through it (cyan, the phase colour)
+//   rift : the same tear, one lane wide. Usually set in the gap of a barrier
+//          row, so the only way through is to phase
 // A "gate" is a row of walls with one open lane.
 import { PAL } from '../render/palette.js';
 import { drawGlowDot } from '../render/draw.js';
 import { ctx, W, H } from '../core/canvas.js';
 import { LANES, LANE_W, laneX } from './world.js';
 
-const VARIANTS = { low: 3, wall: 3, veil: 1 };
+const VARIANTS = { low: 3, wall: 3, veil: 1, rift: 1 };
 
 export const obstacles = [];
 
@@ -30,7 +32,7 @@ export function updateObstacles(dt, speed) {
   }
 }
 
-export const OB_H = { low: 14, wall: 30, veil: 10 };
+export const OB_H = { low: 14, wall: 30, veil: 10, rift: 12 };
 
 export function spawnVeil(y = -30) {
   spawnObstacle('veil', 2, y);
@@ -42,6 +44,7 @@ export function drawObstacles(alpha) {
     const y = o.prevY + (o.y - o.prevY) * alpha;
     if (o.type === 'veil') drawVeil(y, o.phased);
     else if (o.type === 'low') drawTrip(o.x, y, o.v);
+    else if (o.type === 'rift') drawRift(o.x, y, o.phased);
     else drawBarrier(o.x, y, o.v);
   }
 }
@@ -100,6 +103,17 @@ function drawTrip(x, y, v) {
   }
   for (const s of [-1, 1]) { drawGlowDot(x + s * hw, y, PAL.orange, 4, 0.8); drawGlowDot(x + s * hw, y, '#ffffff', 1.5, 1); }
   chevron(x, y - 11, true, PAL.orange, 0.75 + Math.sin(t * 8) * 0.2);
+}
+
+// Micro rift: a one-lane tear, cyan like every phase signal. Phase through.
+function drawRift(x, y, phased) {
+  const hw = LANE_W * 0.44;
+  const t = performance.now() / 1000;
+  const a = phased ? 0.35 : 1;
+  field(x - hw, x + hw, y, 16, 'rgba(25,240,255,A)', 0.3 * a);
+  strands(x - hw, x + hw, y, { color: PAL.cyan, core: '#f0ffff', n: 3, gap: 3.5, amp: 2.4, freq: 0.2, speed: 11, blur: 10, alpha: a });
+  for (const s of [-1, 1]) drawGlowDot(x + s * hw, y, PAL.cyan, 4, 0.8 * a);
+  if (!phased) chevron(x, y - 13 + Math.sin(t * 8) * 1.5, false, PAL.cyan, 0.85);
 }
 
 // Barrier: a dense magenta knot of field lines filling one lane, dark and

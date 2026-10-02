@@ -9,8 +9,8 @@
 // Times are in BEATS (1 beat = 2 metronome ticks = 0.42 s at base tempo; the
 // tempo steps up once per district). Lanes are 0-4, mirrored as a whole.
 //   e(beat, type, lane)   an enemy starts entering on that beat
-//   r(beat, 'BT...')      an obstacle row that REACHES YOU on that beat
-//                         (B barrier: dodge, T tripwire: jump, . free)
+//   r(beat, 'BTP..')      an obstacle row that REACHES YOU on that beat
+//                         (B barrier: dodge, T tripwire: jump, P rift: phase, . free)
 //   v(beat)               a rift veil that reaches you on that beat (phase)
 //   c(beat, lane, n)      a coin line, a hint of where to stand
 // `from` is the distance (m) where a section joins the pool; `to` retires the
@@ -69,24 +69,33 @@ export const SECTIONS = [
 // --- COURSES: obstacle-only sections, many lanes blocked, played in between
 // combat sections (the director alternates the two). Read the track, weave
 // through it. Rows at least 2 beats apart; the free lane moves at most one
-// lane per beat. Cells trace the line.
+// lane per beat; phase obstacles (P rows, veils) at least 7 beats apart, so
+// the phase is always recharged (2 s) even at the top tempo. No course leaves
+// the centre lane free all the way. Cells trace the line.
 export const COURSES = [
   { id: 'c-first-wire', to: 1500, from: 60, events: [c(2, 2, 3), r(8, '..T..'), r(12, '.TTT.')] },
-  { id: 'c-first-wall', to: 1500, from: 60, events: [r(8, 'B....'), r(11, '...B.'), c(4, 2)] },
+  { id: 'c-first-wall', to: 1500, from: 60, events: [r(8, '..B..'), r(11, '.B...'), c(4, 0)] },
   { id: 'c-veil-intro', to: 1500, from: 160, events: [c(4, 2, 3), v(10)] },
+  { id: 'c-first-rift', to: 2500, from: 300, events: [c(4, 2, 3), r(9, 'BBPBB')] },
   { id: 'c-gates', to: 3000, from: 300, events: [c(4, 0, 3), r(8, '.BBBB'), r(12, 'BBBB.'), c(9, 4, 3)] },
   { id: 'c-wire-stairs', to: 3000, from: 300, events: [r(8, 'TT...'), r(10, '.TT..'), r(12, '..TT.'), r(14, '...TT'), c(6, 4, 3)] },
   { id: 'c-checker', from: 500, events: [r(8, 'B.B.B'), r(10, '.B.B.'), r(12, 'B.B.B'), r(14, '.B.B.'), c(5, 1, 3)] },
   { id: 'c-slalom', from: 500, events: [r(8, 'BB.BB'), r(10, 'B.BBB'), r(12, 'BB.BB'), r(14, 'BBB.B'), c(5, 2, 3)] },
-  { id: 'c-tunnel', from: 800, events: [r(8, 'BB.BB'), r(10, 'BB.BB'), r(12, 'BT.TB'), r(14, 'BB.BB'), c(6, 2, 4)] },
+  { id: 'c-tunnel', from: 800, events: [r(8, 'B.BBB'), r(10, 'BTBBB'), r(12, 'B.BBB'), r(14, 'BBT.B'), c(5, 1, 4)] },
   { id: 'c-zipper', from: 800, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), r(12, 'TBTBT'), r(14, 'BTBTB')] },
-  { id: 'c-veil-gate', from: 1000, events: [r(8, 'BB.BB'), v(11), r(14, '.BBB.'), c(5, 2, 3)] },
-  { id: 'c-drums', from: 1000, events: [r(8, 'TTTTT'), r(10, 'BB.BB'), r(12, 'TTTTT'), r(14, 'B.B.B'), r(16, 'TTTTT')] },
+  { id: 'c-veil-gate', from: 1000, events: [r(8, 'BBB.B'), v(11), r(14, '.BBB.'), c(5, 3, 3)] },
+  { id: 'c-drums', from: 1000, events: [r(8, 'TTTTT'), r(10, 'B.BBB'), r(12, 'TTTTT'), r(14, 'B.B.B'), r(16, 'TTTTT')] },
+  // jump or phase: the outer lanes jump, the middle one phases
+  { id: 'c-rift-zip', from: 1200, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), r(12, 'TBPBT'), r(14, 'BTBTB')] },
   { id: 'c-snake', from: 1500, events: [r(8, '.BBBB'), r(10, 'B.BBB'), r(12, 'BB.BB'), r(14, 'BBB.B'), r(16, 'BBBB.'), c(5, 0, 3)] },
   { id: 'c-split', from: 1500, events: [r(8, 'BB.BB'), r(10, '.BBB.'), r(12, '.BTB.'), r(14, 'B.B.B'), c(5, 2, 3)] },
+  // jump, dodge, phase: the three moves in one breath
+  { id: 'c-triad', from: 1500, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), r(13, 'BPBBB'), r(16, '.BBB.'), c(5, 1, 3)] },
   { id: 'c-gauntlet', from: 2000, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), v(13), r(16, 'BB.BB'), r(18, 'TTTTT')] },
-  { id: 'c-rift-snake', from: 2500, events: [r(8, 'B.BBB'), r(10, '.BBBB'), v(12), r(14, 'BB.BB'), r(16, 'BBB.B'), v(18), r(20, 'TTTTT')] },
-  { id: 'c-storm', from: 3000, events: [r(8, 'TBTBT'), r(10, 'BB.BB'), r(12, 'B.T.B'), v(14), r(16, '.BBB.'), r(18, 'BTTTB'), r(20, 'BB.BB')] },
+  { id: 'c-phase-run', from: 2000, events: [r(8, 'BBPBB'), r(10, 'BTTTB'), r(12, 'B.BBB'), r(15, 'BBBPB'), r(17, 'TTTTT')] },
+  { id: 'c-rift-snake', from: 2500, events: [r(8, 'B.BBB'), r(10, '.BBBB'), v(12), r(14, 'BB.BB'), r(16, 'BBB.B'), v(19), r(21, 'TTTTT')] },
+  { id: 'c-storm', from: 3000, events: [r(8, 'TBTBT'), r(10, 'BB.BB'), r(12, 'B.T.B'), v(14), r(16, '.BBB.'), r(18, 'BTTTB'), r(21, 'BBPBB')] },
+  { id: 'c-chaos', from: 3500, events: [r(8, 'PBTBP'), r(10, 'BTBTB'), r(12, 'TBTBT'), r(15, 'BBPBB'), r(17, '.TBT.')] },
 ];
 
 // Mirror a section left/right.

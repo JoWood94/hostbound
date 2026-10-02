@@ -349,6 +349,7 @@ function direct(run, d) {
       [...ev.row].forEach((ch, l) => {
         if (ch === 'B') placeWall(l);
         else if (ch === 'T') spawnObstacle('low', l);
+        else if (ch === 'P') spawnObstacle('rift', l);
       });
     } else if (ev.kind === 'veil') {
       spawnVeil();
@@ -679,8 +680,8 @@ export function updateRun(run, input, dt) {
   const hwLane = LANE_W * 0.45;
   for (const o of obstacles) {
     if (o.dead) continue;
-    const veil = o.type === 'veil';
-    const overlap = (veil || Math.abs(o.x - p.x) < hwLane) && Math.abs(o.y - PLAYER_Y) < OB_H[o.type] / 2 + 6;
+    const veil = o.type === 'veil' || o.type === 'rift';
+    const overlap = (o.type === 'veil' || Math.abs(o.x - p.x) < hwLane) && Math.abs(o.y - PLAYER_Y) < OB_H[o.type] / 2 + 6;
     if (overlap && !o.hit) {
       if (veil && (p.phaseT > 0 || o.phased)) { if (!o.phased) { o.phased = true; run.rs.phaseDodges++; burst(p.x, PLAYER_Y, PAL.cyan, 14, 180, 0.35, 2); } }
       else if (o.type === 'low' && air) o.jumped = true;
@@ -717,8 +718,8 @@ export function updateRun(run, input, dt) {
     }
   }
   // Phase hint: a veil will reach me within ~0.5s and I am not phased.
-  run.phaseHint = p.phaseT <= 0 && obstacles.some((o) => o.type === 'veil' && !o.dead && o.y < PLAYER_Y && (PLAYER_Y - o.y) / Math.max(1, run.speed) < 0.5);
-  if (run.phaseHint) tip(run, 'veil', 'SWIPE DOWN TO PHASE', 'Cyan veils cover every lane: phase through them');
+  run.phaseHint = p.phaseT <= 0 && obstacles.some((o) => (o.type === 'veil' || (o.type === 'rift' && o.lane === p.lane)) && !o.dead && o.y < PLAYER_Y && (PLAYER_Y - o.y) / Math.max(1, run.speed) < 0.5);
+  if (run.phaseHint) tip(run, 'veil', 'SWIPE DOWN TO PHASE', 'Cyan tears cannot be dodged or jumped: phase through them');
   if (run.jumpHint) tip(run, 'jump', 'SWIPE UP TO JUMP', 'Jump clears orange low waves and barriers only');
 
   // Pickups

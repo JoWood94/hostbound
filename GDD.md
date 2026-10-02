@@ -54,7 +54,8 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 - **Buco nel pavimento**: salta.
 - **Laser gate**: si accende/spegne a ritmo, passa nel buio.
 - **Muro pieno con varco**: 1 corsia libera, si vede da lontano.
-- **Velo (squarcio)**: tenda ciano su tutte e 5 le corsie, non si schiva né si salta: solo **phase**. Mai due entro 140 m (il phase è sempre carico), suggerimento PHASE ▼ mezzo secondo prima.
+- **Velo (squarcio)**: tenda ciano su tutte e 5 le corsie, non si schiva né si salta: solo **phase**.
+- **Micro-squarcio** (`P` nelle file): lo stesso strappo largo una corsia, di solito nel varco di una fila di muri (`BBPBB`), o in alternativa a un filo (`TBPBT`: salti fuori o fai phase al centro). Barriere da phase (P e veli) ad almeno 7 battute l'una dall'altra: il phase è sempre carico anche al tempo massimo. Mai due entro 140 m (il phase è sempre carico), suggerimento PHASE ▼ mezzo secondo prima.
 - **Formazioni** su più corsie, dentro le sezioni (righe `B` muro, `T` filo da saltare, `.` libero; ogni riga ha almeno una corsia non-muro, righe ad almeno 2 battute): linea di fili, tenaglia (`BTTTB`, `.TTT.`), zip (`TBTBT` / `BTBTB`), slalom (varco che si sposta di 1 corsia), tamburi (fili, varco, fili), cancello con varco fuori dalla portata dello Stalker.
 - Linguaggio colori: **arancio = salta**, **magenta = schiva**, **ciano = phase**. Tutti e tre sono disegnati in codice come una famiglia: fili di plasma tesi nella corrente. Basso = filo arancio sottile con scintille ed emettitori; muro = nodo magenta denso con due piloni e nucleo rosso; velo = tenda ciano su tutta la pista.
 
@@ -94,6 +95,8 @@ Ogni **~500 m** (scala) un boss. Schermo si ferma di scrollare (o scroll lento),
 Boss lista MVP: **Sentinel** (torretta gigante centrale), **Hive** (spawna sciami), **Warden** (muri di laser + ventagli).
 
 Sconfitto → **scelta 1 di 3 item** dal pool sbloccato. Rarità pesata.
+
+**Salti di fila.** Due file con onde da saltare (boss `L`, Brooder, rullo del Tank) sono sempre ad almeno 0,65 s (un salto 0,45 s + reazione), a qualunque tempo: prima il Warden ne metteva una ogni ~0,43 s e non si potevano prendere tutte.
 
 **Ritmo dei boss.** Oltre a volée, sweep, beam e onde basse, ogni boss ha attacchi a **righe ritmiche**: una fila di colpi per battuta (`x` colpo, `L` onda da saltare, `.` libero), tutte alla stessa velocità, quindi sullo schermo arrivano alla cadenza con cui partono. Regola di equità, verificata da script su tutte le sequenze: ogni riga lascia almeno una corsia, e la corsia libera si sposta al massimo di 1 per battuta (un salto di corsia dura 0,11 s, la battuta minima è 0,3 s).
 

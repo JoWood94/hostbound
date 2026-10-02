@@ -186,6 +186,7 @@ const ROW_SHOT = { kind: 'rowshot' }, ROW_LOW = { kind: 'rowlow' };
 // boss speed, then converted back to seconds at the current tempo.
 const tickNow = () => TICK_SEC / timeMul(bossD);
 let bossD = 0;
+const JUMP_GAP = 0.65;   // s between two jumpable rows: one jump + reaction
 function onTicks(sec, b, min = 1) {
   const ticks = Math.max(min, Math.round(sec / b.speed / TICK_SEC));
   return ticks * tickNow();
@@ -201,7 +202,10 @@ function buildEvents(b, parts) {
     else if (p.kind === 'summon') ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * onTicks(p.gap, b) + t, part: p, lanes: [l] }); });
     else if (p.kind === 'rows') {
-      const beat = onTicks(p.beat, b, 2);   // a row needs at least a beat to answer
+      // A row needs at least a beat to answer; rows with low waves need a whole
+      // jump (0.45 s) plus a margin, or two in a row cannot both be cleared.
+      const hasLow = p.rows.some((r) => r.includes('L'));
+      const beat = Math.max(onTicks(p.beat, b, 2), hasLow ? Math.ceil(JUMP_GAP / tickNow()) * tickNow() : 0);
       p.rows.forEach((r, i) => {
         const shots = [], lows = [];
         [...r].forEach((c, l) => { if (c === 'x') shots.push(l); else if (c === 'L') lows.push(l); });

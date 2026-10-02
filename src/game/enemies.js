@@ -210,6 +210,7 @@ const TICK = TICK_BASE;
 // tempo steps up (one step per district).
 const TELE_TICKS = 4;
 const TRAVEL_TICKS = 8;
+const JUMP_GAP = 0.65;    // s between two low waves in a row: one jump (0.45) + reaction
 let clock = 0;            // in ticks
 let simT = 0;             // seconds, for the danger glow
 export const beatClock = () => clock;
@@ -337,7 +338,10 @@ export function updateEnemies(dt, difficulty) {
             const st = e.steps[e.step];
             fire(e, st, d);
             e.telegraphLanes = e.steps.slice(e.step + 1).flatMap((x) => x.lanes);
-            e.fireAt += st.delay > 0 ? ticksOf(st.delay) : 0.001;
+            // Two low waves back to back need a whole jump between them.
+            const next = e.steps[e.step + 1];
+            const minT = st.low && next && next.low ? Math.ceil(JUMP_GAP / (TICK / timeMul(d))) : 1;
+            e.fireAt += st.delay > 0 ? Math.max(minT, ticksOf(st.delay)) : 0.001;
           }
         }
         break;
