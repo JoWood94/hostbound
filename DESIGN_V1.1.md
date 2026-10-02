@@ -5,7 +5,7 @@ Documento di design per chi implementa. Due parti indipendenti:
 - **Parte A** — perché la difficoltà si appiattisce e come farla crescere senza rompere le regole di equità.
 - **Parte B** — 32 item nuovi, 24 sinergie e un trio, con hook di implementazione nel motore attuale.
 
-> **Revisione 2** — correzioni dopo rilettura: (1) il gap di 7 battute tra ostacoli da phase scende sotto i 2 s di cooldown a 220 BPM → **8 battute**; (2) due file saltabili a 2 battute violano `JUMP_GAP` già a 190 BPM → regola delle **3 battute** e verificatore in secondi; (3) il tratto élite "Nervoso" accorciava l'avviso, contro l'invariante 3 → ora accorcia la pausa tra raffiche; (4) la "frenesia" dei boss scendeva sotto il minimo di 1 battuta per fila → tolta la riduzione, resta la volée sovrapposta; (5) l'attivo SURGE aveva lo stesso nome di una sinergia esistente → OVERCHARGE; (6) aggiunti: scelte di livello solo tra una sezione e l'altra (A.3.11), curva livelli non lineare, chiarezza della morte (A.5), regola "una carta già posseduta" nel pool livelli (B.8), DPS effettivo che deve contare gli item on-kill (B.8).
+> **Revisione 2** — correzioni dopo rilettura: (1) il gap di 7 battute tra ostacoli da phase scende sotto i 2 s di cooldown a 220 BPM → **8 battute**; (2) due file saltabili a 2 battute violano `JUMP_GAP` già a 190 BPM → regola delle **3 battute** e verificatore in secondi; (3) il tratto élite "Nervoso" accorciava l'avviso, contro l'invariante 3 → ora accorcia la pausa tra raffiche; (4) la "frenesia" dei boss scendeva sotto il minimo di 1 battuta per fila → tolta la riduzione, resta la volée sovrapposta; (5) l'attivo SURGE aveva lo stesso nome di una sinergia esistente → OVERCHARGE; (6) aggiunti: scelte di livello solo tra una sezione e l'altra e **protette dagli input accidentali** (blocco 0,45 s, scarto del gesto in corso, doppio tocco per confermare) (A.3.11), curva livelli non lineare, chiarezza della morte (A.5), regola "una carta già posseduta" nel pool livelli (B.8), DPS effettivo che deve contare gli item on-kill (B.8).
 
 Leggere prima `GDD.md` (regole del gioco) e, nel codice, `src/game/balance.js`, `src/core/tempo.js`, `src/game/enemies.js` (metronomo, `TELE_TICKS`, `TRAVEL_TICKS`), `src/game/run.js` (direttore `direct()`, `pickSection`, `safeToEnter`), `src/game/sections.js`, `src/game/boss.js` (righe ritmiche), `src/game/items.js`, `src/game/combos.js`, `src/game/weapon.js` (motore di sparo componibile).
 
@@ -103,12 +103,23 @@ Obiettivo: con la build mediana del tier (vedi `scripts/balance.mjs`), un nemico
 **10. Dente di sega dopo il boss.**
 Nei primi 150 m di ogni distretto (`heat = 0`) il direttore pesca solo sezioni con `from ≤ max(0, T−1)·1000` e nessun rinforzo: 10–12 secondi per leggere il nuovo tempo. Poi `heat` sale e con lui rinforzi ed élite.
 
-**11. Scelte di livello e ritmo.**
-Oggi un livello apre la schermata di scelta nel momento esatto in cui raccogli la cellula, anche a metà di una sequenza di file: spezza proprio il ritmo che stiamo costruendo, e a fine run (più cellule, GREED, boss) succede sempre più spesso.
+**11. Scelte di livello: quando si aprono e come si proteggono.**
+Oggi un livello apre la schermata di scelta nel momento esatto in cui raccogli la cellula. Due danni distinti:
+- **Apertura a metà schivata.** La cellula spesso sta proprio sulla linea di una schivata o di un salto (le mettiamo noi lì, sui fili, per il rischio): il gioco si ferma mentre il pollice è a metà gesto, e alla ripresa il colpo o il muro sono dove li avevi lasciati ma il tuo ritmo no. Spezza proprio la coreografia che stiamo costruendo, e a fine run (più cellule, GREED, boss) succede sempre più spesso.
+- **Scelta accidentale.** Lo swipe o il tap che stavi dando al personaggio atterra sulla schermata appena apparsa e **sceglie una carta a caso**. È irreversibile: una run può essere rovinata da un potenziamento che non volevi. È il problema più grave dei due e vale anche per il bottino dei boss.
 - I livelli guadagnati si mettono in coda (già così) ma la scelta si apre **solo tra una sezione e l'altra** (quando `run.sec` è nullo, nel `BREATH`) o subito dopo il bottino del boss. Se la coda ha più livelli, le scelte si aprono una dopo l'altra nello stesso punto.
 - Per non far aspettare troppo: se la coda resta piena per più di 25 s (sezioni lunghe), la scelta si apre al prossimo istante in cui nessun colpo è in volo verso il giocatore e nessuna fila è a meno di 2 battute.
 - Curva: `xpNeed = 10 + 7·(L−1) + 0.5·(L−1)²` al posto della lineare (L10: 113 cellule invece di 82; L20: 323). Obiettivo misurato: un livello ogni 35–50 s a metà run, non più spesso, con build mediana.
 - La barra XP in alto resta; quando un livello è in coda la barra pulsa, così sai che la scelta arriva.
+
+Protezione dagli input accidentali (vale per **ogni** schermata di scelta: livello, boss, e anche pausa/morte):
+- **Blocco degli input per 0,45 s** dall'apertura: in `main.js` la schermata registra `openedAt` e ignora tap e swipe finché non è passato il tempo; le carte entrano con un'animazione di 0,3 s (scivolano dal basso) così il blocco è visibile e non sembra un difetto.
+- **Scarto del gesto in corso:** se un pointer era già premuto quando la schermata si apre, quel pointer viene ignorato fino al rilascio (`input.js`: `pointerId` marcato come "consumato" al cambio di modalità). Lo swipe a metà non diventa un tap sulla carta.
+- **Due tocchi per scegliere:** il primo tap **seleziona** la carta (bordo acceso, descrizione completa e suggerimenti di sinergia in evidenza), il secondo tap sulla stessa carta **conferma**. Un tap su un'altra carta sposta la selezione. Costa mezzo secondo e rende impossibile la scelta cieca; sui telefoni è la convenzione dei roguelike mobile. Il pulsante SKIP resta a tap singolo ma anche lui sotto il blocco iniziale.
+- **Niente scelta per swipe:** gli swipe nella schermata di scelta non fanno nulla (oggi `hitTest` risponde al tap, ma un swipe corto sotto `TAP_MAX_MOVE` conta come tap: alzare la soglia a 14 px nelle schermate di scelta).
+- **Da tastiera (debug/desktop):** Enter conferma solo la carta selezionata con le frecce; mai la prima.
+
+Dopo queste modifiche verificare a mano sul telefono, con la run in corso: swipe laterale ripetuto mentre arriva il livello → nessuna carta scelta; tap sulla carta → selezione; secondo tap → conferma.
 
 ### A.4 Nuove sezioni per i tier alti (3500 m +)
 
