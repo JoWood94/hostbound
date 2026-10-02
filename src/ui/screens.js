@@ -16,8 +16,10 @@ import { sheet, drawCell } from '../render/images.js';
 const MENU_SYM = sheet('symbiote', 128);
 import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
+import { version } from '../../package.json';
 
-const VERSION = 'v1.3';
+// Shown on the menu; single source of truth is package.json.
+const VERSION = `v${version}`;
 
 function dim(a = 0.78) {
   ctx.fillStyle = `rgba(10,0,8,${a})`;
