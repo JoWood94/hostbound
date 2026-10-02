@@ -693,7 +693,7 @@ export function updateRun(run, input, dt) {
 
   run.time += dt;
   const target = 220 + Math.min(260, 40 * Math.log1p(d * 2));
-  run.speed = run.boss || run.warnT > 0 ? target * 0.55 : target;
+  run.speed = run.boss || run.warnT > 0 ? target * 0.8 : target;
   if (!run.boss && run.warnT <= 0) run.distance += (run.speed / PX_PER_M) * edt;
   run.rs.distance = run.distance;
   updateWorld(edt, run.speed);

@@ -213,7 +213,7 @@ const TICK = TICK_BASE;
 // from whatever height (its speed adapts). So "lit lane" always means the same
 // time to react: learnable, with or without sound. It shortens only when the
 // tempo steps up (one step per district).
-const TELE_TICKS = 4;
+export const TELE_TICKS = 4;
 // PREMONITION: lanes light up earlier (the enemy fires that much later).
 let teleBonus = 0;
 export function setTeleBonus(n) { teleBonus = n; }
@@ -222,6 +222,9 @@ export const teleBonusNow = () => teleBonus;
 // district 6. Warning + travel: 2.2 s at the start, 1.6 s at district 3,
 // 1.2 s at district 6 (230 BPM: 1.17 s, the floor).
 const travelTicks = (d) => (d >= 15 ? 5 : d >= 7.5 ? 6 : 7);
+// Speed of a shot fired at height y: it reaches the player row in travelTicks.
+// Bosses use it too, so a boss shoots exactly as fast as the district's mobs.
+export const shotSpeed = (y, d) => (PLAYER_Y - y) / (travelTicks(d) * TICK / timeMul(d));
 const JUMP_GAP = 0.65;    // s between two low waves in a row: one jump (0.45) + reaction
 let clock = 0;            // in ticks
 let simT = 0;             // seconds, for the danger glow
@@ -247,7 +250,7 @@ function fire(e, st, d) {
   // One speed for every regular enemy shot, high or low: rhythm is readable
   // only if the spacing on screen matches the spacing in time.
   const y = e.y + MOUTH;
-  const s = (PLAYER_Y - y) / (travelTicks(d) * TICK / timeMul(d));
+  const s = shotSpeed(y, d);
   const travel = (PLAYER_Y + 24 - y) / s;
   for (const l of st.lanes) {
     if (st.low) spawn(enemyBullets, laneX(l), y, 0, s, 10, 1, LOW);

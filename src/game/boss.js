@@ -5,7 +5,7 @@ import { ctx, W, H, SAFE_TOP } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
 import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
-import { look, glowLane, beatClock, onGridSpeed, TICK_SEC, teleBonusNow } from './enemies.js';
+import { look, glowLane, beatClock, shotSpeed, TELE_TICKS, TICK_SEC, teleBonusNow } from './enemies.js';
 import { sheet, drawCell } from '../render/images.js';
 
 // Generated boss sheet: 4x5 cells of 256x128, cropped to content by
@@ -22,7 +22,7 @@ import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
 import { enemies, spawnEnemy, newId } from './enemies.js';
-import { spawnObstacle, spawnVeil } from './obstacles.js';
+import { obstacles, spawnObstacle, spawnVeil } from './obstacles.js';
 import { sfx } from '../audio/audio.js';
 import { bossHp, bossSpeed, timeMul } from './balance.js';
 
@@ -38,6 +38,8 @@ const low = (lanes) => ({ kind: 'low', lanes });
 const beam = (lanes, dur = 0.7) => ({ kind: 'beam', lanes, dur });
 const summon = (lanes) => ({ kind: 'summon', lanes });
 const beamSweep = (lanes, gap = 0.3, dur = 0.25) => ({ kind: 'beamsweep', lanes, gap, dur });
+// `tele` is kept as authored but no longer sets the warning: every boss attack
+// lights its lanes TELE_TICKS before it fires, like any enemy (see teleTime).
 const atk = (parts, tele = 0.9, rest = 0.9) => ({ parts, tele, rest });
 
 // RHYTHM rows: one row of the track per beat, all moving at the same speed so
@@ -335,7 +337,7 @@ function buildEvents(b, parts) {
     else if (p.kind === 'summon') ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * sweepGap(p.gap, b) + t, part: p, lanes: [l] }); });
     else if (p.kind === 'obs') {
-      // Obstacles scroll at the (slowed) boss track speed, ~180 px/s, so rows
+      // Obstacles scroll at the (slowed) boss track speed, ~250-290 px/s, so rows
       // must be spaced in TIME, not beats: a barrier fills ~42 px of track and
       // a lane change needs room. 0.65 s between rows (~120 px), on the tick
       // grid; that also covers a whole jump for wires.
@@ -359,7 +361,8 @@ function buildEvents(b, parts) {
   return ev;
 }
 
-const rowSpeed = (b) => 270 + (b.speed - 1) * 90;
+// The warning: TELE_TICKS at the current tempo, as for every enemy.
+const teleTime = () => (TELE_TICKS + teleBonusNow()) * tickNow();
 
 const PHASE_GAP = 2.3;   // s between two phase obstacles (phase cooldown 2 s)
 const OBS_GAP = 0.65;    // s between two obstacle rows fired by a boss
@@ -390,18 +393,27 @@ function fireEvent(b, e, difficulty) {
   for (const l of e.lanes) {
     const x = laneX(l);
     // Row parts share one speed so their spacing on screen is the beat itself.
-    if (p.kind === 'rowshot') spawn(enemyBullets, x, y, 0, onGridSpeed(rowSpeed(b), PLAYER_ROW - y, bossD), 5, 1, 0);
-    else if (p.kind === 'rowlow') spawn(enemyBullets, x, y, 0, onGridSpeed(rowSpeed(b), PLAYER_ROW - y, bossD), 10, 1, LOW);
-    else if (p.kind === 'low') spawn(enemyBullets, x, y, 0, 230 + (b.speed - 1) * 70, 10, 1, LOW);
-    else if (p.kind === 'beam' || p.kind === 'beamsweep') spawn(enemyBullets, x, y, 0, 460, 5, 1, 0);
+    // Every shot (rows, volleys, sweeps, low waves) travels like a mob's in this
+    // district: same speed, so the boss is never slower than the stretch before.
+    if (p.kind === 'rowlow' || p.kind === 'low') spawn(enemyBullets, x, y, 0, shotSpeed(y, bossD), 10, 1, LOW);
+    else if (p.kind === 'beam' || p.kind === 'beamsweep') spawn(enemyBullets, x, y, 0, Math.max(460, shotSpeed(y, bossD)), 5, 1, 0);
     else if (p.kind === 'summon') {
       // Never stack minions: skip a lane that already has a living one.
       if (!enemies.some((e) => e.minion && !e.dead && e.lane === l && e.state !== 'leave')) {
         spawnEnemy('drone', l, difficulty, { chance: () => false }, { minion: true });
       }
     }
-    else spawn(enemyBullets, x, y, 0, 270 + (b.speed - 1) * 110, 5, 1, 0);
+    else spawn(enemyBullets, x, y, 0, shotSpeed(y, bossD), 5, 1, 0);
   }
+}
+
+// A row attack (rhythm rows or obstacle rows) waits until summoned drones and
+// frenzy volleys have fired: their shots could sit in the lane the rows leave
+// free. Fired before the telegraph, they always land before the first row.
+function rowsMustWait(b, a) {
+  if (!a.parts.some((p) => p.kind === 'rows' || p.kind === 'obs')) return false;
+  return !!b.frenzyShot || !!(b.frenzyQueue && b.frenzyQueue.length) ||
+    enemies.some((e) => e.minion && !e.dead && e.state !== 'leave');
 }
 
 // Returns true while the boss is alive and fighting.
@@ -442,7 +454,7 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
       if (b.y >= holdY()) { b.y = holdY(); b.state = 'rest'; b.stateT = 0.3; }
       break;
     case 'rest':
-      if (b.stateT >= a.rest / m) {
+      if (b.stateT >= a.rest / m && !rowsMustWait(b, a)) {
         b.state = 'telegraph';
         b.stateT = 0;
         b.teleParts = resolveParts(b, a);   // target lock happens here
@@ -451,7 +463,7 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
       break;
     case 'telegraph':
       // Armed: the attack starts on the next tick of the shared metronome.
-      if (b.stateT >= a.tele / m + teleBonusNow() * tickNow() && beatClock() >= Math.ceil(b.armAt ?? (b.armAt = beatClock()))) {
+      if (b.stateT >= teleTime() && beatClock() >= Math.ceil(b.armAt ?? (b.armAt = beatClock()))) {
         b.state = 'fire';
         b.stateT = 0;
         b.armAt = undefined;
@@ -489,14 +501,16 @@ function frenzy(b, difficulty) {
     return;
   }
   if (now < (b.frenzyNext ?? 0)) return;
-  // Never over a rhythm-row attack: its free lane moves every beat and a volley
-  // could land right in it.
-  if (currentAttack(b).parts.some((p) => p.kind === 'rows')) return;
+  // Never over a rhythm-row or obstacle-row attack: its free lane moves every
+  // beat and a volley could land right in it.
+  if (currentAttack(b).parts.some((p) => p.kind === 'rows' || p.kind === 'obs')) return;
   b.frenzyNext = Math.ceil(now) + 8;
   const busy = new Set();
   const eb = enemyBullets;
   for (let i = 0; i < eb.n; i++) if (eb.kind[i] !== LOW && eb.y[i] < PLAYER_ROW) busy.add(Math.round((eb.x[i] - laneX(0)) / LANE_W));
   for (const p of b.teleParts) for (const l of p.lanes || []) busy.add(l);
+  // nor while barriers are on their way: the volley could fill their gap
+  if (obstacles.some((o) => !o.dead && o.y < PLAYER_ROW)) return;
   const free = [0, 1, 2, 3, 4].filter((l) => !busy.has(l));
   if (free.length < 3) return;
   b.frenzyShot = { lane: free[Math.floor(now) % free.length], at: Math.ceil(now) + 4 };
@@ -505,7 +519,7 @@ function frenzy(b, difficulty) {
 export function drawBossTelegraph(b) {
   if (b && b.frenzyShot) glowLane(b.frenzyShot.lane, b.color, 0.9);
   if (!b || !b.teleParts.length) return;
-  const prog = b.state === 'telegraph' ? Math.min(1, b.stateT / (currentAttack(b).tele / b.speed)) : 1;
+  const prog = b.state === 'telegraph' ? Math.min(1, b.stateT / teleTime()) : 1;
   for (const p of b.teleParts) {
     const c = p.kind === 'low' ? PAL.orange : p.kind === 'summon' || p.kind === 'obs' ? PAL.magenta : b.color;
     if (!p.lanes.length) continue;

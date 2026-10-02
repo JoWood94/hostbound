@@ -1,7 +1,7 @@
 // A careful test player (debug only): plays a run through the game's own
 // state, the way an attentive human would. It is the fairness check that
 // paper verification misses (real spacing on the track, real timing):
-//   - stays out of lanes where a barrier or a shot arrives soon, heading early
+//   - stays out of lanes a boss has lit, and of lanes where a barrier or a shot arrives soon, heading early
 //     for the lane with the most time left (path not crossing a lane about to
 //     be hit);
 //   - jumps wires and low waves just before they arrive;
@@ -20,8 +20,11 @@ export function runBot(game, setup, seconds, { log = false } = {}) {
     if (r.mode !== 'play') { r.mode = 'play'; r.pickChoices = []; }
     const p = r.player, eb = game.enemyBullets;
     const obs = game.obstacles.filter((o) => !o.dead && !o.hit);
+    // like a person, it leaves the lanes a boss has lit before the shots exist
+    const lit = new Set();
+    if (r.boss && r.boss.state === 'telegraph') for (const pt of r.boss.teleParts) if (!['low', 'summon', 'obs'].includes(pt.kind)) for (const l of pt.lanes) lit.add(l);
     const danger = (l) => {
-      let t = 9;
+      let t = lit.has(l) ? 0.9 : 9;
       for (const o of obs) if (o.type === 'wall' && o.lane === l && o.y < py + 22) t = Math.min(t, Math.max(0, (py - 22 - o.y) / Math.max(1, r.speed)));
       for (let i = 0; i < eb.n; i++) if (eb.kind[i] !== 1 && laneOf(eb.x[i]) === l && eb.y[i] < py + 8) t = Math.min(t, Math.max(0, (py - 10 - eb.y[i]) / Math.max(1, eb.vy[i])));
       return t;
