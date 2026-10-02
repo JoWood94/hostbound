@@ -20,7 +20,7 @@ import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
-import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine, heartbeat } from './weapon.js';
+import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine, heartbeat, updateBioShots } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic, syncMusic } from '../audio/music.js';
@@ -875,9 +875,13 @@ export function updateRun(run, input, dt) {
   if (p.ev.land && st.groundPound) { groundPound(p, st); sfx.explode(); shake(3, 0.12); }
   if (p.ev.shield) sfx.shield();
   if (p.ev.land && st.airRaid) airRaid(p, st);
+  if (run.kickCd > 0) run.kickCd -= dt;
+  p.kickK = st.kickflip ? 1 - Math.max(0, run.kickCd || 0) / 4 : 0;   // KICKFLIP recharge, drawn under the board
   if (p.ev.land) {
     sfx.land();
-    if (st.kickflip) {
+    // KICKFLIP: the wipe recharges in 4 s, so jump-spamming cannot keep a lane clean
+    if (st.kickflip && !(run.kickCd > 0)) {
+      run.kickCd = 4;
       const eb = enemyBullets;
       for (let i = 0; i < eb.n; i++) {
         if (Math.abs(eb.x[i] - p.x) < LANE_W * 0.5 && eb.y[i] > PLAYER_Y - 220 && eb.y[i] < PLAYER_Y + 20) {
@@ -933,6 +937,7 @@ export function updateRun(run, input, dt) {
 
   // Hits on enemies
   resolvePlayerHits(st, { rng: run.rng, onCrit: () => onCrit(run) });
+  updateBioShots(p, st, dt, { rng: run.rng, onCrit: () => onCrit(run) });
   tickPoison(edt);
 
   itemEffects(run, dt);

@@ -52,6 +52,8 @@ export function baseStats() {
     // v1.2 traits
     ricochet: 0, bounces: 1, converge: 0, slingshot: 0, paralytic: 0, overkill: 0, husk: 0, cull: 0,
     metabolism: 0, metabCap: 0.35, heartbeat: 0, bloodrush: 0,
+    // v1.2 carriers; modeLv = stacks of each shot modifier (x2 = a small extra)
+    hasGlaive: false, hasMine: false, hasBrood: false, hasSting: false, hasMortar: false, modeLv: {},
   };
 }
 
@@ -112,7 +114,7 @@ export const ITEMS = [
     desc: 'Bullets you phase through are reflected back.',
     apply: (s) => { s.mirror = true; } },
   { id: 'kickflip', name: 'KICKFLIP', code: 'KFL', cat: 'defense', rarity: 1, max: 1, unlock: 'jump_100',
-    desc: 'Longer jumps. Landing wipes bullets in your lane.',
+    desc: 'Longer jumps. Landing wipes bullets in your lane (every 4 s).',
     apply: (s) => { s.kickflip = true; s.jumpTime *= 1.3; } },
   { id: 'repair', name: 'NANO REPAIR', code: 'NAN', cat: 'defense', rarity: 2, max: 1, unlock: 'def_3',
     desc: 'Heal 1 heart after every boss.',
@@ -170,21 +172,38 @@ export const ITEMS = [
     apply: (s, n) => { s.extraChoices += n; } },
 
   // ---- shot modifiers: they all combine with each other ----
-  { id: 'laser', name: 'LASER', code: 'LSR', cat: 'mode', rarity: 1, max: 1, unlock: null,
-    desc: 'Your shots become a continuous beam.',
-    apply: (s) => { s.hasBeam = true; } },
-  { id: 'scatter', name: 'SCATTER', code: 'SCT', cat: 'mode', rarity: 0, max: 1, unlock: null,
-    desc: 'Your shots fan out in a cone. Fewer volleys, more of them.',
-    apply: (s) => { s.hasScatter = true; } },
-  { id: 'railgun', name: 'RAIL CANNON', code: 'RLG', cat: 'mode', rarity: 1, max: 1, unlock: 'laser_100',
-    desc: 'Your shots charge up and strike instantly through everything.',
-    apply: (s) => { s.hasRail = true; } },
-  { id: 'rockets', name: 'ROCKET POD', code: 'RKT', cat: 'mode', rarity: 1, max: 1, unlock: 'scatter_boss',
-    desc: 'Your shots become rockets, or explode if they are something else.',
-    apply: (s) => { s.hasRocket = true; } },
-  { id: 'sine', name: 'SINE WAVE', code: 'SIN', cat: 'mode', rarity: 1, max: 1, unlock: 'modes_3',
-    desc: 'Your shots weave across your lane and both neighbours.',
-    apply: (s) => { s.hasSine = true; } },
+  // A second copy (boss loot) adds a small extra, never a second weapon.
+  { id: 'laser', name: 'LASER', code: 'LSR', cat: 'mode', rarity: 1, max: 2, unlock: null,
+    desc: 'Your shots become a continuous beam. x2: holding it on one target ramps up to +20%.',
+    apply: (s, n) => { s.hasBeam = true; s.modeLv.laser = n; } },
+  { id: 'scatter', name: 'SCATTER', code: 'SCT', cat: 'mode', rarity: 0, max: 2, unlock: null,
+    desc: 'Your shots fan out in a cone. Fewer volleys, more of them. x2: pellets hit 15% harder and reach further.',
+    apply: (s, n) => { s.hasScatter = true; s.modeLv.scatter = n; } },
+  { id: 'railgun', name: 'RAIL CANNON', code: 'RLG', cat: 'mode', rarity: 1, max: 2, unlock: 'laser_100',
+    desc: 'Your shots charge up and strike instantly through everything. x2: charges 15% faster.',
+    apply: (s, n) => { s.hasRail = true; s.modeLv.railgun = n; } },
+  { id: 'rockets', name: 'ROCKET POD', code: 'RKT', cat: 'mode', rarity: 1, max: 2, unlock: 'scatter_boss',
+    desc: 'Your shots become rockets, or explode if they are something else. x2: blasts 25% wider.',
+    apply: (s, n) => { s.hasRocket = true; s.modeLv.rockets = n; } },
+  { id: 'sine', name: 'SINE WAVE', code: 'SIN', cat: 'mode', rarity: 1, max: 2, unlock: 'modes_3',
+    desc: 'Your shots weave across your lane and both neighbours. x2: they linger on the side lanes.',
+    apply: (s, n) => { s.hasSine = true; s.modeLv.sine = n; } },
+  // v1.2 carriers (DESIGN_V1.2.md part 1). Every one reaches the enemy line.
+  { id: 'glaive', name: 'BONE GLAIVE', code: 'GLV', cat: 'mode', rarity: 1, max: 2, unlock: null,
+    desc: 'Your shots become a bone blade that flies past the enemy line and comes back, cutting both ways. x2: faster return, +20%.',
+    apply: (s, n) => { s.hasGlaive = true; s.modeLv.glaive = n; } },
+  { id: 'sporemine', name: 'SPORE MINE', code: 'SPM', cat: 'mode', rarity: 1, max: 2, unlock: null,
+    desc: 'Your shots become mines that park under the enemy line and burst when an enemy is near (or after 2 s). x2: one more mine.',
+    apply: (s, n) => { s.hasMine = true; s.modeLv.sporemine = n; } },
+  { id: 'brood', name: 'BROOD', code: 'BRO', cat: 'mode', rarity: 1, max: 2, unlock: null,
+    desc: 'Your shots become larvae that find an enemy up to two lanes away and eat it. Weak on bosses. x2: one more larva.',
+    apply: (s, n) => { s.hasBrood = true; s.modeLv.brood = n; } },
+  { id: 'stinger', name: 'STINGER', code: 'STG', cat: 'mode', rarity: 1, max: 2, unlock: null,
+    desc: 'Your shots become slow needles that stick and burst 1 s later; needles add up. x2: they burst after 0.8 s.',
+    apply: (s, n) => { s.hasSting = true; s.modeLv.stinger = n; } },
+  { id: 'mortar', name: 'SEED MORTAR', code: 'MRT', cat: 'mode', rarity: 1, max: 2, unlock: null,
+    desc: 'Your shots arc over the front row and burst on the enemy line, one lane wide. x2: wider burst.',
+    apply: (s, n) => { s.hasMortar = true; s.modeLv.mortar = n; } },
 
   // ---- actives (one slot, tap to use) ----
   { id: 'emp', name: 'EMP', code: 'EMP', cat: 'active', rarity: 0, max: 1, unlock: null,
@@ -483,7 +502,10 @@ export function computeStats(board, stacks) {
   if (has('carapace', 'plating')) s.carapace = 2;          // EXOSKELETON
   if (s.wraith) s.phaseTime += 0.2;
   if (s.artillery) s.shotSpeed += 0.12 * (stacks.slug || 0); // SLUG's slowdown cancelled
-  s.carrier = s.hasBeam ? 'beam' : s.hasRail ? 'rail' : s.hasRocket ? 'rocket' : 'bolt';
+  // Carrier = what you fire. Priority beam > rail > mortar > stinger > glaive
+  // > rocket > brood > mine > bolt; the others reshape it (pairs: DESIGN_V1.2).
+  s.carrier = s.hasBeam ? 'beam' : s.hasRail ? 'rail' : s.hasMortar ? 'mortar' : s.hasSting ? 'sting'
+    : s.hasGlaive ? 'glaive' : s.hasRocket ? 'rocket' : s.hasBrood ? 'brood' : s.hasMine ? 'mine' : 'bolt';
   s.shotSpeed = Math.max(0.5, Math.min(2.5, s.shotSpeed));
   s.bulletSpeed = 520 * s.shotSpeed;
   // Derived from SPEED and LUCK, so every source of them counts.
@@ -578,9 +600,12 @@ export function effectiveDps(s) {
   if (s.echo) perShot += (dmg * s.echoMul - dmg) / s.echo;
   if (s.echo && s.evo.thunderclap) perShot += dmg * s.echoMul * 0.3 / s.echo;   // the three small echoes, on other targets
   perShot *= 1 + s.crit * (s.critMul - 1);
-  const CARRIER_DPS = { bolt: 1, beam: 1.15, rail: 1.05, rocket: 1 };
+  const CARRIER_DPS = { bolt: 1, beam: 1.15, rail: 1.05, rocket: 1, glaive: 1.1, mine: 1, brood: 0.95, sting: 1.05, mortar: 1 };
   let m = CARRIER_DPS[s.carrier] ?? 1;
-  if (s.carrier === 'rail') m *= s.shotSpeed;   // shot speed = rail charge rate
+  if (s.carrier === 'rail') m *= s.shotSpeed * (s.modeLv.railgun > 1 ? 1.15 : 1);   // shot speed = rail charge rate
+  if (s.carrier === 'beam' && s.modeLv.laser > 1) m *= 1.12;
+  if (s.hasScatter && s.modeLv.scatter > 1) m *= 1.15;   // ramp-up, at a typical hold
+  if (s.carrier === 'glaive' && s.modeLv.glaive > 1) m *= 1.2;
   if (s.hasScatter) m *= 0.85;
   if (s.hasSine) m *= 0.9;
   if (s.hasRocket && s.carrier !== 'rocket') m *= 1.1;

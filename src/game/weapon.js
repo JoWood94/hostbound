@@ -1,6 +1,6 @@
 // Player weapon. Reads the final stats object only, so every item combination
 // composes without special cases. Also resolves on-hit effects.
-import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, SHOTS } from './bullets.js';
+import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, F_LATCH, SH_BOLT, SH_GLAIVE, SH_MINE, SH_LARVA, SH_STING, SH_LOB, SHOTS } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
 import { ctx, makeOffscreen } from '../core/canvas.js';
@@ -76,7 +76,7 @@ export function updateTrails(stats, dt, p) {
       p.trailDrop = 0.05;
       const pb = playerBullets;
       const pts = [];
-      for (let i = 0; i < pb.n; i++) pts.push(pb.x[i], pb.y[i], 0, 0);
+      for (let i = 0; i < pb.n; i++) if (pb.shape[i] !== SH_MINE && !(pb.flags[i] & F_LATCH)) pts.push(pb.x[i], pb.y[i], 0, 0);
       addTrail(pts, 0.35, stats, p);
     }
   }
@@ -210,7 +210,8 @@ export function flashLine(x1, y1, x2, y2) { rails.push({ pts: [x1, y1, x2, y2], 
 const beams = [];   // beam paths drawn this frame: { pts, w, a }
 const rails = [];   // rail flashes: { pts, t, w }
 const tagLane = (i, lane) => { if (i >= 0) playerBullets.lane[i] = lane; };
-const CARRIER_RATE = { bolt: 1, rocket: 0.6, rail: 0.16 };
+const CARRIER_RATE = { bolt: 1, rocket: 0.6, rail: 0.16, glaive: 0.45, mine: 0.5, brood: 0.38, sting: 0.33, mortar: 0.42 };
+const BIO = new Set(['glaive', 'mine', 'brood', 'sting', 'mortar']);
 
 // Enemies whose body crosses lane `l`, nearest to the player first.
 function enemiesInLane(l) {
@@ -239,7 +240,7 @@ function pattern(p, stats) {
   if (stats.hasScatter) {
     const n = (stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 5 : 3) + 2 * stats.split + (stats.buckshot ? 2 : 0);
     const spread = (stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 0.32 : 0.26) + 0.05 * stats.split;
-    const share = stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 0.75 : 0.6;
+    const share = (stats.carrier === 'bolt' || stats.carrier === 'rocket' ? 0.75 : 0.6) * (stats.modeLv.scatter > 1 ? 1.15 : 1);   // SCATTER x2
     for (let i = 0; i < n; i++) out.push({ angle: -spread + (2 * spread * i) / (n - 1), mul: share });
     return converging(p, stats, out);
   }
@@ -268,6 +269,9 @@ function converging(p, stats, out) {
 // to the neighbours at the peaks. A pure sine spent most of its time on the
 // neighbouring lanes and merely crossed your own.
 const weave = (a) => { const s = Math.sin(a); return s * s * s; };
+// SINE x2: a plain sine, which spends longer out on the side lanes
+let weaveFn = weave;
+const weaveWide = (a) => Math.sin(a);
 
 // Polyline from the ship for beams and rails. `phase` animates SINE.
 // SEEKER for beams and rails: give each path its own target, the nearest enemy
@@ -306,7 +310,7 @@ function buildPath(p, spec, wave, phase) {
       const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
       let x = a * x0 + b * cx + c * tx;
       const y = a * y0 + b * cy + c * ty;
-      if (wave) x += weave(phase + t * 9) * LANE_W * 0.5 * Math.min(1, t * 3);
+      if (wave) x += weaveFn(phase + t * 9) * LANE_W * 0.5 * Math.min(1, t * 3);
       pts.push(x, y);
     }
     for (let y = ty - 12; y > -10; y -= 12) pts.push(tx, y);
@@ -317,7 +321,7 @@ function buildPath(p, spec, wave, phase) {
     if (spec.angle !== undefined) { x = x0 + Math.sin(spec.angle) * d; y = y0 - Math.cos(spec.angle) * d; }
     else { const k = Math.min(1, d / 110); x = x0 + (laneX(spec.lane) - x0) * k; y = y0 - d; }
     if (spec.bow) x += spec.bow * Math.sin(Math.PI * Math.min(1, d / Math.max(60, y0 - ENEMY_LINE)));
-    if (wave) x += weave(phase + d * 0.026) * LANE_W * Math.min(1, d / 70);
+    if (wave) x += weaveFn(phase + d * 0.026) * LANE_W * Math.min(1, d / 70);
     pts.push(x, y);
     if (y < -10 || x < -10 || x > 370) break;
   }
@@ -343,7 +347,7 @@ function hitsAlong(pts, halfW, limit) {
 }
 
 function blast(x, y, dmg, stats, skip) {
-  const radius = 24 + 8 * stats.frag + (stats.smartRockets ? 10 : 0);
+  const radius = (24 + 8 * stats.frag + (stats.smartRockets ? 10 : 0)) * (stats.modeLv.rockets > 1 ? 1.25 : 1);
   rings.push({ x, y, r: radius, t: 0.25 });
   sfx.explode();
   for (const o of enemies) if (o !== skip && !o.dead && overlaps(o, x, y, radius)) damageEnemy(o, dmg * 0.45);
@@ -353,6 +357,7 @@ function blast(x, y, dmg, stats, skip) {
 export function heartbeat(p, stats, hit) {
   if (stats.carrier === 'beam') p.chargeSurgeT = Math.max(p.chargeSurgeT || 0, 0.3);
   else if (stats.carrier === 'rail') fireRail(p, stats, hit, 0.4);
+  else if (BIO.has(stats.carrier)) fireBio(p, stats, true);
   else fireProjectiles(p, stats, true);
   for (const w of wingmen) w.fireT = 0;
   rings.push({ x: p.x, y: PLAYER_Y - 10, r: 26, t: 0.25 });
@@ -360,9 +365,10 @@ export function heartbeat(p, stats, hit) {
 
 // Fires if the timer allows. `rateMul` is used by OVERDRIVE. `hit` = {rng, onCrit}.
 export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
+  weaveFn = stats.modeLv.sine > 1 ? weaveWide : weave;
   if (stats.carrier === 'beam') { updateBeam(p, stats, dt, rateMul, hit); return; }
   beams.length = 0;
-  let rate = stats.fireRate * rateMul * CARRIER_RATE[stats.carrier] * (stats.carrier === 'rail' ? stats.shotSpeed : 1);
+  let rate = stats.fireRate * rateMul * CARRIER_RATE[stats.carrier] * (stats.carrier === 'rail' ? stats.shotSpeed * (stats.modeLv.railgun > 1 ? 1.15 : 1) : 1);
   if (stats.hasScatter) rate *= stats.carrier === 'rail' ? 0.85 : 0.4;
   p.fireTimer -= dt;
   p.charge = Math.max(0, Math.min(1, 1 - p.fireTimer * rate));
@@ -371,6 +377,7 @@ export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
   if (p.fireTimer < 0) p.fireTimer = 0;
   p.shotCount++;
   if (stats.carrier === 'rail') fireRail(p, stats, hit);
+  else if (BIO.has(stats.carrier)) fireBio(p, stats);
   else fireProjectiles(p, stats);
 }
 
@@ -457,6 +464,172 @@ function fireProjectiles(p, stats, beat = false) {
   if (!rocket) sfx.shoot();
 }
 
+// ---- v1.2 carriers: glaive, spore mine, brood, stinger, seed mortar --------
+const GLAIVE_TURN = ENEMY_LINE - 50;      // just past the enemy line
+const laneFromAngle = (p, a) => Math.max(0, Math.min(LANES - 1, Math.round((p.x + Math.tan(a) * (PLAYER_Y - ENEMY_LINE) - laneX(0)) / LANE_W)));
+const countShape = (sh, extra = () => true) => { let n = 0; const pb = playerBullets; for (let i = 0; i < pb.n; i++) if (pb.shape[i] === sh && extra(i)) n++; return n; };
+function bodyAt(bi, sh, lane) { if (bi < 0) return -1; playerBullets.shape[bi] = sh; playerBullets.lane[bi] = lane; return bi; }
+// Nearest enemy within `reach` lanes of `lane`, the least crowded by larvae first.
+function nearTarget(lane, reach, avoid) {
+  let best = null, bd = 1e9;
+  for (const e of enemies) {
+    if (e.dead || e.y > PLAYER_Y - 40) continue;
+    const dl = Math.abs(laneOf(e) - lane);
+    if (dl > reach) continue;
+    const d = dl * 160 + (PLAYER_Y - e.y) * 0.2 + (avoid ? avoid(e) * 120 : 0);
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best;
+}
+
+function fireBio(p, stats, beat = false) {
+  const mod = shotMods(p, stats, !beat);
+  const dmg = currentDamage(p, stats) * mod.dmg * (beat ? 1.5 : 1);
+  const y = PLAYER_Y - 14;
+  const lv = stats.modeLv;
+  const traits = (stats.hasRocket && stats.carrier !== 'rocket' ? F_EXPLODE : 0) | mod.flags;
+  const specs = pattern(p, stats);
+  if (stats.twinlink && p.twinT > 0) specs.push({ lane: p.twinLane, mul: 1, fromX: laneX(p.twinLane) });
+  const laneOfSpec = (sp) => (sp.lane !== undefined ? sp.lane : laneFromAngle(p, sp.angle));
+  const c = stats.carrier;
+  if (c === 'glaive') {
+    for (const sp of specs) {
+      const v0 = 420 * stats.shotSpeed * mod.speed;
+      const x0 = sp.fromX ?? p.x;
+      const t = (y - GLAIVE_TURN) / v0;
+      const vx = sp.angle !== undefined ? Math.sin(sp.angle) * v0 : (laneX(laneOfSpec(sp)) - x0) / t;
+      const d = dmg * 1.2 * sp.mul * (lv.glaive > 1 ? 1.2 : 1);
+      const bi = bodyAt(spawn(playerBullets, x0, y, vx, -v0, 6 * dmgScale(d) * mod.size, d, 0, 200), SH_GLAIVE, laneOfSpec(sp));
+      if (bi < 0) continue;
+      playerBullets.flags[bi] = traits | (stats.hasSine ? F_WAVE : 0);
+      playerBullets.ox[bi] = x0;
+      playerBullets.aux[bi] = p.shotCount * 0.9;
+    }
+    sfx.shoot();
+  } else if (c === 'mine') {
+    const cap = 3 + (lv.sporemine > 1 ? 1 : 0);
+    for (const sp of specs) {
+      if (countShape(SH_MINE) >= cap) break;
+      const lane = laneOfSpec(sp);
+      const host = enemiesInLane(lane)[0];
+      const park = host ? Math.min(host.y + 45, ENEMY_LINE + 60) : ENEMY_LINE + 40;
+      const bi = bodyAt(spawn(playerBullets, sp.fromX ?? p.x, y, 0, -380 * stats.shotSpeed, 5, dmg * 2.2 * sp.mul, 0, 0), SH_MINE, -1);
+      if (bi < 0) continue;
+      playerBullets.vx[bi] = (laneX(lane) - (sp.fromX ?? p.x)) / ((y - park) / (380 * stats.shotSpeed));
+      playerBullets.ox[bi] = park;
+      playerBullets.aux[bi] = 0;
+      playerBullets.flags[bi] = traits;
+    }
+    sfx.shoot();
+  } else if (c === 'brood') {
+    if (countShape(SH_LARVA) > 30) return;
+    const n = 2 + (specs.length - 1) + (lv.brood > 1 ? 1 : 0);
+    const each = dmg * 1.45 * (lv.brood > 1 ? 0.8 : 1) * (specs.length > 1 ? 0.85 : 1);
+    const crowd = (e) => countShape(SH_LARVA, (i) => playerBullets.aux[i] === e.id);
+    for (let k = 0; k < n; k++) {
+      const t = nearTarget(p.lane, 2, crowd);
+      const bi = bodyAt(spawn(playerBullets, p.x + (k - (n - 1) / 2) * 6, y, (k - (n - 1) / 2) * 70, -330, 3, each, 0, 0), SH_LARVA, t ? -2 : -1);
+      if (bi < 0) continue;
+      if (t) playerBullets.aux[bi] = t.id;
+      playerBullets.flags[bi] = traits;
+    }
+    sfx.shoot();
+  } else if (c === 'sting') {
+    for (const sp of specs) {
+      const speed = 300 * stats.shotSpeed * mod.speed;
+      const x0 = sp.fromX ?? p.x;
+      const travel = (PLAYER_Y - 150) / speed;
+      const vx = sp.angle !== undefined ? Math.sin(sp.angle) * speed : (laneX(laneOfSpec(sp)) - x0) / travel;
+      const bi = bodyAt(spawn(playerBullets, x0, y, vx, -speed, 3.2 * mod.size, dmg * 3.2 * sp.mul, 0, 0), SH_STING, laneOfSpec(sp));
+      if (bi < 0) continue;
+      playerBullets.flags[bi] = traits | (stats.hasSine ? F_WAVE : 0);
+      playerBullets.ox[bi] = x0;
+      playerBullets.aux[bi] = p.shotCount * 0.9;
+    }
+    sfx.shoot();
+  } else if (c === 'mortar') {
+    for (const sp of specs) {
+      const lane = laneOfSpec(sp);
+      // over the front row: the farthest enemy in the lane, else the enemy line
+      const row = enemiesInLane(lane);
+      const ty = row.length ? row[row.length - 1].y : ENEMY_LINE;
+      const T = 0.6 / Math.sqrt(stats.shotSpeed);
+      const x0 = sp.fromX ?? p.x;
+      const bi = bodyAt(spawn(playerBullets, x0, y, (laneX(lane) - x0) / T, -(y - ty) / T, 4.5 * mod.size, dmg * 2.4 * sp.mul, 0, 0), SH_LOB, -1);
+      if (bi < 0) continue;
+      playerBullets.ox[bi] = y;
+      playerBullets.aux[bi] = ty;
+      playerBullets.flags[bi] = traits;
+    }
+    sfx.shoot();
+  }
+}
+
+// Area burst shared by mines and mortar shells: the nearest enemy takes a
+// primary hit (crits, frag, arcs), the rest of the area a plain one.
+function burstAt(x, y, radius, dmg, stats, hit, flags) {
+  rings.push({ x, y, r: radius, t: 0.25 });
+  burst(x, y, SHOT, 10, 160, 0.3, 2);
+  sfx.explode();
+  const inside = enemies.filter((e) => !e.dead && overlaps(e, x, y, radius))
+    .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
+  inside.forEach((e, k) => onHit(e, dmg, stats, hit, k === 0, flags & ~F_EXPLODE));
+  if (flags & F_EXPLODE) blast(x, y, dmg, stats, null);
+}
+
+// Per-frame behaviour of the carrier bodies; after the pool moved them.
+export function updateBioShots(p, stats, dt, hit) {
+  const pb = playerBullets;
+  for (let i = 0; i < pb.n; i++) {
+    const sh = pb.shape[i];
+    if (sh === SH_BOLT) continue;
+    if (sh === SH_GLAIVE) {
+      // decelerates to a halt just past the enemy line, then flies home
+      const v0 = 420 * stats.shotSpeed;
+      const dec = (v0 * v0) / (2 * Math.max(60, PLAYER_Y - 14 - GLAIVE_TURN));
+      const before = pb.vy[i];
+      pb.vy[i] += dec * dt * (pb.vy[i] > 0 && stats.modeLv.glaive > 1 ? 1.6 : 1);
+      if (before < 0 && pb.vy[i] >= 0) { pb.lastHit[i] = -1; pb.lane[i] = -1; pb.vx[i] = 0; }
+      if (pb.vy[i] > 0) {
+        if (!(pb.flags[i] & F_WAVE)) pb.vx[i] += ((p.x - pb.x[i]) * 4 - pb.vx[i]) * Math.min(1, dt * 6);
+        if (pb.y[i] > PLAYER_Y - 24) { burst(pb.x[i], pb.y[i], SHOT, 3, 60, 0.2, 1.5); kill(pb, i); i--; continue; }
+      } else if (pb.vy[i] < 0 && !(pb.flags[i] & F_WAVE) && pb.y[i] < (PLAYER_Y + GLAIVE_TURN) / 2) pb.vx[i] *= 1 - Math.min(1, dt * 3);
+    } else if (sh === SH_MINE) {
+      if (pb.vy[i] !== 0 && pb.y[i] <= pb.ox[i]) { pb.vy[i] = 0; pb.vx[i] = 0; pb.y[i] = pb.ox[i]; }
+      if (pb.vy[i] === 0) {
+        pb.aux[i] += dt;
+        const near = enemies.some((e) => !e.dead && Math.abs(e.x - pb.x[i]) < LANE_W * 0.55 && Math.abs(e.y - pb.y[i]) < 70);
+        if (near || pb.aux[i] >= 2) {
+          burstAt(pb.x[i], pb.y[i] - 20, LANE_W * 0.6, pb.dmg[i], stats, hit, pb.flags[i]);
+          kill(pb, i); i--; continue;
+        }
+      }
+    } else if (sh === SH_LOB) {
+      if (pb.y[i] <= pb.aux[i]) {
+        burstAt(pb.x[i], pb.aux[i], LANE_W * 0.55 * (stats.modeLv.mortar > 1 ? 1.2 : 1), pb.dmg[i], stats, hit, pb.flags[i]);
+        kill(pb, i); i--; continue;
+      }
+    } else if (pb.flags[i] & F_LATCH) {
+      // larva / stinger stuck in its host (vx, vy = offset from it)
+      const e = enemies.find((o) => o.id === pb.aux[i] && !o.dead);
+      if (!e) { kill(pb, i); i--; continue; }
+      pb.x[i] = e.x + pb.vx[i]; pb.y[i] = e.y + pb.vy[i];
+      const before = pb.ox[i];
+      pb.ox[i] -= dt;
+      if (sh === SH_LARVA) {
+        // eats in four bites per second; bosses are half as edible
+        if (Math.floor(before * 4) !== Math.floor(pb.ox[i] * 4)) onHit(e, pb.dmg[i] / 8 * (e.type === 'boss' ? 0.5 : 1), stats, hit, false, pb.flags[i] & ~F_EXPLODE);
+        if (pb.ox[i] <= 0) { kill(pb, i); i--; continue; }
+      } else if (pb.ox[i] <= 0) {
+        rings.push({ x: e.x, y: e.y, r: 18, t: 0.2 });
+        burst(e.x, e.y, '#ffd27a', 8, 140, 0.25, 2);
+        onHit(e, pb.dmg[i], stats, hit, true, pb.flags[i]);
+        kill(pb, i); i--; continue;
+      }
+    }
+  }
+}
+
 // ---- rail carrier: instant strikes along every path -----------------------
 function fireRail(p, stats, hit, beat = 0) {
   if (!hit) return;
@@ -541,6 +714,12 @@ function updateBeam(p, stats, dt, rateMul, hit) {
   const ghost = stats.ghost && p.phaseT > 0;
   if (ghost) surge *= 2;
   if (stats.slingshot && p.slingT > 0) surge *= 1.3;   // SLINGSHOT
+  // LASER x2: holding the beam on one target ramps up to +20% over 2 s
+  if (stats.modeLv.laser > 1) {
+    const first = enemiesInLane(aimLane(p, stats))[0];
+    if (first && first === p.rampE) p.rampT = Math.min(2, (p.rampT || 0) + dt); else { p.rampE = first; p.rampT = 0; }
+    surge *= 1 + 0.1 * (p.rampT || 0);
+  }
   const dps = stats.fireRate * rateMul * currentDamage(p, stats) * 1.15 * surge;
   const tick = p.laserTick <= 0;
   if (tick) { p.laserTick += 0.1; p.laserCount = (p.laserCount || 0) + 1; }
@@ -599,7 +778,7 @@ export function updateModeBullets(stats, dt) {
     // RICOCHET: bounce off the top edge back down (count in flag bits 10-12);
     // PINBALL bounces back up from just below the enemy line too. A shot on its
     // way down never reaches the player row.
-    if (stats.ricochet && pb.lane[i] !== -2) {
+    if (stats.ricochet && pb.lane[i] !== -2 && (pb.shape[i] === SH_BOLT || pb.shape[i] === SH_STING) && !(f & F_LATCH)) {
       const nb = (f >> 10) & 7;
       if (pb.vy[i] < 0 && pb.y[i] < 6 && nb < stats.bounces * 2 - 1) {
         pb.vy[i] = Math.abs(pb.vy[i]) * 0.9;
@@ -630,13 +809,14 @@ export function updateModeBullets(stats, dt) {
       const t = enemies.find((o) => o.id === pb.aux[i] && !o.dead);
       if (t) {
         const dx = t.x - pb.x[i], dy = t.y - pb.y[i], d = Math.hypot(dx, dy) || 1;
-        pb.vx[i] = (dx / d) * 560; pb.vy[i] = (dy / d) * 560;
+        const sp = pb.shape[i] === SH_LARVA ? 330 : 560;
+        pb.vx[i] = (dx / d) * sp; pb.vy[i] = (dy / d) * sp;
       }
     }
     // SCATTER range: measured on the real distance to the enemy line (the
     // screen height follows the phone), so it always reaches enemies holding
     // position; SHOT SPEED only stretches it (slow builds like SLUG still reach).
-    const reach = (PLAYER_Y - 60) * Math.max(0.95, Math.min(1.3, 0.75 + 0.25 * stats.shotSpeed));
+    const reach = (PLAYER_Y - 60) * Math.max(0.95, Math.min(1.3, 0.75 + 0.25 * stats.shotSpeed)) * (stats.modeLv.scatter > 1 ? 1.12 : 1);
     if (f & F_RANGE && pb.aux[i] - pb.y[i] > reach && !(f & F_WAVE)) { kill(pb, i); i--; continue; }
     if (f & F_ROCKET) {
       const sp = Math.hypot(pb.vx[i], pb.vy[i]);
@@ -648,7 +828,7 @@ export function updateModeBullets(stats, dt) {
       pb.ox[i] += pb.vx[i] * dt;
       const traveled = PLAYER_Y - 14 - pb.y[i];
       if (f & F_RANGE && traveled > reach) { kill(pb, i); i--; continue; }
-      const off = weave(pb.aux[i] + traveled * 0.026 / stats.shotSpeed) * LANE_W * Math.min(1, traveled / 60);
+      const off = weaveFn(pb.aux[i] + traveled * 0.026 / stats.shotSpeed) * LANE_W * Math.min(1, traveled / 60);
       pb.x[i] = pb.ox[i] + off - pb.vx[i] * dt;
     }
   }
@@ -829,9 +1009,22 @@ function overkill(e, stats, depth) {
 export function resolvePlayerHits(stats, run) {
   const pb = playerBullets;
   for (let i = 0; i < pb.n; i++) {
+    const sh = pb.shape[i];
+    // mines and mortar shells only burst (updateBioShots); stuck bodies are done
+    if (sh === SH_MINE || sh === SH_LOB || pb.flags[i] & F_LATCH) continue;
     for (const e of enemies) {
       if (e.dead || pb.lastHit[i] === e.id) continue;
       if (!overlaps(e, pb.x[i], pb.y[i], pb.r[i])) continue;
+      if (sh === SH_LARVA || sh === SH_STING) {
+        // stick: larvae eat for 2 s, stingers burst after their fuse
+        if (sh === SH_STING) onHit(e, pb.dmg[i] * 0.1, stats, run, false, pb.flags[i] & ~F_EXPLODE);
+        pb.flags[i] = (pb.flags[i] & ~F_WAVE) | F_LATCH;
+        pb.lane[i] = -1;                                   // no more chasing or homing
+        pb.aux[i] = e.id;
+        pb.ox[i] = sh === SH_LARVA ? 2 : stats.modeLv.stinger > 1 ? 0.8 : 1;
+        pb.vx[i] = Math.max(-9, Math.min(9, pb.x[i] - e.x)); pb.vy[i] = Math.max(-9, Math.min(9, pb.y[i] - e.y));
+        break;
+      }
       const crit = onHit(e, pb.dmg[i], stats, run, true, pb.flags[i]);
       fission(pb, i, stats, e);
       if (pb.flags[i] & F_ECHO) thunderclap(pb, i, e);

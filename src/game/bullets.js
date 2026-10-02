@@ -1,6 +1,7 @@
 // Pooled bullets in typed arrays. No allocation in the hot loop.
 // Two pools: player bullets and enemy bullets.
-import { drawGlowDot } from '../render/draw.js';
+import { drawGlowDot, ring } from '../render/draw.js';
+import { ctx } from '../core/canvas.js';
 import { boltSprite, enemyOrbSprite, lowWaveSprite, pelletSprite, rocketSprite, drawSprite } from '../render/sprites.js';
 import { W, H } from '../core/canvas.js';
 import { LANE_W } from './world.js';
@@ -33,6 +34,7 @@ function makePool(max) {
     ox: new Float32Array(max),     // mode data: sine base x / pellet start y
     aux: new Float32Array(max),    // mode data: sine phase
     flags: new Uint16Array(max),   // player shot traits, combinable (F_*)
+    shape: new Uint8Array(max),    // player shot carrier body (SH_*): how it moves and lands
   };
 }
 
@@ -49,6 +51,10 @@ export const F_FISSION2 = 32; // CASCADE: a second-generation child
 export const F_TOXIC = 64;    // SPORE BURST shards: heavier poison
 export const F_SLOW = 128;    // WRAITH ghost shots: slow what they hit
 export const F_ECHO = 256;    // THUNDERCLAP: an echo round that bursts on its first hit
+export const F_LATCH = 512;   // a larva or stinger stuck in an enemy (aux = host id, ox = time left)
+// bits 10-12: RICOCHET bounce count
+// Carrier bodies (v1.2): what the shot is, beyond the bolt.
+export const SH_BOLT = 0, SH_GLAIVE = 1, SH_MINE = 2, SH_LARVA = 3, SH_STING = 4, SH_LOB = 5;
 
 export const playerBullets = makePool(384);
 export const enemyBullets = makePool(1024);
@@ -57,7 +63,7 @@ export function spawn(pool, x, y, vx, vy, r = 3, dmg = 1, kind = 0, pierce = 0) 
   if (pool.n >= pool.max) return -1;
   const i = pool.n++;
   pool.x[i] = x; pool.y[i] = y; pool.vx[i] = vx; pool.vy[i] = vy;
-  pool.r[i] = r; pool.dmg[i] = dmg; pool.kind[i] = kind; pool.pierce[i] = pierce; pool.lastHit[i] = -1; pool.lane[i] = -1; pool.ox[i] = x; pool.aux[i] = 0; pool.flags[i] = 0;
+  pool.r[i] = r; pool.dmg[i] = dmg; pool.kind[i] = kind; pool.pierce[i] = pierce; pool.lastHit[i] = -1; pool.lane[i] = -1; pool.ox[i] = x; pool.aux[i] = 0; pool.flags[i] = 0; pool.shape[i] = 0;
   return i;
 }
 
@@ -66,7 +72,7 @@ export function kill(pool, i) {
   pool.x[i] = pool.x[l]; pool.y[i] = pool.y[l]; pool.vx[i] = pool.vx[l]; pool.vy[i] = pool.vy[l];
   pool.r[i] = pool.r[l]; pool.dmg[i] = pool.dmg[l]; pool.kind[i] = pool.kind[l];
   pool.pierce[i] = pool.pierce[l]; pool.lastHit[i] = pool.lastHit[l]; pool.lane[i] = pool.lane[l];
-  pool.ox[i] = pool.ox[l]; pool.aux[i] = pool.aux[l]; pool.flags[i] = pool.flags[l];
+  pool.ox[i] = pool.ox[l]; pool.aux[i] = pool.aux[l]; pool.flags[i] = pool.flags[l]; pool.shape[i] = pool.shape[l];
 }
 
 const MARGIN = 40;
@@ -91,7 +97,9 @@ export function drawPlayerBullets() {
     const r = p.r[i];
     const k = r / 3;
     const f = p.flags[i];
+    const sh = p.shape[i];
     if (f & F_EXPLODE && !(f & F_ROCKET)) drawGlowDot(p.x[i], p.y[i], '#ffd27a', r + 2, 0.45);
+    if (sh !== SH_BOLT) { drawBody(p, i, sh, r, rot, art); continue; }
     if (p.kind[i] === BIG) {
       drawGlowDot(p.x[i], p.y[i], COLOR_PLAYER_BULLET, r, 0.6);
       if (!(art && shot(S_ECHO, p.x[i], p.y[i], r, rot, 0.3))) drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k, flash: 0.5 });
@@ -117,6 +125,45 @@ export function drawPlayerBullets() {
     } else {
       drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k });
     }
+  }
+}
+
+// v1.2 carrier bodies. Vector art until their sprites exist (ART_PROMPTS.md).
+function drawBody(p, i, sh, r, rot, art) {
+  const x = p.x[i], y = p.y[i], t = performance.now() / 1000;
+  const C = COLOR_PLAYER_BULLET;
+  if (sh === SH_GLAIVE) {
+    // a spinning three-bladed bone disc
+    drawGlowDot(x, y, C, r + 3, 0.35);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(t * 18 + i);
+    ctx.strokeStyle = C; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.95;
+    for (let k = 0; k < 3; k++) {
+      ctx.rotate((Math.PI * 2) / 3);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(r * 1.1, -r * 0.4, r * 1.5, r * 0.5); ctx.stroke();
+    }
+    ctx.restore();
+    drawGlowDot(x, y, '#f4ffd8', 2);
+  } else if (sh === SH_MINE) {
+    // a spore pod: pulses faster as its fuse runs out once armed
+    const armed = p.vy[i] === 0;
+    const pulse = armed ? 0.6 + 0.4 * Math.sin(t * (8 + p.aux[i] * 10)) : 0.8;
+    drawGlowDot(x, y, C, r + 4 * pulse, 0.3 + 0.3 * pulse);
+    ring(x, y, r + 1, C, 1.5, 0.9);
+    drawGlowDot(x, y, '#f4ffd8', r * 0.45);
+  } else if (sh === SH_LARVA) {
+    if (!(art && shot(S_LARVA, x, y, r, (p.flags[i] & F_LATCH ? t * 6 : rot) - Math.PI / 2))) {
+      drawGlowDot(x, y, C, r + 1.5, 0.55); drawGlowDot(x, y, '#ffffff', r * 0.5);
+    }
+  } else if (sh === SH_STING) {
+    const latched = p.flags[i] & F_LATCH;
+    if (latched) drawGlowDot(x, y, '#ffd27a', r + 2 + Math.sin(t * 30) * 1.5, 0.6);
+    if (!(art && shot(S_NEEDLE, x, y, r, latched ? Math.PI : rot))) drawGlowDot(x, y, C, r, 0.9);
+  } else if (sh === SH_LOB) {
+    // in flight it rises toward the camera (bigger) and falls onto its target row
+    const k = Math.max(0, Math.min(1, (p.ox[i] - y) / Math.max(1, p.ox[i] - p.aux[i])));
+    const lift = 1 + 0.9 * Math.sin(Math.PI * k);
+    drawGlowDot(x, y + 10 * Math.sin(Math.PI * k), '#000000', r * 0.8, 0.25);   // shadow
+    if (!(art && shot(S_GLOB, x, y, r * lift, rot))) drawGlowDot(x, y, C, r * lift, 0.9);
   }
 }
 

@@ -238,6 +238,11 @@ export function drawPlayer(p, alpha, stats) {
     const w = 26 * (1 - p.phaseCd / stats.phaseCd);
     fillPoly([x - 13, PLAYER_Y + 31, x - 13 + w, PLAYER_Y + 31, x - 13 + w, PLAYER_Y + 33, x - 13, PLAYER_Y + 33], PAL.mute);
   }
+  // KICKFLIP recharge: a cyan bar, full = the next landing wipes the lane
+  if (stats.kickflip) {
+    const w = 26 * (p.kickK || 0);
+    fillPoly([x - 13, PLAYER_Y + 35, x - 13 + w, PLAYER_Y + 35, x - 13 + w, PLAYER_Y + 37, x - 13, PLAYER_Y + 37], p.kickK >= 1 ? PAL.cyan : PAL.mute);
+  }
 
   if (blink) return;
 
