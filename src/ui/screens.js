@@ -105,42 +105,126 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Logo: neon script over a chrome block, orange horizon
+// Logo: bioluminescent script floating over a block of living flesh that
+// drips into a slow cosmic current (organic, not chrome).
 // ---------------------------------------------------------------------------
+const LOGO_C = document.createElement('canvas');
+const LOGO_X = LOGO_C.getContext('2d');
+const TIDE_W = 230, TIDE_H = 110;           // flesh block canvas, logical px
+// Drips under the letters: glyph index, offset from the glyph centre (share of
+// its width), max length, speed, phase.
+const DRIPS = [
+  [0, 0, 9, 0.7, 0.3], [1, 0, 12, 0.5, 2.1], [2, -0.28, 7, 0.9, 4.0],
+  [2, 0.1, 13, 0.4, 1.2], [3, -0.3, 10, 0.6, 5.2], [3, 0.3, 6, 1.1, 3.3],
+];
+// Veins inside the letters: polylines in block coordinates (centre = 0,0).
+const VEINS = [
+  [[-80, -14], [-58, -4], [-40, -12], [-14, 2], [8, -8], [30, 6], [58, -6], [84, 4]],
+  [[-74, 10], [-50, 14], [-30, 6], [-6, 16], [20, 10], [44, 16], [70, 8]],
+  [[-20, -20], [-16, -6], [-24, 8], [-18, 20]],
+  [[40, -20], [46, -8], [38, 4], [44, 18]],
+];
+
+function drawTide(t) {
+  const k = ctx.getTransform().a || 1;      // device pixels per logical pixel
+  if (LOGO_C.width !== Math.round(TIDE_W * k)) { LOGO_C.width = Math.round(TIDE_W * k); LOGO_C.height = Math.round(TIDE_H * k); }
+  const c = LOGO_X;
+  c.setTransform(k, 0, 0, k, 0, 0);
+  c.clearRect(0, 0, TIDE_W, TIDE_H);
+  c.translate(TIDE_W / 2, 34);
+  c.font = '54px "Russo One", Impact, sans-serif';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  // Letters breathe: each one swells a little, out of step with the others.
+  const word = 'TIDE';
+  const ws = [...word].map((ch) => c.measureText(ch).width);
+  const total = ws.reduce((a, b) => a + b, 0) + 6 * (word.length - 1);
+  const xs = [];
+  let x = -total / 2;
+  for (let i = 0; i < word.length; i++) { xs.push(x + ws[i] / 2); x += ws[i] + 6; }
+  const flesh = c.createLinearGradient(0, -22, 0, 24);
+  flesh.addColorStop(0, '#ffb8a8'); flesh.addColorStop(0.35, '#e8455e');
+  flesh.addColorStop(0.8, '#b0204a'); flesh.addColorStop(1, '#7a0c32');
+  c.fillStyle = flesh;
+  for (let i = 0; i < word.length; i++) {
+    const sw = 1 + Math.sin(t * 1.6 + i * 1.7) * 0.025;
+    c.save(); c.translate(xs[i], Math.sin(t * 1.1 + i) * 1.2); c.scale(sw, 2 - sw);
+    c.fillText(word[i], 0, 0);
+    c.restore();
+  }
+  // Drips: thin strands that stretch and pull back, with a drop at the tip.
+  for (const [gi, off, len, sp, ph] of DRIPS) {
+    const dx = xs[gi] + off * ws[gi];
+    const l = len * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * sp + ph)));
+    const top = 16, r = 2.6 + l * 0.05;
+    c.fillStyle = '#9a1840';
+    c.beginPath();
+    c.moveTo(dx - 4, top);
+    c.quadraticCurveTo(dx - 1.2, top + l * 0.5, dx - r * 0.7, top + l);
+    c.arc(dx, top + l, r, Math.PI * 0.85, Math.PI * 0.15, true);
+    c.quadraticCurveTo(dx + 1.2, top + l * 0.5, dx + 4, top);
+    c.closePath(); c.fill();
+  }
+  // Inside the flesh only: veins, pores and a slow pulse of light.
+  c.globalCompositeOperation = 'source-atop';
+  c.strokeStyle = 'rgba(60,0,24,0.7)'; c.lineWidth = 1.4; c.lineJoin = 'round';
+  for (const v of VEINS) {
+    c.beginPath();
+    v.forEach(([vx, vy], i) => {
+      const wy = vy + Math.sin(t * 0.9 + vx * 0.05) * 1.5;
+      i ? c.lineTo(vx, wy) : c.moveTo(vx, wy);
+    });
+    c.stroke();
+  }
+  const py = -30 + ((t * 18) % 90);
+  const pulse = c.createLinearGradient(0, py - 14, 0, py + 14);
+  pulse.addColorStop(0, 'rgba(255,200,190,0)'); pulse.addColorStop(0.5, 'rgba(255,200,190,0.35)'); pulse.addColorStop(1, 'rgba(255,200,190,0)');
+  c.fillStyle = pulse; c.fillRect(-TIDE_W / 2, py - 14, TIDE_W, 28);
+  c.globalCompositeOperation = 'source-over';
+  c.setTransform(1, 0, 0, 1, 0, 0);
+}
+
 function drawLogo(t) {
-  const gl = Math.random() < 0.03 ? (Math.random() - 0.5) * 6 : 0;
-  // horizon line only (no band behind the script)
+  // Cosmic current instead of a horizon: two slow interfering waves.
   ctx.save();
-  ctx.shadowColor = PAL.orange; ctx.shadowBlur = 12;
-  ctx.fillStyle = PAL.orange; ctx.fillRect(0, 179, W, 2);
+  for (const [col, amp, fr, sp, a] of [[PAL.cyan, 3, 0.045, 1.2, 0.55], [PAL.violet, 4.5, 0.03, -0.8, 0.4]]) {
+    ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = 1.5;
+    ctx.shadowColor = col; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 6) {
+      const y = 172 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
+      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
   ctx.restore();
-  // TIDE: chrome block, skewed, stacked shadows
+  // TIDE: living flesh, faint red glow, a dark body shadow under it.
+  drawTide(t);
   ctx.save();
-  ctx.translate(W / 2 + gl, 196);
-  ctx.transform(1, 0, -0.18, 1, 0, 0);
-  ctx.font = '52px "Russo One", Impact, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#2a1640'; ctx.fillText('TIDE', 0, 6);
-  ctx.fillStyle = '#6a4a88'; ctx.fillText('TIDE', 0, 3);
-  const g = ctx.createLinearGradient(0, -22, 0, 22);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(0.48, '#cfc6dc'); g.addColorStop(0.52, '#8a7aa0'); g.addColorStop(1, '#e9e4f2');
-  ctx.fillStyle = g; ctx.fillText('TIDE', 0, 0);
+  ctx.shadowColor = 'rgba(255,40,80,0.45)'; ctx.shadowBlur = 14;
+  ctx.drawImage(LOGO_C, W / 2 - TIDE_W / 2, 188 - 34, TIDE_W, TIDE_H);
   ctx.restore();
-  // Neon: script, tilted, glowing, flickers now and then
-  const flick = Math.random() < 0.02 ? 0.35 : 1;
+  // Abyss: bioluminescent script, letters drifting on the current, glow breathing.
+  const glow = 0.75 + Math.sin(t * 1.3) * 0.25;
   ctx.save();
-  ctx.translate(W / 2 - 36, 138);
-  ctx.rotate(-0.14);
-  ctx.font = '72px Yellowtail, cursive';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.globalAlpha = flick;
-  ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 26;
-  ctx.fillStyle = PAL.magenta; ctx.fillText('Abyss', 0, 0);
-  ctx.shadowBlur = 6; ctx.shadowColor = '#ffffff';
-  ctx.fillStyle = '#ffd0f4'; ctx.fillText('Abyss', 0, 0);
+  ctx.translate(W / 2 - 14, 128);
+  ctx.rotate(-0.06);
+  ctx.font = '70px Yellowtail, cursive';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const word = 'Abyss';
+  const wsum = ctx.measureText(word).width;
+  let x = -wsum / 2;
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i];
+    const y = Math.sin(t * 1.4 - i * 0.8) * 2.5;
+    ctx.shadowColor = PAL.mint; ctx.shadowBlur = 22 * glow;
+    ctx.globalAlpha = 0.85; ctx.fillStyle = '#1fd8a0'; ctx.fillText(ch, x, y);
+    ctx.shadowBlur = 5; ctx.shadowColor = '#d8fff0';
+    ctx.globalAlpha = 0.55 + 0.45 * glow; ctx.fillStyle = '#c8ffe8'; ctx.fillText(ch, x, y);
+    x += ctx.measureText(ch).width;
+  }
   ctx.restore();
   // tagline
-  text('RUN · SHOOT · MUTATE', W / 2, 228, { color: PAL.cyan, size: 9, align: 'center' });
+  text('RUN · SHOOT · MUTATE', W / 2, 228, { color: PAL.mint, size: 9, align: 'center', alpha: 0.8 });
 }
 
 // ---------------------------------------------------------------------------
