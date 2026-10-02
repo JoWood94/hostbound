@@ -27,7 +27,7 @@ export function baseStats() {
     split: 0, sideDamage: 0.5, pierce: 0, homing: 0, frag: 0, arc: 0, toxin: 0, crit: 0, critMul: 3, echo: 0, echoMul: 2.5,
     // body
     maxHearts: 3, blueStart: 0, barrier: 0, barrierRegen: 6, orbitals: 0,
-    phaseCd: 2, phaseTime: 0.25, mirror: false, kickflip: false, jumpTime: 0.45,
+    phaseCd: 2, phaseTime: 0.45, mirror: false, kickflip: false, jumpTime: 0.45,
     iframeTime: 1, canJump: true, breakLow: false,
     // economy
     magnet: 0, coinMul: 1, luck: 0,

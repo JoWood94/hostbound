@@ -53,10 +53,23 @@ export function updatePlayer(p, input, dt, stats) {
   p.prevX = p.x;
   p.ev = {};
 
+  // A tap that turned out to be the start of a vertical swipe: take its lane
+  // change back (and whatever the move itself granted).
+  if (p.tapUndo) {
+    p.tapUndo.t -= dt;
+    if (input.untap) {
+      const u = p.tapUndo;
+      p.laneFromX = p.x; p.lane = u.lane; p.laneT = 0;
+      p.twinT = 0; p.phaseCd += u.refund; p.stillT = u.stillT; p.laneTimes = u.laneTimes;
+      p.tapUndo = null;
+    } else if (p.tapUndo.t <= 0) p.tapUndo = null;
+  }
+
   const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   if (dir !== 0) {
     const next = Math.max(0, Math.min(LANES - 1, p.lane + dir));
     if (next !== p.lane) {
+      p.tapUndo = input.fromTap ? { lane: p.lane, refund: 0, stillT: p.stillT, laneTimes: p.laneTimes, t: 0.25 } : null;
       p.laneFromX = p.x;
       // TWIN LINK keeps firing from the lane just left for a moment
       p.twinLane = p.lane; p.twinT = 0.6;
@@ -64,7 +77,11 @@ export function updatePlayer(p, input, dt, stats) {
       p.laneT = 0;
       p.ev.lane = true;
       p.stillT = 0;                                   // CHARGE resets on every move
-      if (stats.momentum) p.phaseCd = Math.max(0, p.phaseCd - 0.15 * stats.momentum);
+      if (stats.momentum) {
+        const cd = p.phaseCd;
+        p.phaseCd = Math.max(0, p.phaseCd - 0.15 * stats.momentum);
+        if (p.tapUndo) p.tapUndo.refund = cd - p.phaseCd;
+      }
       p.laneTimes = [...(p.laneTimes || []).slice(-1), p.time || 0];
     } else {
       p.bump = 0.12 * dir;

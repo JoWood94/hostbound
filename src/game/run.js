@@ -664,6 +664,7 @@ export function updateRun(run, input, dt) {
   // Tap left/right half of the screen = one lane, same as a swipe.
   else if (input.tap && input.tapX >= 0) {
     if (input.tapX < W / 2) input.left = true; else input.right = true;
+    input.fromTap = true;
   }
 
   if (run.pickDelay > 0) {

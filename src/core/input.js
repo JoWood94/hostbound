@@ -16,11 +16,16 @@ const EARLY_MS = 45;
 const EARLY_SLOP = 5;
 let earlyTaps = true;
 let tapped = false;          // this gesture already fired its early tap
+let tapT = 0;
+// A finger that rests EARLY_MS and THEN swipes up or down fired an early tap
+// (a lane change) it never meant: a vertical swipe this soon after it takes
+// the lane change back.
+const UNTAP_MS = 150;
 let lastX = 0, lastY = 0;
 let earlyTimer = 0;
 export function setEarlyTap(on) { earlyTaps = on; }
 
-const state = { left: false, right: false, jump: false, phase: false, tap: false, tapX: -1, tapY: -1, pause: false, down: false, any: false };
+const state = { untap: false, left: false, right: false, jump: false, phase: false, tap: false, tapX: -1, tapY: -1, pause: false, down: false, any: false };
 
 let pointerId = null;
 let startX = 0;
@@ -46,6 +51,7 @@ function onDown(e) {
     if (pointerId === null || swiped || consumed || tapped) return;
     if (Math.hypot(lastX - startX, lastY - startY) > EARLY_SLOP) return;
     tapped = true;
+    tapT = performance.now();
     state.tap = true; state.tapX = startX; state.tapY = startY;
   }, EARLY_MS);
 }
@@ -60,6 +66,7 @@ function detectSwipe(p) {
   // same gesture, not a second command
   if (tapped && adx > ady) { swiped = true; return; }
   swiped = true;
+  if (tapped && ady >= adx && performance.now() - tapT < UNTAP_MS) state.untap = true;
   if (adx > ady) { if (dx < 0) state.left = true; else state.right = true; }
   else { if (dy < 0) state.jump = true; else state.phase = true; }
 }
@@ -117,7 +124,7 @@ window.addEventListener('blur', () => { state.blur = true; });
 // symbiote, so nothing it does until it lifts may count on the new screen.
 export function discardGesture() {
   if (pointerId !== null) consumed = true;
-  state.left = state.right = state.jump = state.phase = state.tap = false;
+  state.left = state.right = state.jump = state.phase = state.tap = state.untap = false;
 }
 // Choice screens use a larger tap tolerance, so a short swipe is never a tap.
 export function setTapSlop(px) { tapSlop = px; }
@@ -125,6 +132,6 @@ export function setTapSlop(px) { tapSlop = px; }
 // Read and reset one-shot intents. Call once per logic step.
 export function pollInput() {
   const out = { ...state };
-  state.left = state.right = state.jump = state.phase = state.tap = state.pause = state.any = state.active = state.blur = false;
+  state.left = state.right = state.jump = state.phase = state.tap = state.untap = state.pause = state.any = state.active = state.blur = false;
   return out;
 }

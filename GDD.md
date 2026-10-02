@@ -33,7 +33,7 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 | Pausa | Tap in alto / perdi focus | Esc / P |
 
 - **Salto**: supera ostacoli bassi (barriere, buchi). Durante salto sei ancora colpibile dai proiettili.
-- **Phase**: invulnerabilità ~250 ms sul posto (la board "sfasa"). Cooldown 2 s. Item lo modificano (es. phase = dash di 2 corsie).
+- **Phase**: invulnerabilità sul posto per 0,45 s, quanto un salto (la board "sfasa"). Cooldown 2 s. Item lo modificano (es. phase = dash di 2 corsie).
 - Dead zone tocco e sensibilità configurabili in impostazioni.
 
 ## 5. Vita, scudo, danno
@@ -162,7 +162,7 @@ Tutti hanno pattern MK2 propri. Verificate tutte le 121 sequenze a righe dei 10 
 Le file di ostacoli dei boss sono distanziate in **secondi** (almeno 0,65 s, ~120 px alla velocità rallentata del boss): distanziate in battute, al tempo alto finivano a 50 px e SPINE diventava impossibile. Le spazzate (sweep, beam sweep) hanno almeno 0,3 s tra una corsia e l'altra: con un tick (0,14 s a 6000 m) non c'era il tempo di entrare nella corsia già colpita. Un **bot di test** (`src/debug/bot.js`, `__game.bot(setup, secondi, { log })`) gioca come un giocatore attento: tutti e 10 i boss, normali, MK2 e MK3, passati senza danni; un giocatore fermo prende 13–17 colpi in 35 s. Sezioni generate a 3000–12000 m: 2–4 colpi in 2 minuti.
 
 ### Controlli
-Nel gioco il tap scatta dopo 45 ms di dito fermo, senza aspettare il rilascio (era tutto il ritardo del tap). Lo swipe scatta a 14 px (prima 22) e legge tutti i campioni del movimento tra un frame e l'altro. Un trascinamento laterale dopo un tap anticipato non conta come secondo comando. Menu e schermate di scelta restano a tap sul rilascio (protezione dalle scelte accidentali).
+Nel gioco il tap scatta dopo 45 ms di dito fermo, senza aspettare il rilascio (era tutto il ritardo del tap). Lo swipe scatta a 14 px (prima 22) e legge tutti i campioni del movimento tra un frame e l'altro. Un trascinamento laterale dopo un tap anticipato non conta come secondo comando; uno swipe verticale entro 150 ms dal tap anticipato annulla il cambio corsia del tap (il dito era fermo prima di saltare o fare phase), senza aggiungere ritardo. Il phase dura quanto il salto, 0,45 s. Menu e schermate di scelta restano a tap sul rilascio (protezione dalle scelte accidentali).
 
 ### Prestazioni
 Gli ostacoli sono pre-renderizzati: 12 fotogrammi di animazione in loop per tipo e variante, preparati all'avvio della partita (~40 ms una volta sola) e stampati con `drawImage`. Prima ogni ostacolo ricalcolava fili, sfumature e `shadowBlur` a ogni frame: una scena con 25 ostacoli e un velo costava 74 ms per frame, ora 7.
