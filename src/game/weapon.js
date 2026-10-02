@@ -1,6 +1,6 @@
 // Player weapon. Reads the final stats object only, so every item combination
 // composes without special cases. Also resolves on-hit effects.
-import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, F_LATCH, SH_BOLT, SH_GLAIVE, SH_MINE, SH_LARVA, SH_STING, SH_LOB, SHOTS } from './bullets.js';
+import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, F_LATCH, SH_BOLT, SH_GLAIVE, SH_MINE, SH_LARVA, SH_STING, SH_LOB, SHOTS, K_DRONE, K_ECHOLET } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
 import { ctx, makeOffscreen } from '../core/canvas.js';
@@ -149,6 +149,7 @@ export function updateWingmen(p, stats, dt) {
       const bi = spawn(playerBullets, w.x, PLAYER_Y - 30, 0, -(rocket ? 180 * stats.shotSpeed : stats.bulletSpeed), rocket ? 4 : 2.4, currentDamage(p, stats) * 0.6 * (rocket ? 1.4 : 1), 0, stats.pierce);
       if (bi >= 0) {
         playerBullets.lane[bi] = l;
+        if (!rocket) playerBullets.kind[bi] = K_DRONE;
         // ARMADA: the drones fire your weapon's traits too
         if (stats.evo.armada) playerBullets.flags[bi] = (stats.hasRocket ? F_EXPLODE : 0) | (rocket ? F_ROCKET : 0);
       }
@@ -1282,7 +1283,7 @@ function thunderclap(pb, i, e) {
     .sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y));
   [-160, 0, 160].forEach((vx, k) => {
     const t = near[k];
-    const bi = spawn(playerBullets, pb.x[i], pb.y[i] - 8, vx, -520, Math.max(3, pb.r[i] * 0.55), pb.dmg[i] * 0.18, BIG, 1);
+    const bi = spawn(playerBullets, pb.x[i], pb.y[i] - 8, vx, -520, Math.max(3, pb.r[i] * 0.55), pb.dmg[i] * 0.18, K_ECHOLET, 1);
     if (bi < 0) return;
     playerBullets.lastHit[bi] = e.id;
     if (t) { playerBullets.lane[bi] = -2; playerBullets.aux[bi] = t.id; }

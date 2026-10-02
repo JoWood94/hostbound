@@ -587,6 +587,13 @@ export function computeStats(board, stacks) {
     for (const id of ct.on || []) s.pairOn[id] = true;
   }
   for (const t of TRIOS) if (t.trait && holds(t) && (!t.when || t.when(s))) s.trioOn[t.id] = true;
+  // The bolt's look follows the dominant shot trait (shots_trait.png cells):
+  // the most stacked one, ties by this order.
+  const LOOKS = [['toxin', [0, 0]], ['frag', [0, 1]], ['arc', [0, 2]], ['homing', [0, 3]], ['brand', [0, 4]], ['fission', [0, 5]],
+    ['ghostround', [0, 6]], ['ricochet', [0, 7]], ['skyshot', [1, 0]], ['afterglow', [1, 7]], ['heartbeat', [1, 6]], ['crit', [1, 1]]];
+  let best = 0;
+  s.shotLook = null;
+  for (const [id, cell] of LOOKS) if ((stacks[id] || 0) > best) { best = stacks[id]; s.shotLook = cell; }
   s.shotSpeed = Math.max(0.5, Math.min(2.5, s.shotSpeed));
   s.bulletSpeed = 520 * s.shotSpeed;
   // Derived from SPEED and LUCK, so every source of them counts.

@@ -6,7 +6,7 @@ import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
-import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_TOXIC, BIO } from './bullets.js';
+import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_TOXIC, BIO, K_SHARD, setShotLook } from './bullets.js';
 import { drawCell } from '../render/images.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, spawnEnemy, setShiftGuard, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus, noteJump, jumpClash } from './enemies.js';
@@ -900,6 +900,7 @@ export function updateRun(run, input, dt) {
     if (run.time - (run.lastKillT ?? -9) > 1) run.rush = Math.max(0, (run.rush || 0) - dt * (st.bloodrush > 1 ? 0.25 : 0.5));
     rateMul *= 1 + 0.4 * (run.rush || 0);
   }
+  setShotLook(st.shotLook);
   updateWeapon(p, st, dt, rateMul, { rng: run.rng, onCrit: () => onCrit(run) });
   // HEARTBEAT: a heavy extra volley every 2 s (1.6 s with two stacks)
   if (st.heartbeat) {
@@ -1144,6 +1145,7 @@ export function updateRun(run, input, dt) {
         if (bi < 0) break;
         // lane -2 = a shard chasing enemy `aux` (weapon.js updateModeBullets)
         playerBullets.lane[bi] = t ? -2 : -1; playerBullets.aux[bi] = t ? t.id : 0; playerBullets.flags[bi] = flags; playerBullets.lastHit[bi] = e.id;
+        playerBullets.kind[bi] = K_SHARD;
       }
     }
     if (st.leech) {

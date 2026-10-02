@@ -15,6 +15,10 @@ export const SHOTS = sheet('shots_player', 96);
 // mine, mine bursting, seed shell, seed splitting, husk, egg; row 1 maggot,
 // maggot bent, maggot curled, stinger, stinger stuck, stinger hot, pop.
 export const BIO = sheet('shots_bio', 96);
+// Bolt looks by the build's dominant trait (shots_trait.png), set by the run.
+export const TRAIT = sheet('shots_trait', 96);
+let look = null;                       // [row, col] or null = the base spit/glob
+export function setShotLook(cell) { look = cell; }
 const S_SPIT = [0, 0, 7], S_GLOB = [0, 1, 4.6], S_PELLET = [0, 2, 12], S_ROCKET = [0, 3, 8.5],
   S_LARVA = [0, 4, 9], S_ECHO = [0, 5, 3], S_NEEDLE = [0, 6, 7.5];
 function shot(spec, x, y, r, rot, flash = 0) {
@@ -45,6 +49,8 @@ function makePool(max) {
 // kind flags
 export const LOW = 1;       // enemy low wave: can be jumped over
 export const BIG = 2;       // player echo/heavy shot, drawn bigger
+// player shot looks (kind bits, bolts only): which art cell a special shot uses
+export const K_DRONE = 4, K_SHARD = 8, K_ECHOLET = 64;
 // Player shot traits: any combination is valid (that is the synergy engine).
 export const F_EXPLODE = 1; // blast on hit (ROCKET POD)
 export const F_WAVE = 2;    // weaves across neighbour lanes (SINE WAVE)
@@ -124,8 +130,13 @@ export function drawPlayerBullets() {
         drawGlowDot(p.x[i], p.y[i], '#ffffff', r * 0.5);
       }
     } else if (art) {
-      // Isaac-style: the shot's look follows its size, and size follows damage
-      shot(p.pierce[i] > 0 ? S_NEEDLE : r >= 5 ? S_GLOB : S_SPIT, p.x[i], p.y[i], r, rot);
+      // Isaac-style: the shot's look follows its size, and size follows damage;
+      // with a dominant trait it takes that trait's look (shots_trait.png)
+      const k2 = p.kind[i];
+      const cell = k2 & K_DRONE ? [1, 2] : k2 & K_SHARD ? [1, 3] : k2 & K_ECHOLET ? [1, 5]
+        : f & (F_FISSION | F_FISSION2) ? [1, 4] : p.pierce[i] > 0 ? null : look;
+      if (cell && TRAIT.ready) drawCell(TRAIT, cell[0], cell[1], p.x[i], p.y[i], r * 7.5, { rot });
+      else shot(p.pierce[i] > 0 ? S_NEEDLE : r >= 5 ? S_GLOB : S_SPIT, p.x[i], p.y[i], r, rot);
     } else {
       drawSprite(bolt, p.x[i], p.y[i], { rot, sx: k, sy: k });
     }

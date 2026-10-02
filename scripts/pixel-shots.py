@@ -17,6 +17,11 @@ shots_bio (v1.2 carrier bodies):
   row 1: maggot, maggot bent, maggot curled (latched), stinger (tip up),
          stinger stuck (tip down), stuck stinger about to burst, stinger pop
 
+shots_trait (the bolt's look follows the build's dominant trait):
+  row 0: venom, frag, arc, seeker, brand, fission, ghost, ricochet
+  row 1: skyshot, crit, drone dart, shrapnel shard, fission child,
+         echo fragment, heartbeat volley, afterglow ribbon
+
 Usage: python3 scripts/pixel-shots.py [sheet] [out.png]   (no args: every sheet)
 """
 import math
@@ -615,10 +620,207 @@ def empty():
     return Cell()
 
 
+# ---------------------------------------------------------------------------
+# shot looks by dominant trait (public/sprites/shots_trait.png)
+# ---------------------------------------------------------------------------
+def base_glob(c, r=4.5, cy=13):
+    blob(c, 16, cy, r)
+
+
+def t_venom():
+    c = Cell(); base_glob(c)
+    for (x, y, rr) in ((12, 18, 1.2), (19, 17, 1.0)):
+        blob(c, x, y, rr, hot=False)                 # bubbles hanging off it
+    for x, ln in ((14, 5), (18, 4)):
+        for k in range(ln):
+            c.put(x, 17 + k, M if k < ln - 1 else D)
+        c.put(x, 17 + ln, A)                          # the drop at the end
+    outline(c); smear(c, 16, 19, 2, 6); glow(c)
+    return c
+
+
+def t_frag():
+    c = Cell(); base_glob(c, 4)
+    for k in range(8):
+        a = k / 8 * math.pi * 2
+        for s2 in (5, 6, 7):
+            c.put(round(16 + math.cos(a) * s2), round(13 + math.sin(a) * s2), B3 if s2 == 7 else B2)
+    outline(c); smear(c, 16, 21, 2, 5); glow(c)
+    return c
+
+
+def t_arc():
+    c = Cell(); base_glob(c)
+    outline(c)
+    for (x0, y0) in ((9, 9), (21, 8), (11, 17)):      # zig-zag sparks crawling on it
+        x, y = x0, y0
+        for k in range(5):
+            c.put(x, y, C if k % 2 else L)
+            x += 1 if x0 < 16 else -1
+            y += 1 if k % 2 else -1
+    smear(c, 16, 19, 2.5, 6); glow(c, steps=(55, 20))
+    return c
+
+
+def t_seeker():
+    """Pointed and leaning into its turn, with a thin wake."""
+    c = Cell()
+    for y in range(N):
+        for x in range(N):
+            dx, dy = (x + 0.5 - 16) / 4.2, (y + 0.5 - 15) / 6
+            taper = 1 - max(0, -dy) * 0.55
+            if dx * dx / (taper * taper) + dy * dy <= 1:
+                c.put(x, y, band(0.25 + 0.5 * (0.5 - dx * 0.5) + 0.25 * (1 - dy * dy), x, y))
+    c.put(15, 11, C); c.put(16, 10, C)
+    outline(c)
+    for k in range(8):
+        c.put(16 + (k % 2), 22 + k, M if k < 4 else D, 200 - k * 20)
+    glow(c)
+    return c
+
+
+def t_brand():
+    c = Cell(); base_glob(c)
+    for k in range(14):                               # a burnt spiral scar
+        a = k * 0.75
+        r = 0.5 + k * 0.22
+        c.put(round(16 + math.cos(a) * r), round(13 + math.sin(a) * r), D if k % 3 else O)
+    outline(c); smear(c, 16, 19, 2.5, 6); glow(c)
+    return c
+
+
+def t_fission():
+    c = Cell()
+    blob(c, 13.5, 13, 3.6); blob(c, 18.5, 13, 3.6)
+    c.put(16, 11, D); c.put(16, 15, D)                # the pinch
+    outline(c); smear(c, 16, 18, 3, 6); glow(c)
+    return c
+
+
+def t_ghost():
+    """Hollow: a dithered shell only, half transparent."""
+    c = Cell()
+    def px(x, y, r, a):
+        if r <= 5.2:
+            edge = r > 3.6
+            if edge or BAYER[y % 4][x % 4] > 13:
+                c.put(x, y, L if edge else A, 230 if edge else 110)
+    for y in range(N):
+        for x in range(N):
+            px(x, y, math.hypot(x + 0.5 - 16, y + 0.5 - 13), 0)
+    smear(c, 16, 19, 2, 6); glow(c, col=L, steps=(30,))
+    return c
+
+
+def t_ricochet():
+    c = Cell(); base_glob(c)
+    for y in (11, 15):                                # two dark bands, like a bouncing ball
+        for x in range(12, 21):
+            if (x, y) in c.px:
+                c.put(x, y, D)
+    outline(c); smear(c, 16, 19, 2.5, 5); glow(c)
+    return c
+
+
+def t_sky():
+    c = Cell(); base_glob(c, 4)
+    for side in (-1, 1):                              # flat membrane fins
+        for k in range(5):
+            for w in range(3 - k // 2):
+                c.put(16 + side * (5 + k), 12 + w + k // 2, M if w else A, 220)
+    outline(c); smear(c, 16, 18, 2, 6); glow(c)
+    return c
+
+
+def t_crit():
+    c = Cell()
+    for y in range(N):
+        for x in range(N):
+            dx, dy = abs(x + 0.5 - 16), abs(y + 0.5 - 14)
+            if dx / 4 + dy / 8 <= 1:
+                c.put(x, y, band(0.35 + 0.5 * (1 - dx / 4) + 0.15 * (1 - dy / 8), x, y))
+    c.put(16, 10, C); c.put(16, 11, C)
+    outline(c); smear(c, 16, 23, 1.5, 4); glow(c, steps=(55, 20))
+    return c
+
+
+def t_dart():
+    c = Cell()
+    for y in range(8, 22):
+        t = (y - 8) / 13
+        w = 0.6 + 1.6 * math.sin(math.pi * min(1, t * 1.1))
+        for x in range(N):
+            if abs(x + 0.5 - 16) <= w:
+                c.put(x, y, band(0.3 + 0.5 * (1 - t) + 0.2 * (0.5 - (x - 16) / 4), x, y))
+    outline(c); smear(c, 16, 23, 1.2, 4); glow(c)
+    return c
+
+
+def t_shard():
+    c = Cell()
+    poly = [(13, 7), (18, 10), (20, 17), (16, 23), (14, 18), (11, 13)]
+    for y in range(N):
+        for x in range(N):
+            inside = False
+            j = len(poly) - 1
+            for i2 in range(len(poly)):
+                xi, yi = poly[i2]; xj, yj = poly[j]
+                if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+                    inside = not inside
+                j = i2
+            if inside:
+                c.put(x, y, band(0.35 + 0.4 * (1 - (x - 11) / 10) + 0.2 * (1 - (y - 7) / 16), x, y))
+    line(c, 14, 10, 17, 18, L)
+    outline(c); glow(c)
+    return c
+
+
+def t_child():
+    c = Cell(); blob(c, 16, 14, 2.8)
+    outline(c); smear(c, 16, 18, 1.6, 5); glow(c)
+    return c
+
+
+def t_echo_small():
+    c = Cell(); blob(c, 16, 14, 5)
+    for ang in (0.5, 2.1, 3.6, 5.1):
+        x, y = 16.0, 14.0
+        for k in range(4):
+            x += math.cos(ang) * 1.1; y += math.sin(ang) * 1.1
+            c.put(int(x), int(y), D)
+    outline(c); smear(c, 16, 20, 2.5, 6); glow(c)
+    return c
+
+
+def t_beat():
+    c = Cell(); blob(c, 16, 14, 5.5)
+    for k in range(10):                               # veins radiating out like a pulse
+        a = k / 10 * math.pi * 2
+        for s2 in (7, 8):
+            c.put(round(16 + math.cos(a) * s2), round(14 + math.sin(a) * s2), D if s2 == 7 else M, 200)
+    outline(c); smear(c, 16, 21, 3, 6); glow(c, steps=(55, 25))
+    return c
+
+
+def t_ribbon():
+    c = Cell(); base_glob(c, 4, 9)
+    outline(c)
+    for k in range(18):                               # a long thin fading ribbon
+        x = 16 + round(math.sin(k * 0.55) * 2)
+        c.put(x, 14 + k, A if k < 6 else (M if k < 12 else D), max(60, 230 - k * 9))
+        c.put(x + 1, 14 + k, M, max(40, 160 - k * 8))
+    glow(c)
+    return c
+
+
 SHEETS = {
     'shots_player': [
         [spit, slug, pellet, rocket, larva, echo, needle, charged],
         [small, splash, droplets, teardrop, sparks, beam_slice, rail, bone_chips],
+    ],
+    'shots_trait': [
+        [t_venom, t_frag, t_arc, t_seeker, t_brand, t_fission, t_ghost, t_ricochet],
+        [t_sky, t_crit, t_dart, t_shard, t_child, t_echo_small, t_beat, t_ribbon],
     ],
     'shots_bio': [
         [glaive, glaive_b, mine, mine_swollen, seed_shell, seed_split, husk, egg_burst],
