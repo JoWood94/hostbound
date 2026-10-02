@@ -813,6 +813,166 @@ def t_ribbon():
     return c
 
 
+
+# ---------------------------------------------------------------------------
+# status overlays drawn on enemies (public/sprites/fx_status.png): rings and
+# scatters round an EMPTY centre, so the enemy underneath stays visible
+# ---------------------------------------------------------------------------
+LI = [(60, 44, 110), (140, 120, 216), (201, 184, 255), (236, 228, 255), (248, 244, 255)]   # numb lilac
+
+
+def s_poison(frame=0):
+    c = Cell()
+    for k in range(7):
+        a = k / 7 * math.pi * 2 + frame * 0.45
+        r = 11 + (k % 2) * 2
+        x, y = 16 + math.cos(a) * r, 16 + math.sin(a) * r * 0.9 - frame * 1.5
+        blob(c, x, y, 1.6 if k % 2 else 1.1, hot=k % 2 == 0)
+    for (x, y) in ((10, 25), (22, 24), (16, 27)):                 # drips below
+        for k in range(3):
+            c.put(x, y + k - frame, M if k < 2 else D, 220 - k * 50)
+    outline(c); glow(c, steps=(36,))
+    return c
+
+
+def s_poison_b():
+    return s_poison(1)
+
+
+def s_brand():
+    """A burnt spiral mark floating above the enemy."""
+    c = Cell()
+    for k in range(22):
+        a = k * 0.62
+        r = 0.6 + k * 0.2
+        x, y = 16 + math.cos(a) * r * 1.3, 6 + math.sin(a) * r * 0.8
+        c.put(round(x), round(y), L if k > 16 else (A if k > 8 else M))
+    outline(c); glow(c, steps=(50, 20))
+    return c
+
+
+def s_numb():
+    c = Cell()
+    for k in range(10):                                          # frost cracks
+        a = k / 10 * math.pi * 2 + 0.2
+        r0, r1 = 10, 13 + (k % 3)
+        line(c, 16 + math.cos(a) * r0, 16 + math.sin(a) * r0, 16 + math.cos(a + 0.15) * r1, 16 + math.sin(a + 0.15) * r1, LI[2])
+        if k % 3 == 0:
+            c.put(round(16 + math.cos(a) * (r1 + 1)), round(16 + math.sin(a) * (r1 + 1)), LI[4])
+    outline(c, LI[0]); glow(c, col=LI[1], steps=(45,))
+    return c
+
+
+def s_frozen():
+    c = Cell()
+    for k in range(8):                                           # ice crystals closing in
+        a = k / 8 * math.pi * 2
+        cx, cy = 16 + math.cos(a) * 11, 16 + math.sin(a) * 11
+        for t in range(-3, 4):
+            x = cx + math.cos(a) * t * 0.9
+            y = cy + math.sin(a) * t * 0.9
+            w = 1.6 - abs(t) * 0.4
+            for yy in range(int(y - 2), int(y + 3)):
+                for xx in range(int(x - 2), int(x + 3)):
+                    if math.hypot(xx + 0.5 - x, yy + 0.5 - y) <= w:
+                        c.put(xx, yy, band(0.5 + t * 0.08, xx, yy, LI))
+    outline(c, LI[0]); glow(c, col=LI[2], steps=(55, 22))
+    return c
+
+
+def s_slowed():
+    c = Cell()
+    for k in range(5):                                           # drooping wisps
+        x0 = 6 + k * 5
+        for t in range(9):
+            x = x0 + math.sin(t * 0.7 + k) * 1.2
+            c.put(round(x), 18 + t, L if t < 2 else (A if t < 5 else M), 210 - t * 18)
+    glow(c, col=L, steps=(30,))
+    return c
+
+
+def s_reticle():
+    c = Cell()
+    for (sx, sy) in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+        cx, cy = 16 + sx * 12, 16 + sy * 12
+        for k in range(5):
+            c.put(round(cx - sx * k), round(cy), L if k < 2 else A)
+            c.put(round(cx), round(cy - sy * k), L if k < 2 else A)
+    for k in range(4):                                           # tick marks
+        a = k / 4 * math.pi * 2
+        c.put(round(16 + math.cos(a) * 14), round(16 + math.sin(a) * 14), C)
+    outline(c); glow(c, steps=(50,))
+    return c
+
+
+def s_charge():
+    c = Cell()
+    def px(x, y, r, a):
+        if 12 <= r <= 14:
+            c.put(x, y, L if a < 0 else M, 230)
+    polar(c, px)
+    outline(c); glow(c, steps=(40,))
+    return c
+
+
+def s_infested():
+    c = Cell()
+    for k in range(5):
+        a = k / 5 * math.pi * 2 + 0.3
+        x, y = 16 + math.cos(a) * 11, 16 + math.sin(a) * 11
+        blob(c, x, y, 2.0, hot=False)
+        blob(c, x - math.cos(a) * 2.2, y - math.sin(a) * 2.2, 1.4, ramp=[O, D, D, M, A], hot=False)
+    outline(c); glow(c, steps=(36,))
+    return c
+
+
+def s_stung():
+    c = Cell()
+    for k in range(3):
+        a = k / 3 * math.pi * 2 - math.pi / 2
+        bx, by = 16 + math.cos(a) * 9, 16 + math.sin(a) * 9
+        ex, ey = 16 + math.cos(a) * 15, 16 + math.sin(a) * 15
+        line(c, bx, by, ex, ey, B2)
+        line(c, bx + 1, by, ex + 1, ey, B1)
+        c.put(round(ex), round(ey), A)
+    outline(c); glow(c, steps=(36,))
+    return c
+
+
+def s_melt():
+    """A venom death: a body sinking into acid foam."""
+    c = Cell()
+    for y in range(N):
+        for x in range(N):
+            dx, dy = (x + 0.5 - 16) / 11, (y + 0.5 - 21) / 5
+            wob = 0.15 * math.sin(x * 1.3)
+            if dx * dx + (dy + wob) ** 2 <= 1:
+                c.put(x, y, band(0.45 - dy * 0.25, x, y))
+    for (x, y, r) in ((10, 15, 2), (15, 12, 2.6), (21, 14, 2.2), (18, 9, 1.5), (12, 10, 1.3)):
+        blob(c, x, y, r, hot=False)
+    outline(c); glow(c)
+    return c
+
+
+def s_shatter():
+    c = Cell()
+    for k in range(9):
+        a = k / 9 * math.pi * 2 + 0.3
+        r = 6 + (k % 3) * 3
+        x, y = 16 + math.cos(a) * r, 16 + math.sin(a) * r
+        line(c, x, y, x + math.cos(a) * 3, y + math.sin(a) * 3, LI[2 + k % 2])
+    blob(c, 16, 16, 2.4, ramp=LI)
+    outline(c, LI[0]); glow(c, col=LI[2], steps=(50, 20))
+    return c
+
+
+def s_husk_crack():
+    c = husk()
+    for (x0, y0, x1, y1) in ((10, 8, 13, 12), (20, 6, 18, 10)):
+        line(c, x0, y0, x1, y1, O)
+    return c
+
+
 SHEETS = {
     'shots_player': [
         [spit, slug, pellet, rocket, larva, echo, needle, charged],
@@ -821,6 +981,10 @@ SHEETS = {
     'shots_trait': [
         [t_venom, t_frag, t_arc, t_seeker, t_brand, t_fission, t_ghost, t_ricochet],
         [t_sky, t_crit, t_dart, t_shard, t_child, t_echo_small, t_beat, t_ribbon],
+    ],
+    'fx_status': [
+        [s_poison, s_poison_b, s_brand, s_numb, s_frozen, s_slowed, s_reticle, s_charge],
+        [s_infested, s_stung, s_melt, s_shatter, s_husk_crack, egg_burst, empty, empty],
     ],
     'shots_bio': [
         [glaive, glaive_b, mine, mine_swollen, seed_shell, seed_split, husk, egg_burst],

@@ -569,6 +569,7 @@ function ctxFill(x, y, w, h, color, alpha) {
   ctx.globalAlpha = 1;
 }
 
+const BRANDART = sheet('fx_status', 96);   // same image as weapon.js STATUS (cached)
 export function drawEnemies(alpha) {
   for (const e of enemies) {
     if (e.type === 'boss' || e.dead) continue;
@@ -635,7 +636,7 @@ export function drawEnemies(alpha) {
       drawCell(art[0], art[1], col, x, y, BROOD_SIZE * breathe * (e.minion ? 0.8 : 1), { flash: e.hitFlash > 0 ? 0.7 : 0 });
       if (e.muzzle > 0) { drawGlowDot(x, y + MOUTH, c, 7 * (e.muzzle / 0.12) + 2, 0.9); drawGlowDot(x, y + MOUTH, '#ffffff', 2.5, e.muzzle / 0.12); }
       if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
-      if (e.brandMul) { ring(x, y, r + 5, PAL.acid, 1.2, 0.55); drawGlowDot(x + r + 4, y - r, PAL.acid, 2, 0.9); }
+      if (e.brandMul && !BRANDART.ready) { ring(x, y, r + 5, PAL.acid, 1.2, 0.55); drawGlowDot(x + r + 4, y - r, PAL.acid, 2, 0.9); }   // else fx_status (weapon.js)
       continue;
     }
     const scale = breathe * (e.minion ? 0.8 : 1) * (e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r)));

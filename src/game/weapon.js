@@ -4,6 +4,7 @@ import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, 
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
 import { ctx, makeOffscreen } from '../core/canvas.js';
+import { sheet, drawCell } from '../render/images.js';
 import { enemySprite, drawSprite } from '../render/sprites.js';
 import { PLAYER_Y } from './player.js';
 import { PAL, COLOR_PLAYER_BULLET as SHOT } from '../render/palette.js';
@@ -1365,6 +1366,23 @@ function texturedBeam(pts, w, alpha, t) {
   return true;
 }
 
+// Status overlays on enemies (fx_status.png): poisoned, branded, numbed,
+// frozen, slowed, locked. Rings round an empty centre: the enemy stays visible.
+const STATUS = sheet('fx_status', 96);
+function drawStatus(t) {
+  if (!STATUS.ready) return;
+  for (const e of enemies) {
+    if (e.dead) continue;
+    const sz = e.type === "boss" ? 90 : Math.max(56, Math.min(84, (e.r || 14) * 4.6));
+    if (e.poison > 0 && e.poisonT > 0) drawCell(STATUS, 0, Math.floor(t * 4 + e.id) % 2, e.x, e.y, sz, { alpha: 0.9 });
+    if (e.brandMul) drawCell(STATUS, 0, 2, e.x, e.y - sz * 0.15, sz, { alpha: 0.95 });
+    if (e.freezeT > 0) drawCell(STATUS, 0, 4, e.x, e.y, sz);
+    else if (e.slowT > 0 && e.slowK && e.slowK < 0.3) drawCell(STATUS, 0, 3, e.x, e.y, sz, { alpha: 0.85, rot: t * 0.5 });
+    else if (e.slowT > 0) drawCell(STATUS, 0, 5, e.x, e.y, sz, { alpha: 0.8 });
+    if (e.lockUntil > t) drawCell(STATUS, 0, 6, e.x, e.y, sz * 1.1, { rot: Math.sin(t * 3) * 0.15 });
+  }
+}
+
 export function drawWeaponFx() {
   if (trails.length) drawTrails();
   const t = performance.now() / 1000;
@@ -1374,9 +1392,10 @@ export function drawWeaponFx() {
     poly(nv.pts, SHOT, 40 * a + 6, 0.35 * a);
     poly(nv.pts, '#ffffff', 14 * a + 2, 0.9 * a);
   }
-  // TARGET LOCK: a reticle on the marked enemy
+  drawStatus(t);
+  // TARGET LOCK: a reticle on the marked enemy (vector until fx_status loads)
   for (const e of enemies) {
-    if (e.dead || !(e.lockUntil > t)) continue;
+    if (STATUS.ready || e.dead || !(e.lockUntil > t)) continue;
     const rr = (e.r || 14) + 8;
     ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(t * 2);
     ctx.strokeStyle = SHOT; ctx.lineWidth = 2; ctx.globalAlpha = 0.9 * DIM;
