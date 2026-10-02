@@ -373,98 +373,129 @@ smaller toward the tail, a pale head with two curved pincer mandibles, tiny legs
 
 ## 4c. Rifacimento colpi e effetti (v1.3) — sostituisce i fogli dei colpi sopra
 
-Cinque fogli. Per ognuno: incolla prima STYLE BIBLE e NEGATIVE PROMPT, e allega
-`public/sprites/shots_player.png` come riferimento di stile. Regole che non si toccano:
-**tutto ciò che è tuo è verde acido** (#c6ff1a, nucleo #f4ffd8). Arancio e magenta sono
-riservati alle minacce, quindi non vanno usati nei colpi del giocatore. La varietà si
-fa con la **forma**, non con il colore. In gioco i colpi sono piccoli (8-20 px): servono
-sagome semplici e forti, contorno scuro di 1 px.
+**Perché la prima versione non andava** (troppo cartoon e non pixel art):
+- avevo chiesto occhi, cuori, ali, stelle e "cute-gross", che diventano icone da cartone;
+- c'erano 32 celle per foglio;
+- mancava una griglia di pixel bassa e fissa.
 
-**A. Colpi base e varianti per tratto** (512×256, 8 colonne × 4 righe, celle 64×64)
-Il gioco sceglie l'aspetto del colpo in base al tratto dominante della build (stile Isaac).
+Ora ogni foglio ha 16 celle (8×2, come `shots_player.png`, che era riuscito bene), usa solo
+forme organiche astratte e ha le PIXEL RULES qui sotto.
+
+Ordine per ogni foglio:
+1. STYLE BIBLE;
+2. PIXEL RULES;
+3. il prompt del foglio;
+4. il NEGATIVE PROMPT dei colpi (nel campo apposito);
+5. allega `public/sprites/shots_player.png` come riferimento.
+
+Prova prima il foglio A1. Se esce bene, gli altri vanno nello stesso modo.
+
+**PIXEL RULES** (incolla dopo lo STYLE BIBLE)
 ```
-A sprite sheet of 32 player projectiles for a bullet-hell game, 512x256 pixels, 8 columns
-x 4 rows of 64x64 cells, one sprite centred per cell, all pointing UP, pixel art, flat
-pure black #000000 background, no grid lines, no text. Every projectile is living
-bio-plasma spat by an alien symbiote: dirty acid green #c6ff1a with a pale hot core
-#f4ffd8, a 1 px near-black outline #07040a, wet and organic, a short glowing smear
-trailing downward. Strong simple silhouettes that still read at 12 px. Variety comes
-from SHAPE, never from colour: no orange, no magenta, no red, no blue.
-Row 1 (base shots): 1 a small glob of spit, 2 a big heavy calcified glob with cracks,
-3 a tiny round pellet of bile, 4 a spore pod rocket with a stubby smoking tail, 5 a wavy
-larva swimming upward, 6 a huge swollen glob ringed with throbbing veins, 7 a long bone
-needle, 8 a glob swollen with stored energy, crackling at its rim (charged shot).
-Row 2 (trait looks): 1 a glob dripping and bubbling with venom (toxin), 2 a glob wrapped
-in a spiky bone shell (frag), 3 a glob crawling with tiny acid sparks (arc), 4 a glob
-with a single small eye looking ahead (seeker), 5 a glob with a burning eye-shaped scar
-on it (brand), 6 a cell caught mid-division into two (fission), 7 a pale ghostly
-translucent glob with a faint outline (ghost round), 8 a rubbery ringed ball (ricochet).
-Row 3: 1 a glob with two small membrane wings (skyshot), 2 a sharp four-pointed star of
-plasma (critical hit shot), 3 a small slim dart (drone shot), 4 a jagged acid shard
-(shrapnel), 5 a small round fission child, 6 a small echo glob (echo fragment),
-7 a fat pulsing glob shaped like a heart (heartbeat volley), 8 a glob trailing a
-shimmering acid ribbon (afterglow).
-Row 4 (impacts, small, centred): 1-3 a spit splash bursting into droplets in 3 frames,
-4 a venom splash with bubbles, 5 a bone shell shattering, 6 a crackling spark burst,
-7 a needle snapping in two, 8 blank.
+Strict low-resolution pixel art, like a 16-bit arcade shmup (SNES / Neo Geo era).
+Every sprite is drawn on a tiny pixel grid of about 24x24 pixels inside its cell and
+scaled up with nearest-neighbour, so each art pixel is a visible square block. Hard
+square pixel clusters, 4 to 5 colours per sprite (outline #07040a, dark green #3d5c0a,
+acid green #c6ff1a, pale green #e6ff8a, hot core #f4ffd8), hand-placed highlights,
+optional ordered dithering. No smooth gradients, no soft airbrush glow, no anti-aliasing,
+no vector curves, no cel-shaded cartoon outlines. Match the attached sheet's pixel size,
+palette and rendering exactly.
 ```
 
-**B. Corpi dei carrier** (512×128, 8 × 2 celle 64×64): è il prompt della sezione
-"Colpi v1.2" qui sopra (glaive, mine, mortaio, guscio, uovo, larva in 3 pose,
-stinger in 4 stati). Va rifatto con lo stesso stile del foglio A.
-
-**C. Raggi, scie e fili** (512×128, 8 colonne × 2 righe, celle 64×64)
-Le fette verticali vengono ripetute in verticale lungo il percorso: devono raccordarsi
-bene in alto e in basso.
+**NEGATIVE PROMPT dei colpi**
 ```
-Match the attached projectile sheet style (acid green #c6ff1a, pale core #f4ffd8,
-1 px dark outline). A sprite sheet of beam and trail pieces, 512x128 pixels, 8 columns
-x 2 rows of 64x64 cells, flat pure black #000000 background, no text.
-Row 1, vertical slices that tile seamlessly top to bottom, each centred in its cell:
-1 a living beam of twisted luminous nerve fibres with a white-hot core, 2 the same beam
-overcharged, almost white, swollen and crackling (charging nova), 3 a thin blinding rail
-streak with a sheath of sparks, 4 a thin glowing sinew cord (tether), 5 a thin taut
-laser wire with tiny beads (tripwire), 6 a wide pillar of white light with green edges
-(nova column), 7 a faint burning acid puddle trail (afterglow), 8 blank.
-Row 2: 1-3 a beam impact point flaring in 3 frames, 4-5 the rail hit flash in 2 frames,
-6 a short jagged refraction flash line, 7 a tether knot where the cord meets a blade,
-8 blank.
+cartoon, cute, chibi, emoji, face, eyes, mouth, smile, heart symbol, star symbol, wings,
+cel shading, vector art, smooth gradient, soft glow, airbrush, 3D render, glossy, plastic,
+high resolution painting, anti-aliased, blurry, text, numbers, grid lines, orange, magenta,
+red, blue
 ```
 
-**D. Effetti sui nemici** (384×96, 8 colonne × 2 righe, celle 48×48)
-Sovrapposizioni disegnate sopra un nemico: devono funzionare su qualunque nemico e
-lasciarne vedere la sagoma (centro vuoto o semitrasparente). Sono effetti tuoi, quindi
-restano nei colori del giocatore; per l'intorpidimento si usa un lilla pallido.
+**A1. Colpi base** (512×128, 8 colonne × 2 righe, celle 64×64, rivolti in alto)
 ```
-A sprite sheet of status effect overlays drawn on top of enemies, 384x96 pixels,
-8 columns x 2 rows of 48x48 cells, pixel art, flat pure black #000000 background,
-no text. Each overlay is a ring or a scatter of marks around an empty centre, so the
-enemy underneath stays visible. Colours: acid green #c6ff1a with pale core #f4ffd8,
-except where noted. No orange, no magenta, no red.
-Row 1: 1-2 venom bubbles and drips rising around the centre, 2 loop frames (poisoned),
-3 a burning eye-shaped brand mark floating above (branded), 4 pale lilac #c9b8ff frost
-cracks and numb sparks around the centre (numbed), 5 pale lilac ice crystals closing
-in, stronger (frozen), 6 slow ghostly wisps trailing downward (slowed), 7 a rotating
-four-corner targeting reticle (locked), 8 a ring of charge filling with light (charge).
-Row 2: 1 a cluster of small larvae biting at the rim (infested), 2 three barbed stingers
-stuck in a ring (stung), 3 a venom death: the body melting into acid foam, 4 a frozen
-death: lilac shards bursting, 5 a cracked translucent husk shell left behind,
-6 a burst egg sac with tiny larvae crawling out (hatching), 7-8 blank.
+A sprite sheet of 16 player projectiles, 512x128 pixels, 8 columns x 2 rows of 64x64
+cells, one sprite centred per cell, pointing UP, flat pure black #000000 background.
+Acid bio-plasma spat by an alien symbiote, wet and organic, a short pixel smear trailing
+downward. Row 1: 1 a small round glob of spit, 2 a heavy lumpy calcified glob with dark
+cracks, 3 a tiny pellet of bile (only 6 pixels wide), 4 a teardrop spore pod with a short
+wisp of dark green smoke behind it, 5 a thin wriggling worm of plasma in an S curve,
+6 a huge swollen glob with dark veins across its surface, 7 a long pale bone needle,
+8 a glob ringed by a jagged crackling rim of pale pixels (charged).
+Row 2, impacts: 1-3 a glob bursting into droplets in 3 frames, 4 a drippy splash
+puddle, 5 a burst of bone chips, 6 a small spiky spark burst, 7 a needle snapping in two,
+8 empty.
 ```
 
-**E. Esplosioni del giocatore** (512×128, 8 colonne × 2 righe, celle 64×64)
-Diverse dalle esplosioni dei nemici: niente sangue, solo bio-plasma acido.
+**A2. Varianti per tratto** (512×128, 8 × 2 celle 64×64): il gioco sceglie l'aspetto del
+colpo in base al tratto dominante della build.
 ```
-Match the attached projectile sheet style. A sprite sheet of player explosions, 512x128
-pixels, 8 columns x 2 rows of 64x64 cells, pixel art, flat pure black #000000
-background, no text. Acid green #c6ff1a bio-plasma with pale core #f4ffd8, wet spores
-and droplets, no fire, no orange, no red, no gore.
-Row 1: an acid spore burst in 8 frames: a bright core swelling, bursting into droplets
-and a ring of spores, then thinning into faint drifting motes (rocket, mine and shell
-bursts).
-Row 2: 1-4 a white-hot nova flash in 4 frames, a blinding white disc with green
-edges collapsing into a ring, 5-7 a small stinger pop in 3 frames (a tight bright
-burst with bone splinters), 8 blank.
+A sprite sheet of 16 player projectiles, 512x128 pixels, 8 columns x 2 rows of 64x64
+cells, one sprite centred per cell, pointing UP, flat pure black #000000 background.
+Variations of the same small acid glob of spit, each changed in SHAPE only, same
+palette. Row 1: 1 a glob with thick drips and two bubbles hanging off it (venom),
+2 a glob inside a ring of short bone spikes (fragmenting), 3 a glob with three
+zig-zag pixel sparks crawling over it (electric arc), 4 a pointed glob leaning forward
+with a thin wake of pixels (seeking), 5 a glob with a dark burnt spiral scar (branded),
+6 a glob pinched in the middle into two lobes (splitting cell), 7 a hollow glob drawn as
+a dithered outline only, half transparent (ghost), 8 a glob banded with two dark rings
+(bouncing).
+Row 2: 1 a glob with two thin flat membrane fins at its sides (airborne), 2 a sharp
+diamond-shaped shard of plasma (critical), 3 a short slim dart (drone shot), 4 a jagged
+broken acid splinter (shrapnel), 5 a tiny round glob (fragment), 6 a small swollen glob
+with veins (echo fragment), 7 a glob with dark veins radiating out like a pulse
+(heavy beat), 8 a glob trailing a long thin ribbon of fading pixels (burning trail).
+```
+
+**B. Corpi dei carrier** (512×128, 8 × 2 celle 64×64)
+```
+A sprite sheet of 16 player projectiles, 512x128 pixels, 8 columns x 2 rows of 64x64
+cells, one sprite centred per cell, pointing UP, flat pure black #000000 background.
+Row 1: 1 a flat three-bladed disc of sharpened bone, blades curved like a shuriken,
+acid green edges, 2 the same disc with motion-blurred blades (spinning), 3 a round
+spore pod, closed, a few pale spots, 4 the same pod swollen with glowing cracks,
+5 a heavy ribbed seed shell, 6 the same shell splitting open into three seeds,
+7 a thin translucent half-moon husk shell, dithered, 8 a burst egg sac with slime.
+Row 2: 1 a grotesque maggot seen from above, head up, four fat segments tapering to the
+tail, two small dark pincers at the head, 2 the same maggot bent to one side,
+3 the same maggot curled into a C, pincers closed, 4 a barbed bone stinger, tip up,
+5 the stinger stuck tip down, 6 the stuck stinger swollen and glowing pale,
+7 a small tight burst of bone splinters, 8 empty.
+```
+
+**C. Raggi, scie e fili** (512×128, 8 × 2 celle 64×64; fette che si ripetono in verticale)
+```
+A sprite sheet of beam and trail pieces, 512x128 pixels, 8 columns x 2 rows of 64x64
+cells, flat pure black #000000 background. Row 1 are vertical slices that tile
+seamlessly top to bottom, centred: 1 a beam of three twisted strands of nerve fibre
+around a hot pale core, 2 the same beam overcharged, almost white, wider, 3 a thin
+blinding rail line with scattered pixel sparks, 4 a thin twisted sinew cord, 5 a thin
+taut wire with small beads, 6 a wide pillar of pale light with acid green edges,
+7 a faint broken trail of dripping pixels, 8 empty.
+Row 2: 1-3 a beam impact flare in 3 frames, 4-5 a rail hit flash in 2 frames,
+6 a short jagged flash line, 7 a knot of sinew, 8 empty.
+```
+
+**D. Effetti sui nemici** (384×96, 8 × 2 celle 48×48; centro vuoto, il nemico resta visibile)
+```
+A sprite sheet of 16 status effect overlays drawn on top of enemies, 384x96 pixels,
+8 columns x 2 rows of 48x48 cells, flat pure black #000000 background. Each overlay is
+a loose ring or scatter of marks around an EMPTY centre. Acid green palette, except
+numb and frozen in pale lilac #c9b8ff #8c78d8. Row 1: 1-2 rising venom bubbles and drips,
+2 loop frames, 3 a dark burnt spiral mark floating above the centre, 4 lilac frost
+cracks and small sparks, 5 lilac ice crystals closing in, 6 slow drooping wisps,
+7 four corner brackets of a targeting reticle, 8 a ring segment filling with light.
+Row 2: 1 small maggots biting at the rim, 2 three barbed stingers stuck in a ring,
+3 a body melting into acid foam, 4 lilac ice shards bursting outward, 5 a cracked
+translucent husk, 6 a burst egg sac with tiny maggots, 7-8 empty.
+```
+
+**E. Esplosioni del giocatore** (512×128, 8 × 2 celle 64×64; niente sangue né fuoco)
+```
+A sprite sheet of player explosions, 512x128 pixels, 8 columns x 2 rows of 64x64 cells,
+flat pure black #000000 background, acid green palette only. Row 1: an acid spore burst
+in 8 frames: a pale core swelling, bursting into pixel droplets and a ring of spores,
+then thinning into a few drifting specks. Row 2: 1-4 a white-hot flash in 4 frames,
+a pale disc with acid green edges collapsing into a thin ring, 5-7 a small tight burst
+of bone splinters in 3 frames, 8 empty.
 ```
 
 ---
