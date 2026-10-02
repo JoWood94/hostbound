@@ -60,6 +60,15 @@ export const enemies = [];
 import { timeMul, enemyHp, extraVolleys } from './balance.js';
 import { TICK_BASE } from '../core/tempo.js';
 
+// Where a hopper jumps next: its direction, else back the other way, else it
+// stays (both sides are a wall or another enemy).
+function hopNext(e) {
+  const free = (l) => l >= 0 && l < LANES && !enemies.some((o) => o !== e && !o.dead && o.type !== 'boss' && o.lane === l);
+  if (free(e.lane + e.dir)) return e.lane + e.dir;
+  if (free(e.lane - e.dir)) return e.lane - e.dir;
+  return null;
+}
+
 // The enemy's lane and its neighbours, clamped to the track.
 const around = (e) => [e.lane - 1, e.lane, e.lane + 1].filter((l) => l >= 0 && l < LANES);
 
@@ -91,15 +100,18 @@ export const TYPES = {
     color: PAL.acid, r: 12, hp: 6, holdY: 120, rest: 2.4, volleys: 2, unlockAt: 1000,
     steps: (e) => [{ lanes: around(e), delay: 0, low: true }],
   },
-  // One shot, then hops one lane in its direction (bounces off the walls).
-  // An arrow shows the next lane. Teaches: track it, do not follow it.
+  // One shot, then hops one lane in its direction (bounces off the walls and
+  // off other enemies). An arrow shows the next lane. Teaches: track it, do
+  // not follow it.
   hopper: {
     color: PAL.red, r: 11, hp: 3, holdY: 150, rest: 0.9, volleys: 4, unlockAt: 1500,
     steps: (e) => [{ lanes: [e.lane], delay: 0.12 }, { lanes: [e.lane], delay: 0 }],
     afterVolley: (e) => {
-      if (e.lane + e.dir < 0 || e.lane + e.dir >= LANES) e.dir = -e.dir;
+      const next = hopNext(e);
+      if (next === null) return;
+      e.dir = next - e.lane;
       e.hopFromX = e.x;
-      e.lane += e.dir;
+      e.lane = next;
       e.hopT = 0;
     },
   },
@@ -164,8 +176,22 @@ TYPES.weaver = {
   },
 };
 
+// Trackers: from district 4 elites, from district 6 drones too, step one lane
+// toward you between volleys (an arrow shows it during the rest). Movers and
+// aimers (hopper, kamikaze, stalker) and the Wall keep their own rules.
+const NO_TRACK = new Set(['hopper', 'kamikaze', 'stalker', 'wall']);
+let shiftOk = () => true;
+export const setShiftGuard = (fn) => { shiftOk = fn; };
+function trackNext(e) {
+  if (!e.track || look.lane === e.lane) return null;
+  const l = e.lane + Math.sign(look.lane - e.lane);
+  if (enemies.some((o) => o !== e && !o.dead && o.type !== 'boss' && o.lane === l)) return null;
+  return shiftOk(e, l) ? l : null;
+}
+
 export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = false, minion = false } = {}) {
   const T = TYPES[type];
+  const district = Math.floor(difficulty / 2.5);
   const x = laneX(lane);
   const e = {
     id: newId(),
@@ -193,6 +219,7 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
     // From tier 6 elites carry one trait (shown above the amber ring).
     trait: elite && difficulty >= 15 ? rng.pick(['shell', 'nervous', 'prolific']) : null,
     rng,
+    track: !minion && !NO_TRACK.has(type) && ((elite && district >= 3) || (type === 'drone' && district >= 5)),
     telegraphLanes: [],
     dead: false,
   };
@@ -393,7 +420,11 @@ export function updateEnemies(dt, difficulty) {
         }
         break;
       case 'rest':
-        if (clock >= e.restUntil) startTelegraph(e);
+        if (clock >= e.restUntil) {
+          const next = trackNext(e);
+          if (next !== null) { e.hopFromX = e.x; e.lane = next; e.hopT = 0; }
+          startTelegraph(e);
+        }
         break;
       case 'dive':
         e.y += T.dive * m * dt;
@@ -482,6 +513,16 @@ export function drawTelegraphs() {
   // Volleys in flight keep their lanes lit until the shots pass you.
   for (const [l, v] of danger) if (!lit.has(l) || lit.get(l).a < 0.75) lit.set(l, { a: 0.75, color: v.color });
   for (const [l, { a, color }] of lit) glowLane(l, color, a);
+  // Trackers resting: an arrow to the lane they will step into.
+  for (const e of enemies) {
+    if (e.state !== 'rest' || !e.track) continue;
+    const next = trackNext(e);
+    if (next === null) continue;
+    const y = e.y + 24, x0 = laneX(e.lane), x1 = laneX(next);
+    const d = Math.sign(x1 - x0);
+    line(x0 + d * 12, y, x1, y, e.T.color, 1.5, 0.7);
+    strokePoly([x1 - d * 6, y - 5, x1, y, x1 - d * 6, y + 5], e.T.color, 1.5, false);
+  }
   for (const e of enemies) {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
     const prog = teleProgress(e);
@@ -498,9 +539,8 @@ export function drawTelegraphs() {
       if (e.T.dive) strokePoly([x - 8, cy - 13, x, cy - 4, x + 8, cy - 13], e.T.color, 2.5, false);
     }
     // Hopper: arrow toward the lane it will jump to next
-    if (e.type === 'hopper' && e.state !== 'leave') {
-      let next = e.lane + e.dir;
-      if (next < 0 || next >= LANES) next = e.lane - e.dir;
+    const next = e.type === 'hopper' && e.state !== 'leave' ? hopNext(e) : null;
+    if (next !== null) {
       const y = e.y + 22, x0 = laneX(e.lane), x1 = laneX(next);
       const d = Math.sign(x1 - x0);
       line(x0 + d * 12, y, x1, y, e.T.color, 1.5, 0.7);

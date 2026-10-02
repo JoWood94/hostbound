@@ -8,7 +8,7 @@ import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_TOXIC } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
-import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus, noteJump, jumpClash } from './enemies.js';
+import { enemies, TYPES, spawnEnemy, setShiftGuard, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus, noteJump, jumpClash } from './enemies.js';
 import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
 import { survivable, rowsOf } from './fairness.js';
 import { intensity, generateCourse, generateCombat } from './generator.js';
@@ -19,7 +19,7 @@ import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from '
 import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
-import { makeBoss, updateBoss, bossTakesAdd, BOSSES } from './boss.js';
+import { makeBoss, updateBoss, BOSSES } from './boss.js';
 import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
@@ -249,10 +249,10 @@ function threatLanes(type, lane, dir = null) {
 }
 function patternLanes(e) { return threatLanes(e.type, e.lane, e.type === 'sweeper' ? e.dir : null); }
 
-export function coveredLanes() {
+export function coveredLanes(skip = null) {
   const c = new Set();
   for (const e of enemies) {
-    if (e.dead || e.type === 'boss' || e.state === 'leave') continue;
+    if (e === skip || e.dead || e.type === 'boss' || e.state === 'leave') continue;
     for (const l of patternLanes(e)) c.add(l);
   }
   const eb = enemyBullets;
@@ -288,13 +288,48 @@ function placeWall(lane, y = -30) {
     if (!pk.fly && pk.lane === lane && Math.abs(pk.y - y) < CELL_CLEAR) pickups.splice(i, 1);
   }
 }
-// A lane with no barrier just entering the screen: where loose cells go.
-function openLane(rng) {
-  const lanes = [0, 1, 2, 3, 4].filter((l) => !obstacles.some((o) => !o.dead && o.type === 'wall' && o.lane === l && o.y < 60));
-  return lanes.length ? rng.pick(lanes) : -1;
-}
 
 const MIN_SAFE = 2;
+// A tracker steps toward you only if two lanes stay safe with it in the new one.
+setShiftGuard((e, lane) => {
+  const c = coveredLanes(e);
+  for (const l of threatLanes(e.type, lane)) if (l >= 0 && l < LANES) c.add(l);
+  return LANES - c.size >= MIN_SAFE;
+});
+
+// Cells always cost something. A line goes into the lane the enemies on screen
+// are about to shoot (the one nearest to where it was meant to go): grab it
+// between volleys. With no enemy around it waits as a debt and comes with the
+// next obstacle row instead (layCellsOnRow).
+const CELL_DEBT_MAX = 12;
+function placeRiskyCells(run, lane, n) {
+  const hot = new Set();
+  for (const e of enemies) {
+    if (e.dead || e.type === 'boss' || e.state === 'leave') continue;
+    for (const l of patternLanes(e)) if (l >= 0 && l < LANES) hot.add(l);
+  }
+  const open = [...hot].filter((l) => !obstacles.some((o) => !o.dead && o.type === 'wall' && o.lane === l && o.y < 60));
+  if (!open.length) { run.cellDebt = Math.min(CELL_DEBT_MAX, (run.cellDebt || 0) + n); return; }
+  placeCells(open.sort((x, y) => Math.abs(x - lane) - Math.abs(y - lane))[0], n);
+}
+// An obstacle row pays the debt: a line across a wire (jump) or a tear
+// (phase), centred on it; else right behind a barrier, in its lane (step back
+// in as soon as it has passed). One draw per row, debt or not (daily run).
+const CELL_GAP = 26;
+function layCellsOnRow(run, row, y = -30) {
+  const r = run.rng.next();
+  if (!run.cellDebt) return;
+  const n = Math.min(run.cellDebt, B.COIN_LINE);
+  const lanesOf = (ch) => [...row].flatMap((c, l) => (c === ch ? [l] : []));
+  const cross = [...lanesOf('T'), ...lanesOf('P')];
+  if (cross.length) placeCells(cross[Math.floor(r * cross.length)], n, y + (CELL_GAP * (n - 1)) / 2, CELL_GAP);
+  else {
+    const walls = lanesOf('B');
+    if (!walls.length) return;
+    placeCells(walls[Math.floor(r * walls.length)], n, y - CELL_CLEAR - 4, CELL_GAP);
+  }
+  run.cellDebt -= n;
+}
 function safeToEnter(type, lane) {
   const covered = coveredLanes();
   const u = new Set(covered);
@@ -339,24 +374,6 @@ function pickSection(run) {
 // Narrow enemies that can reinforce a combat section at high tiers.
 const REINFORCEMENTS = ['drone', 'stalker', 'hopper'];
 
-// From district 4 the boss is not alone: light mobs join while it rests, in
-// lanes its next attack leaves free (bossTakesAdd keeps two lanes open), never
-// before row attacks (those wait until the mobs have fired). More of them, and
-// sooner, as the boss layer grows.
-function reinforceBoss(run, d, dt) {
-  const b = run.boss;
-  if (B.tier(run.distance) < 4 || b.dead || b.state !== 'rest') return;
-  run.addT = (run.addT ?? 2) - dt;
-  if (run.addT > 0) return;
-  const adds = enemies.filter((e) => e.type !== 'boss' && !e.minion && !e.dead && e.state !== 'leave').length;
-  if (adds >= Math.min(3, 1 + Math.floor((b.layer - 2) / 2))) return;
-  const type = B.tier(run.distance) >= 6 ? run.rng.pick(['drone', 'stalker']) : 'drone';
-  const lanes = [0, 1, 2, 3, 4].filter((l) => safeToEnter(type, l) && bossTakesAdd(b, threatLanes(type, l)));
-  if (!lanes.length) return;
-  spawnEnemy(type, run.rng.pick(lanes), d, run.rng, { power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
-  run.addT = Math.max(2.5, 6 - 0.4 * b.layer);
-}
-
 // Courses at tier 4+: rows come faster (2 beats -> 1.5 beats = 3 ticks) and
 // one more row joins at the end. Both changes are kept only if the course is
 // still survivable (fairness.js), otherwise the authored version plays.
@@ -377,12 +394,43 @@ function tightenCourse(run, events) {
   return out;
 }
 
+// Where a section lands on the track. Every section may be mirrored; one
+// without obstacle rows (rows span the whole track) may also slide sideways
+// as a block, keeping its shape. With aimChance the pick is limited to the
+// placements whose first enemy threatens the lane you are in, so standing
+// still in a quiet lane does not sit out the fight.
+function placeSection(run, events) {
+  const hasRows = events.some((x) => x.kind === 'row');
+  const variants = [];
+  for (const mirror of [false, true]) {
+    const base = events.map((ev) => (mirror ? mirrorEvent(ev) : { ...ev }));
+    for (let k = hasRows ? 0 : -(LANES - 1); k <= (hasRows ? 0 : LANES - 1); k++) {
+      if (base.some((ev) => ev.kind === 'enemy' && (ev.lane + k < 0 || ev.lane + k >= LANES))) continue;
+      variants.push(base.map((ev) => (ev.lane === undefined ? ev
+        : { ...ev, lane: Math.max(0, Math.min(LANES - 1, ev.lane + k)) })));
+    }
+  }
+  const first = (evs) => evs.filter((x) => x.kind === 'enemy').sort((p, q) => p.beat - q.beat)[0];
+  const aimed = variants.filter((evs) => {
+    const f = first(evs);
+    return f && threatLanes(f.type, f.lane).has(run.player.lane);
+  });
+  // Always the same two draws, wherever you stand: the daily run's sequence
+  // of sections must not depend on the player.
+  const aim = run.rng.chance(B.aimChance(B.tier(run.distance)));
+  const pool = aim && aimed.length ? aimed : variants;
+  return pool[Math.floor(run.rng.next() * pool.length)];
+}
+
+// One enemy per lane: a lane is taken while anything but the boss is in it,
+// leaving ones included (they would cross the newcomer on the way out).
+const laneTaken = (l) => enemies.some((o) => !o.dead && o.type !== 'boss' && o.lane === l);
+
 function startSection(run, d) {
   const def = pickSection(run);
   if (!def.generated) run.recentSec = [def.id, ...run.recentSec].slice(0, 4);
-  const mirror = run.rng.chance(0.5);
   const T = B.tier(run.distance), h = B.heat(run.distance);
-  let events = def.events.map((ev) => (mirror ? mirrorEvent(ev) : { ...ev }));
+  let events = placeSection(run, def.events);
   if (run.lastKind === 'course' && T >= 4) events = tightenCourse(run, events);
   // Reinforcements: from tier 1 a combat section may get one more narrow enemy
   // (two from tier 4), in a lane two away from every enemy of the section.
@@ -440,10 +488,17 @@ function direct(run, d) {
   }
   while (sec.i < sec.evs.length && sec.evs[sec.i].at <= now) {
     const ev = sec.evs[sec.i];
+    // Never on top of another enemy: a taken lane moves the newcomer to the
+    // nearest free lane that is also safe; with none, it waits (below).
+    if (ev.kind === 'enemy' && laneTaken(ev.lane)) {
+      const alt = [1, -1, 2, -2, 3, -3, 4, -4].map((o) => ev.lane + o)
+        .find((l) => l >= 0 && l < LANES && !laneTaken(l) && safeToEnter(ev.type, l));
+      if (alt !== undefined) ev.lane = alt;
+    }
     // Guard against the tail of the previous section: an enemy enters only if
     // two lanes stay open (the Wall needs a quiet screen). Otherwise the whole
     // rest of the section slides later together, keeping its shape.
-    if (ev.kind === 'enemy' && !safeToEnter(ev.type, ev.lane)) {
+    if (ev.kind === 'enemy' && (laneTaken(ev.lane) || !safeToEnter(ev.type, ev.lane))) {
       const slide = now - (sec.lastNow ?? now) || 0.5;
       for (let k = sec.i; k < sec.evs.length; k++) sec.evs[k].at += slide;
       break;
@@ -459,10 +514,12 @@ function direct(run, d) {
         else if (ch === 'T') spawnObstacle('low', l);
         else if (ch === 'P') spawnObstacle('rift', l);
       });
+      layCellsOnRow(run, ev.row);
     } else if (ev.kind === 'veil') {
       spawnVeil();
+      layCellsOnRow(run, 'PPPPP');
     } else if (ev.kind === 'coins') {
-      placeCells(ev.lane, ev.n);
+      placeRiskyCells(run, ev.lane, ev.n);
     }
   }
   sec.lastNow = now;
@@ -497,7 +554,7 @@ function spawnChunk(run, d) {
   if (rng.chance(0.03 + 0.005 * luck)) { placePickup('blue', lane); return; }
 
   // Everything dangerous comes from the director; chunks only add coins.
-  if (roll < 0.5) { const l = openLane(rng); if (l >= 0) placeCells(l, B.COIN_LINE); }
+  if (roll < 0.5) placeRiskyCells(run, 2, B.COIN_LINE);
 }
 
 // ---------------------------------------------------------------------------
@@ -747,7 +804,7 @@ export function updateRun(run, input, dt) {
   }
   if (run.warnT > 0) {
     run.warnT -= dt;
-    if (run.warnT <= 0) { run.boss = makeBoss(run.bossIndex, run.bossOrder[run.bossIndex % run.bossOrder.length], powerRatio(run.stats)); run.bossHit = false; run.addT = 2; }
+    if (run.warnT <= 0) { run.boss = makeBoss(run.bossIndex, run.bossOrder[run.bossIndex % run.bossOrder.length], powerRatio(run.stats)); run.boss.flank = B.tier(run.distance) >= 4; run.bossHit = false; }
   }
 
   if (!run.pending && !run.boss && run.pickDelay <= 0) {
@@ -814,7 +871,7 @@ export function updateRun(run, input, dt) {
   const dc = beatClock() - c0;
   if (dc > 0) syncMusic(beatClock(), dt / dc);
   updateCorpses(edt, run.speed);
-  if (run.boss) { updateBoss(run.boss, edt, d, p.lane); reinforceBoss(run, d, edt); }
+  if (run.boss) updateBoss(run.boss, edt, d, p.lane);
   updateObstacles(edt, run.speed);
   updateFx(dt, run.speed);
   updateWeaponFx(dt);

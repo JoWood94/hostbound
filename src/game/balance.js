@@ -48,6 +48,10 @@ export const overlapVolleys = (t) => (t >= 6 ? 3 : t >= 3 ? 2 : 1);
 // Chance a combat section gets reinforcements (from tier 1).
 export const reinforceChance = (t, h) => (t < 1 ? 0 : Math.min(1, 0.2 * t + 0.3 * h));
 
+// Chance a combat section is placed so its first enemy threatens your lane:
+// half the time in the first district, then 10% more per district up to 90%.
+export const aimChance = (t) => Math.min(0.9, 0.5 + 0.1 * t);
+
 // Economy
 export const COIN_LINE = 4;
 // Levels: cells (the currency) are experience. Cells needed to go from
