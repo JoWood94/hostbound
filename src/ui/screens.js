@@ -115,7 +115,15 @@ function drawLogo(t) {
   if (!drawCell(LOGO, 0, 0, W / 2, 146, 336, { alpha: flick * breathe })) {
     text('HOSTBOUND', W / 2, 160, { color: PAL.cyan, size: 32, align: 'center' });
   }
-  text('RUN · SHOOT · MUTATE', W / 2, 229, { color: PAL.mint, size: 9, align: 'center', alpha: 0.8 });
+  // Tagline: brush script, tilted and swaying like the Hotline Miami menus.
+  ctx.save();
+  ctx.translate(W / 2, 232);
+  ctx.rotate(-0.06 + Math.sin(t * 1.4) * 0.025);
+  ctx.font = '17px "Kaushan Script", cursive';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = PAL.cyan; ctx.shadowBlur = 10;
+  ctx.fillStyle = PAL.cyan; ctx.fillText('Run · Shoot · Mutate', 0, 0);
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -134,10 +142,9 @@ export function drawMenu(save, t, boardIdx) {
   }
   // The protagonist, big and free-floating (generated art; procedural fallback until the sheet loads).
   const bob = Math.sin(t * 2) * 3;
-  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, W / 2, 280 + bob, 104, { alpha: unlocked ? 1 : 0.4 })) {
-    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), W / 2, 280, { sx: 1.4, sy: 1.4, alpha: unlocked ? 1 : 0.45 });
+  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, W / 2, 292 + bob, 104, { alpha: unlocked ? 1 : 0.4 })) {
+    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), W / 2, 292, { sx: 1.4, sy: 1.4, alpha: unlocked ? 1 : 0.45 });
   }
-  text(b.name, W / 2, 334, { color: unlocked ? PAL.violet : PAL.mute, size: 14, align: 'center' });
 
   button('run', 60, 348, W - 120, 46, 'RUN', { color: PAL.cyan, size: 20, disabled: !unlocked });
   const dBest = save.daily.date === todayKey() ? save.daily.best : 0;
