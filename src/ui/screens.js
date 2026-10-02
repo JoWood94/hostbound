@@ -105,20 +105,83 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Logo: generated neon sign (art/source/logo_hostbound.jpg, imported with
-// import-glow.py). Breathes a little and flickers now and then, like the tubes.
+// Logo: Hotline Miami title card. One line of heavy italic racing type in flat
+// hot pink with a pale core, a solid dark offset shadow, a cyan/red RGB split,
+// scanlines through the letters and a neon bloom. Baked once (font loaded).
 // ---------------------------------------------------------------------------
-const LOGO = sheet('logo', 1024, 504);
+const LOGO_WORD = 'HOSTBOUND';
+const LOGO_FONT = '"Racing Sans One", Impact, sans-serif';
+const LOGO_W = 360, LOGO_H = 100, LOGO_CY = 50;          // bake canvas, logical px
+let logoBake = null;
+
+function bakeLogo(k) {
+  const c = document.createElement('canvas');
+  c.width = Math.round(LOGO_W * k); c.height = Math.round(LOGO_H * k);
+  const o = c.getContext('2d');
+  o.setTransform(k, 0, 0, k, 0, 0);
+  o.font = `54px ${LOGO_FONT}`;
+  o.textAlign = 'center'; o.textBaseline = 'middle';
+  const cx = LOGO_W / 2, cy = LOGO_CY;
+  o.save(); o.translate(cx, cy); o.rotate(-0.06);
+  // solid offset shadow, then the RGB split, then the face
+  o.fillStyle = '#3a1a5a'; o.fillText(LOGO_WORD, 4, 5);
+  o.globalCompositeOperation = 'lighter';
+  o.fillStyle = 'rgba(25,240,255,0.9)'; o.fillText(LOGO_WORD, -2.5, 0);
+  o.fillStyle = 'rgba(255,32,80,0.8)'; o.fillText(LOGO_WORD, 2.5, 0.5);
+  o.globalCompositeOperation = 'source-over';
+  const g = o.createLinearGradient(0, -22, 0, 22);
+  g.addColorStop(0, '#ffe0f8'); g.addColorStop(0.35, '#ff7ae6'); g.addColorStop(0.65, '#ff2bd6'); g.addColorStop(1, '#c0168e');
+  o.fillStyle = g; o.fillText(LOGO_WORD, 0, 0);
+  o.restore();
+  // scanlines through everything drawn so far
+  o.globalCompositeOperation = 'destination-out';
+  o.fillStyle = 'rgba(0,0,0,0.38)';
+  for (let y = 0; y < LOGO_H; y += 3) o.fillRect(0, y, LOGO_W, 1);
+  o.globalCompositeOperation = 'source-over';
+  return { c, k };
+}
+
 function drawLogo(t) {
-  const flick = Math.random() < 0.02 ? 0.55 : 1;
-  const breathe = 0.92 + Math.sin(t * 1.3) * 0.08;
-  if (!drawCell(LOGO, 0, 0, W / 2, 146, 336, { alpha: flick * breathe })) {
-    text('HOSTBOUND', W / 2, 160, { color: PAL.cyan, size: 32, align: 'center' });
+  const CY = 150;
+  // Cosmic current behind the word.
+  ctx.save();
+  for (const [col, amp, fr, sp, a] of [[PAL.cyan, 3, 0.045, 1.2, 0.5], [PAL.violet, 4.5, 0.03, -0.8, 0.45]]) {
+    ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = 1.5;
+    ctx.shadowColor = col; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 6) {
+      const y = CY + 2 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
+      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  const k = ctx.getTransform().a || 1;
+  const fontReady = !document.fonts || document.fonts.check(`54px ${LOGO_FONT}`);
+  if (!logoBake || logoBake.k !== k || (!logoBake.final && fontReady)) {
+    logoBake = bakeLogo(k);
+    logoBake.final = fontReady;
+  }
+  // Neon bloom (magenta wide), flicker and a rare horizontal tear, VHS style.
+  const ox = W / 2 - LOGO_W / 2, oy = CY - LOGO_CY;
+  const flick = Math.random() < 0.015 ? 0.6 : 1;
+  ctx.save();
+  ctx.globalAlpha = flick;
+  ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 20;
+  ctx.drawImage(logoBake.c, ox, oy, LOGO_W, LOGO_H);
+  ctx.restore();
+  if (Math.random() < 0.05) {
+    const sy = 30 + Math.random() * 40, sh = 3 + Math.random() * 5, dx = (Math.random() - 0.5) * 12;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ox, oy + sy, LOGO_W, sh); ctx.clip();
+    ctx.fillStyle = 'rgba(10,0,8,1)'; ctx.fillRect(ox, oy + sy, LOGO_W, sh);
+    ctx.drawImage(logoBake.c, ox + dx, oy, LOGO_W, LOGO_H);
+    ctx.restore();
   }
   // Tagline: angular racing type with a VHS look (RGB split, a tracking band,
   // and now and then a torn slice shifted sideways).
   ctx.save();
-  ctx.translate(W / 2, 232);
+  ctx.translate(W / 2, 200);
   ctx.rotate(-0.05);
   ctx.font = '16px "Racing Sans One", Impact, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
