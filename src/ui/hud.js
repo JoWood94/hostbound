@@ -22,6 +22,11 @@ export function drawHud(run) {
   for (let i = 0; i < p.blueHearts; i++) { heart(hx, y, PAL.blue, true); hx += 20; }
   for (let i = 0; i < st.barrier; i++) ring(14 + i * 12, y + 18, 4, PAL.blue, 2, i < p.shield ? 1 : 0.25);
 
+  // CARAPACE shell around the symbiote while it holds
+  if (p.carapace > 0 && !p.dead) {
+    ctx.save(); ctx.strokeStyle = '#d8d0bc'; ctx.globalAlpha = 0.55; ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.arc(p.x, H * 0.78, 30, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   // Experience: cells fill a thin acid bar across the very top, VS style.
   const need = xpNeed(run.level);
   const bx = 8, bw = W - 16, by = SAFE_TOP + 2;

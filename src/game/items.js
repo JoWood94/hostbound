@@ -42,6 +42,10 @@ export function baseStats() {
     // (beam > rail > rocket > bolt); the rest reshape it.
     hasBeam: false, hasRail: false, hasRocket: false, hasScatter: false, hasSine: false,
     carrier: 'bolt', smartRockets: false, buckshot: false, overload: false, helix: false,
+    // v1.1
+    fission: 0, shrapnel: 0, brand: 0, charge: 0, skyshot: 0, ghost: false, afterglow: 0, twinlink: false,
+    focus: 0, mitosis: false, momentum: 0, premonition: false, carapace: 0, spore: 0, cellWall: 0,
+    secondSkin: false, undertow: 0, egg: false, healMul: 1, heartCap: 0, parasite: false,
   };
 }
 
@@ -192,6 +196,110 @@ export const ITEMS = [
   { id: 'patch', name: 'PATCH KIT', code: 'PAT', cat: 'active', rarity: 1, max: 1, unlock: 'obstacles_200',
     desc: 'ACTIVE: heal 1 heart. 18 kills to charge.',
     active: { charge: 18 } },
+
+  // =====================================================================
+  // v1.1 (DESIGN_V1.1.md part B)
+  // ---- shot modifiers: each one composes with all four carriers ----
+  { id: 'fission', name: 'FISSION', code: 'FIS', cat: 'weapon', rarity: 1, max: 2, unlock: 'dist_5000',
+    desc: 'On its first hit a shot splits into two half-damage shots toward the side lanes. Stack: three.',
+    apply: (s, n) => { s.fission += n; } },
+  { id: 'shrapnel', name: 'SHRAPNEL', code: 'SHR', cat: 'weapon', rarity: 0, max: 3, unlock: null,
+    desc: 'Kills burst into 3 acid shards that fly up their lane and the next ones. Stack: +2 shards, +50% damage.',
+    apply: (s, n) => { s.shrapnel += n; } },
+  { id: 'brand', name: 'BRAND', code: 'BRD', cat: 'weapon', rarity: 0, max: 2, unlock: null,
+    desc: 'Your first hit brands an enemy: branded enemies take +20% damage from everything. Stack: +35%.',
+    apply: (s, n) => { s.brand += n; } },
+  { id: 'charge', name: 'CHARGE', code: 'CHG', cat: 'weapon', rarity: 1, max: 2, unlock: 'kills_run_100',
+    desc: 'Staying 1 s in the same lane charges your next shot: double size, x1.8 damage. Stack: 0.7 s.',
+    apply: (s, n) => { s.charge += n; } },
+  { id: 'skyshot', name: 'SKYSHOT', code: 'SKY', cat: 'weapon', rarity: 0, max: 2, unlock: 'air_kills_50',
+    desc: 'Shots fired mid-jump deal +50% damage and pierce +1. Stack: +90%, +2.',
+    apply: (s, n) => { s.skyshot += n; } },
+  { id: 'ghostround', name: 'GHOSTROUND', code: 'GHO', cat: 'weapon', rarity: 1, max: 1, unlock: 'rift_30',
+    desc: 'Shots fired while phasing pass through everything and deal double damage.',
+    apply: (s) => { s.ghost = true; } },
+  { id: 'afterglow', name: 'AFTERGLOW', code: 'AFG', cat: 'weapon', rarity: 1, max: 2, unlock: 'kills_1000',
+    desc: 'Shots leave an acid trail for 0.35 s that burns what touches it. Stack: 0.6 s, stronger.',
+    apply: (s, n) => { s.afterglow += n; } },
+  { id: 'twinlink', name: 'TWIN LINK', code: 'TWN', cat: 'weapon', rarity: 0, max: 1, unlock: null,
+    desc: 'For 0.6 s after each lane change you also fire from the lane you left.',
+    apply: (s) => { s.twinlink = true; } },
+  // ---- stat modifiers ----
+  { id: 'densecore', name: 'DENSE CORE', code: 'DNC', cat: 'weapon', rarity: 0, max: 3, unlock: null,
+    desc: 'DMG +0.35, no drawbacks.',
+    apply: (s, n) => { s.damage += 0.35 * n; } },
+  { id: 'adrenal', name: 'ADRENAL GLAND', code: 'ADG', cat: 'weapon', rarity: 0, max: 3, unlock: null,
+    desc: 'RATE +15%.',
+    apply: (s, n) => { s.fireRate *= 1 + 0.15 * n; } },
+  { id: 'hollow', name: 'HOLLOW BONES', code: 'HLW', cat: 'weapon', rarity: 0, max: 2, unlock: null,
+    desc: 'SHOT SPEED +25%, but you blink for less time after a hit.',
+    apply: (s, n) => { s.shotSpeed += 0.25 * n; s.iframeTime -= 0.15 * n; } },
+  { id: 'keratin', name: 'KERATIN', code: 'KRT', cat: 'defense', rarity: 1, max: 2, unlock: null,
+    desc: '+1 max heart and heal 1. SPEED -8%.',
+    apply: (s, n) => { s.maxHearts += n; s.speed -= 0.08 * n; }, onPick: (run) => { run.player.hearts += 1; } },
+  { id: 'synapse', name: 'SYNAPSE', code: 'SYN', cat: 'defense', rarity: 0, max: 3, unlock: null,
+    desc: 'SPEED +12%, LUCK +1.',
+    apply: (s, n) => { s.speed += 0.12 * n; s.luck += n; } },
+  { id: 'focus', name: 'FOCUS LENS', code: 'FCL', cat: 'weapon', rarity: 1, max: 2, unlock: 'boss_10',
+    desc: 'Crits deal +1x more. Without HEADSHOT: +5% crit chance.',
+    apply: (s, n) => { s.focus += n; } },
+  { id: 'mitosis', name: 'MITOSIS', code: 'MIT', cat: 'economy', rarity: 2, max: 1, unlock: 'level_12',
+    desc: 'Every COMMON weapon item can stack one more time.',
+    apply: (s) => { s.mitosis = true; } },
+  { id: 'momentum', name: 'MOMENTUM', code: 'MOM', cat: 'defense', rarity: 0, max: 2, unlock: null,
+    desc: 'SPEED +10%. Every lane change recharges the phase 0.15 s faster.',
+    apply: (s, n) => { s.speed += 0.1 * n; s.momentum += n; } },
+  // ---- power-ups ----
+  { id: 'premonition', name: 'PREMONITION', code: 'PRE', cat: 'defense', rarity: 1, max: 1, unlock: 'dist_4000',
+    desc: 'Lanes light up one tick earlier: more time to react.',
+    apply: (s) => { s.premonition = true; } },
+  { id: 'carapace', name: 'CARAPACE', code: 'CRP', cat: 'defense', rarity: 1, max: 1, unlock: null,
+    desc: 'Ignore the first hit of every section; the shell grows back for the next.',
+    apply: (s) => { s.carapace = Math.max(s.carapace, 1); } },
+  { id: 'sporecloud', name: 'SPORE CLOUD', code: 'SPC', cat: 'defense', rarity: 0, max: 2, unlock: null,
+    desc: 'Getting hit releases spores that wipe enemy shots in your lane and the next ones for 0.8 s. Stack: 1.4 s.',
+    apply: (s, n) => { s.spore += n; } },
+  { id: 'cellwall', name: 'CELL WALL', code: 'CLW', cat: 'economy', rarity: 0, max: 2, unlock: 'cells_run_300',
+    desc: 'Every 25 cells you collect grow a blue heart. Stack: every 18.',
+    apply: (s, n) => { s.cellWall = n; } },
+  { id: 'secondskin', name: 'SECOND SKIN', code: 'SSK', cat: 'defense', rarity: 1, max: 1, unlock: null,
+    desc: 'A lost blue heart grows back every 45 s (up to what you started with).',
+    apply: (s) => { s.secondSkin = true; } },
+  { id: 'undertow', name: 'UNDERTOW', code: 'UND', cat: 'economy', rarity: 0, max: 2, unlock: null,
+    desc: 'While phasing you pull every cell on screen. Stack: hearts too.',
+    apply: (s, n) => { s.undertow += n; } },
+  { id: 'egg', name: 'SYMBIONT EGG', code: 'EGG', cat: 'defense', rarity: 2, max: 1, unlock: 'boss_3run',
+    desc: 'Once per run, death hatches you again with 1 heart.',
+    apply: (s) => { s.egg = true; } },
+  // ---- risk ----
+  { id: 'leadweights', name: 'LEAD WEIGHTS', code: 'LDW', cat: 'risk', rarity: 1, max: 1, unlock: 'jump_300',
+    desc: 'You can no longer jump. DMG +60%.', conflicts: ['kickflip', 'pound', 'skyshot'],
+    apply: (s) => { s.canJump = false; s.damageMul *= 1.6; } },
+  { id: 'fever', name: 'FEVER', code: 'FVR', cat: 'risk', rarity: 1, max: 2, unlock: 'kills_run_150',
+    desc: 'RATE +30%, but every heal is halved. Stack: +55%, heals a third.',
+    apply: (s, n) => { s.fireRate *= 1 + (n > 1 ? 0.55 : 0.3); s.healMul = n > 1 ? 1 / 3 : 0.5; } },
+  { id: 'double', name: 'DOUBLE OR NOTHING', code: 'DBL', cat: 'risk', rarity: 2, max: 1, unlock: 'cells_run_500',
+    desc: 'Cells x2. Max hearts fixed at 2.',
+    apply: (s) => { s.coinMul *= 2; s.heartCap = 2; } },
+  { id: 'parasite', name: 'PARASITE', code: 'PRS', cat: 'risk', rarity: 1, max: 1, unlock: 'level_15', conflicts: ['glass'],
+    desc: 'Every level costs a heart (never the last). Level-ups offer two more choices.',
+    apply: (s) => { s.parasite = true; s.extraChoices += 2; } },
+  // ---- actives (boss loot) ----
+  { id: 'blackhole', name: 'BLACK HOLE', code: 'BLH', cat: 'active', rarity: 1, max: 1, unlock: 'elite_50',
+    desc: 'ACTIVE: for 1.5 s enemy shots are sucked in and destroyed above you; 8 damage to your lane. 12 kills.',
+    active: { charge: 12 } },
+  { id: 'mirrorfield', name: 'MIRROR FIELD', code: 'MRF', cat: 'active', rarity: 1, max: 1, unlock: 'phase_run_40',
+    desc: 'ACTIVE: for 2 s every enemy shot that reaches you is reflected. 10 kills.',
+    active: { charge: 10 } },
+  { id: 'overcharge', name: 'OVERCHARGE', code: 'OVC', cat: 'active', rarity: 1, max: 1, unlock: 'boss_7',
+    desc: 'ACTIVE: your next 3 volleys (or 2 s of beam) are charged. 8 kills.',
+    active: { charge: 8 } },
+  { id: 'warp', name: 'WARP', code: 'WRP', cat: 'active', rarity: 2, max: 1, unlock: 'dist_6000',
+    desc: 'ACTIVE: jump 120 m ahead, clearing the screen. Not during bosses. 14 kills.',
+    active: { charge: 14 } },
+  { id: 'molt', name: 'MOLT', code: 'MLT', cat: 'active', rarity: 1, max: 1, unlock: 'level_10',
+    desc: 'ACTIVE: heal 2 hearts and shrink for 3 s (smaller hitbox). 16 kills.',
+    active: { charge: 16 } },
 ];
 
 export const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
@@ -249,6 +357,32 @@ export function computeStats(board, stacks) {
     if (it && it.apply && stacks[id] > 0) it.apply(s, stacks[id]);
   }
   for (const sy of activeSynergies(stacks)) sy.apply(s);
+  // v1.1 pair effects (named in combos.js, applied by the shot engine and run)
+  const has = (...ids) => ids.every((id) => stacks[id] > 0);
+  s.cascade = has('fission', 'split');
+  s.mirv = has('fission', 'rockets');
+  s.grenade = has('shrapnel', 'chain');
+  s.sporeBurst = has('shrapnel', 'toxin');
+  s.execution = has('brand', 'crit');
+  s.conduit = has('brand', 'arc');
+  s.bloodhound = has('brand', 'homing');
+  s.siege = has('charge', 'railgun');
+  s.resonance = has('charge', 'echo');
+  s.airRaid = has('skyshot', 'kickflip');
+  s.meteor = has('skyshot', 'pound');
+  s.spectre = has('ghostround', 'mirror');
+  s.wraith = has('ghostround', 'blink');
+  s.ribbon = has('afterglow', 'sine');
+  s.scar = has('afterglow', 'laser');
+  s.sixthSense = has('premonition', 'adrenaline');
+  s.hiveMind = has('cellwall', 'greed');
+  s.horizon = has('blackhole', 'orbital');
+  s.artillery = has('leadweights', 'slug');
+  s.miasma = has('sporecloud', 'toxin');
+  s.drift = has('momentum', 'slipstream');
+  if (has('carapace', 'plating')) s.carapace = 2;          // EXOSKELETON
+  if (s.wraith) s.phaseTime += 0.2;
+  if (s.artillery) s.shotSpeed += 0.12 * (stacks.slug || 0); // SLUG's slowdown cancelled
   s.carrier = s.hasBeam ? 'beam' : s.hasRail ? 'rail' : s.hasRocket ? 'rocket' : 'bolt';
   s.shotSpeed = Math.max(0.5, Math.min(2.5, s.shotSpeed));
   s.bulletSpeed = 520 * s.shotSpeed;
@@ -256,6 +390,11 @@ export function computeStats(board, stacks) {
   s.speed = Math.max(0.6, Math.min(2.2, s.speed));
   s.phaseCd /= s.speed;
   s.crit += 0.03 * s.luck;
+  // FOCUS LENS: bigger crits; a little crit chance when there is none to boost.
+  s.critMul += s.focus;
+  if (s.focus && !(stacks.crit > 0)) s.crit += 0.05 * s.focus;
+  if (s.heartCap) s.maxHearts = Math.min(s.maxHearts, s.heartCap);
+  s.iframeTime = Math.max(0.5, s.iframeTime);
   s.maxHearts = Math.max(1, s.maxHearts);
   s.fireRate = Math.min(20, s.fireRate);
   s.crit = Math.min(0.75, s.crit);
@@ -275,9 +414,16 @@ const SOURCE_WEIGHT = {
   level: [60, 30, 0],
   boss: [12, 30, 22],
 };
+// Stack cap: MITOSIS lets every COMMON weapon item stack once more.
+export const maxOf = (it, stacks) => it.max + (stacks.mitosis && it.rarity === 0 && it.cat === 'weapon' ? 1 : 0);
+// Items that exclude each other (either side may declare it).
+const conflicting = (it, stacks) => (it.conflicts || []).some((c) => stacks[c] > 0)
+  || ITEMS.some((o) => stacks[o.id] > 0 && (o.conflicts || []).includes(it.id));
+
 export function rollItems(rng, unlocked, stacks, n, luck = 0, { source = 'boss', exclude = [] } = {}) {
   const pool = ITEMS.filter((it) => unlocked.includes(it.id)
-    && (stacks[it.id] || 0) < it.max
+    && (stacks[it.id] || 0) < maxOf(it, stacks)
+    && !conflicting(it, stacks)
     && !exclude.includes(it.id)
     && (source === 'boss' || !BOSS_ONLY.has(it.cat))
     && SOURCE_WEIGHT[source][it.rarity] > 0);
@@ -296,6 +442,9 @@ export function rollItems(rng, unlocked, stacks, n, luck = 0, { source = 'boss',
     const cands = pool.filter((it) => !out.includes(it) && filter(it));
     if (cands.length && out.length < n) out.push(take(cands));
   };
+  // Level-ups build: with ~76 items, one card is always something you already
+  // hold and can still stack (when there is one), or builds never close.
+  if (source === 'level') grab((it) => stacks[it.id] > 0);
   if (source === 'boss') {
     const hasMode = ITEMS.some((it) => it.cat === 'mode' && stacks[it.id]);
     if (!hasMode) grab((it) => it.cat === 'mode');
@@ -330,7 +479,16 @@ export function effectiveDps(s) {
   if (s.hasScatter) m *= 0.85;
   if (s.hasSine) m *= 0.9;
   if (s.hasRocket && s.carrier !== 'rocket') m *= 1.1;
-  return s.fireRate * perShot * m + s.toxin;
+  // v1.1 damage that does not come from the direct shot (rough shares, so
+  // enemy HP scales with these builds too instead of falling behind them)
+  if (s.fission) m *= 1 + 0.35 * s.fission;               // fragments on the first hit
+  if (s.brand) m *= s.brand > 1 ? 1.3 : 1.17;             // branded targets take more
+  if (s.afterglow) m *= 1 + (s.afterglow > 1 ? 0.3 : 0.18);
+  if (s.skyshot) m *= 1 + 0.12 * s.skyshot;              // only in the air: a small share
+  if (s.charge) m *= 1.12;
+  let dps = s.fireRate * perShot * m + s.toxin;
+  if (s.shrapnel) dps += dmg * 0.6 * (3 + 2 * (s.shrapnel - 1)) * 0.3;   // ~0.3 kills per second
+  return dps;
 }
 export function powerRatio(s) { return Math.max(1, effectiveDps(s) / BASE_DPS); }
 

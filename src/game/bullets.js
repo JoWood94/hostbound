@@ -44,6 +44,10 @@ export const F_EXPLODE = 1; // blast on hit (ROCKET POD)
 export const F_WAVE = 2;    // weaves across neighbour lanes (SINE WAVE)
 export const F_RANGE = 4;   // short range pellet (SCATTER)
 export const F_ROCKET = 8;  // rocket body: accelerates, smoke trail
+export const F_FISSION = 16;  // child of a FISSION split (does not split again)
+export const F_FISSION2 = 32; // CASCADE: a second-generation child
+export const F_TOXIC = 64;    // SPORE BURST shards: heavier poison
+export const F_SLOW = 128;    // WRAITH ghost shots: slow what they hit
 
 export const playerBullets = makePool(384);
 export const enemyBullets = makePool(1024);

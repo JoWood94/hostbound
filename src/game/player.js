@@ -58,9 +58,14 @@ export function updatePlayer(p, input, dt, stats) {
     const next = Math.max(0, Math.min(LANES - 1, p.lane + dir));
     if (next !== p.lane) {
       p.laneFromX = p.x;
+      // TWIN LINK keeps firing from the lane just left for a moment
+      p.twinLane = p.lane; p.twinT = 0.6;
       p.lane = next;
       p.laneT = 0;
       p.ev.lane = true;
+      p.stillT = 0;                                   // CHARGE resets on every move
+      if (stats.momentum) p.phaseCd = Math.max(0, p.phaseCd - 0.15 * stats.momentum);
+      p.laneTimes = [...(p.laneTimes || []).slice(-1), p.time || 0];
     } else {
       p.bump = 0.12 * dir;
     }
@@ -73,6 +78,15 @@ export function updatePlayer(p, input, dt, stats) {
     p.x = laneX(p.lane);
   }
   if (p.bump) { p.bump *= 0.7; if (Math.abs(p.bump) < 0.005) p.bump = 0; }
+  p.time = (p.time || 0) + dt;
+  if (p.twinT > 0) p.twinT -= dt;
+  if (p.shrinkT > 0) p.shrinkT -= dt;
+  if (p.overchargeT > 0) p.overchargeT -= dt;
+  // CHARGE: stand still in a lane to charge the next shot
+  if (stats.charge) {
+    p.stillT = (p.stillT || 0) + dt;
+    if (p.stillT >= (stats.charge > 1 ? 0.7 : 1)) p.charged = true;
+  }
 
   // Jump, with a short input buffer so a swipe just before landing is not lost.
   if (input.jump) p.jumpBuf = 0.18;
@@ -142,6 +156,14 @@ export function orbitalPositions(p, n) {
 // Returns 'iframe' | 'shield' | 'blue' | 'red' depending on what absorbed it.
 export function hurtPlayer(p, stats) {
   if (p.iframes > 0 || p.dead) return 'iframe';
+  // CARAPACE: the shell takes the first hit(s) of each section
+  if (p.carapace > 0) {
+    p.carapace--;
+    p.iframes = 0.5;
+    burst(p.x, PLAYER_Y, '#d8d0bc', 16, 170, 0.4, 2.5);
+    shake(3, 0.1);
+    return 'shield';
+  }
   p.shieldT = 0;
   if (p.shield > 0) {
     p.shield--;
@@ -255,7 +277,7 @@ function growth(p) { return Math.min(0.35, (p.items || 0) * 0.03); }
 
 function drawSymbiote(p, x, y, jh, stats) {
   const t = performance.now() / 1000;
-  const size = SYM_SIZE * (1 + growth(p));
+  const size = SYM_SIZE * (1 + growth(p)) * (p.shrinkT > 0 ? 0.75 : 1);   // MOLT
   const vx = p.x - p.prevX;
   p.bank = (p.bank || 0) + (Math.max(-0.3, Math.min(0.3, vx * 0.08)) - (p.bank || 0)) * 0.3;
   const hit = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 18) % 2 === 0;

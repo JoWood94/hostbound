@@ -213,6 +213,10 @@ const TICK = TICK_BASE;
 // time to react: learnable, with or without sound. It shortens only when the
 // tempo steps up (one step per district).
 const TELE_TICKS = 4;
+// PREMONITION: lanes light up earlier (the enemy fires that much later).
+let teleBonus = 0;
+export function setTeleBonus(n) { teleBonus = n; }
+export const teleBonusNow = () => teleBonus;
 // 8 ticks; one tick less from the 10th district (220 BPM: 1.5 s total). Never lower.
 const travelTicks = (d) => (d >= 25 ? 7 : 8);
 const JUMP_GAP = 0.65;    // s between two low waves in a row: one jump (0.45) + reaction
@@ -229,7 +233,7 @@ export function onGridSpeed(speed, dist, d) {
 }   // ticks; the director schedules on it
 export const TICK_SEC = TICK;
 // 0 when a lane lights up, 1 when its first shot leaves.
-const teleProgress = (e) => (e.state === 'telegraph' ? Math.max(0, Math.min(1, 1 - (e.fireAt - clock) / TELE_TICKS)) : 1);
+const teleProgress = (e) => (e.state === 'telegraph' ? Math.max(0, Math.min(1, 1 - (e.fireAt - clock) / (TELE_TICKS + teleBonus))) : 1);
 const ticksOf = (sec) => Math.max(1, Math.round(sec / TICK));
 // Lane -> { until, color }: lanes stay lit while a fired volley is still on its
 // way, so the light means "danger now", not "danger was announced".
@@ -265,7 +269,7 @@ function beginTelegraph(e) {
   e.steps = e.T.steps(e);
   e.state = 'telegraph';
   e.stateT = 0;
-  e.fireAt = e.teleAt + TELE_TICKS;
+  e.fireAt = e.teleAt + TELE_TICKS + teleBonus;
   e.telegraphLanes = allSequenceLanes(e);
   sfx.telegraph();
 }
@@ -307,6 +311,15 @@ export function updateEnemies(dt, difficulty) {
     } else e.jinkOff = 0;
     if (e.jinkCd > 0) e.jinkCd -= dt;
     if (e.shellCd > 0) e.shellCd -= dt;
+    // WRAITH: a slowed enemy's schedule runs 30% slower for a moment (its
+    // warnings only get longer, never shorter).
+    if (e.slowT > 0) {
+      e.slowT -= dt;
+      const lag = 0.3 * (dt * timeMul(d)) / TICK;
+      if (e.fireAt !== undefined) e.fireAt += lag;
+      if (e.restUntil !== undefined) e.restUntil += lag;
+      if (e.teleAt !== undefined) e.teleAt += lag;
+    }
     if (e.type !== 'boss') e.x = baseX + (e.jinkOff || 0);
 
     if (e.muzzle > 0) e.muzzle -= dt;
@@ -386,7 +399,7 @@ export function damageEnemy(e, dmg) {
     e.jinkCd = 2.2;
     e.jinkDir = e.lane <= 0 ? 1 : e.lane >= LANES - 1 ? -1 : (Math.random() < 0.5 ? -1 : 1);
   }
-  e.hp -= dmg;
+  e.hp -= dmg * (e.brandMul || 1);          // BRAND: marked enemies take more from everything
   e.hitFlash = 0.06;
   burst(e.x, e.y, e.T.color, 3, 90, 0.25, 1.5);
   if (e.hp <= 0) {
@@ -551,6 +564,7 @@ export function drawEnemies(alpha) {
       drawCell(art[0], art[1], col, x, y, BROOD_SIZE * breathe * (e.minion ? 0.8 : 1), { flash: e.hitFlash > 0 ? 0.7 : 0 });
       if (e.muzzle > 0) { drawGlowDot(x, y + MOUTH, c, 7 * (e.muzzle / 0.12) + 2, 0.9); drawGlowDot(x, y + MOUTH, '#ffffff', 2.5, e.muzzle / 0.12); }
       if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
+      if (e.brandMul) { ring(x, y, r + 5, PAL.acid, 1.2, 0.55); drawGlowDot(x + r + 4, y - r, PAL.acid, 2, 0.9); }
       continue;
     }
     const scale = breathe * (e.minion ? 0.8 : 1) * (e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r)));

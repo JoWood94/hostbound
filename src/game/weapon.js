@@ -1,6 +1,6 @@
 // Player weapon. Reads the final stats object only, so every item combination
 // composes without special cases. Also resolves on-hit effects.
-import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, SHOTS } from './bullets.js';
+import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, SHOTS } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
 import { ctx, makeOffscreen } from '../core/canvas.js';
@@ -15,8 +15,26 @@ import { sfx } from '../audio/audio.js';
 const arcs = [];
 const rings = [];
 
+// Per-shot modifiers that depend on the player's state this instant.
+//   CHARGE / OVERCHARGE: x1.8 damage, double size (SIEGE rails x2.5 + stun)
+//   GHOSTROUND while phasing: x2 damage, pierce everything
+//   SKYSHOT in the air: pierce +1/+2 (damage is in currentDamage)
+function shotMods(p, stats, consume = true) {
+  const charged = p.charged || p.overcharge > 0;
+  if (charged && consume) { if (p.overcharge > 0) p.overcharge--; else p.charged = false; p.stillT = 0; }
+  const ghost = stats.ghost && p.phaseT > 0;
+  return {
+    charged,
+    dmg: (charged ? 1.8 : 1) * (ghost ? 2 : 1),
+    size: charged ? 2 : 1,
+    pierce: (ghost ? 99 : 0) + (stats.skyshot && p.jumpT > 0 ? stats.skyshot : 0),
+    flags: ghost && stats.wraith ? F_SLOW : 0,
+  };
+}
+
 export function currentDamage(p, stats) {
   let d = stats.damage * stats.damageMul;
+  if (stats.skyshot && p.jumpT > 0) d *= stats.skyshot > 1 ? 1.9 : 1.5;   // SKYSHOT
   if (stats.adrenaline && p.hearts === 1) d *= 2;
   if (stats.bloodPact) d *= 1 + 0.25 * stats.bloodPact * Math.max(0, stats.maxHearts - p.hearts);
   if (stats.ambush && p.ambushT > 0) d *= 1 + 0.75 * stats.ambush;
@@ -27,6 +45,79 @@ export function currentDamage(p, stats) {
 // is x1.41 size, x4 is x2. Clamped so weak side shots stay visible and huge
 // builds do not cover the whole lane.
 export function dmgScale(dmg) { return Math.max(0.7, Math.min(2.2, Math.sqrt(dmg))); }
+
+// FISSION: the lanes a split goes to (side lanes; a third straight one at 2 stacks).
+function forkLanes(lane, stats) {
+  const out = [lane - 1, lane + 1];
+  if (stats.fission > 1) out.push(lane);
+  return out.filter((l) => l >= 0 && l < LANES);
+}
+
+// AFTERGLOW: burning trails. Points with a time to live; every 0.1 s anything
+// touching one takes a slice of the trail's damage per second.
+const trails = [];
+const TRAIL_CAP = 420;
+function addTrail(pts, ttl, stats, p) {
+  const dps = currentDamage(p, stats) * stats.fireRate * (stats.afterglow > 1 ? 0.4 : 0.25);
+  const life = ttl * (stats.ribbon ? 2 : 1) * (stats.afterglow > 1 ? 1.7 : 1);
+  for (let i = 0; i < pts.length; i += 4) {
+    if (trails.length >= TRAIL_CAP) trails.shift();
+    trails.push({ x: pts[i], y: pts[i + 1], t: life, max: life, dps });
+  }
+}
+let trailTick = 0;
+export function updateTrails(stats, dt, p) {
+  if (stats.afterglow && stats.carrier !== 'beam' && stats.carrier !== 'rail') {
+    // projectiles drop a point every few frames
+    p.trailDrop = (p.trailDrop || 0) - dt;
+    if (p.trailDrop <= 0) {
+      p.trailDrop = 0.05;
+      const pb = playerBullets;
+      const pts = [];
+      for (let i = 0; i < pb.n; i++) pts.push(pb.x[i], pb.y[i], 0, 0);
+      addTrail(pts, 0.35, stats, p);
+    }
+  }
+  for (let i = 0; i < trails.length; i++) { trails[i].t -= dt; if (trails[i].t <= 0) { trails.splice(i, 1); i--; } }
+  trailTick -= dt;
+  if (trailTick > 0 || !trails.length) return;
+  trailTick = 0.1;
+  for (const e of enemies) {
+    if (e.dead) continue;
+    let best = 0;
+    for (const t of trails) if (t.dps > best && overlaps(e, t.x, t.y, 5)) best = t.dps;
+    if (best) damageEnemy(e, best * 0.1);
+  }
+}
+function drawTrails() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const t of trails) {
+    ctx.globalAlpha = 0.35 * (t.t / t.max);
+    ctx.fillStyle = SHOT;
+    ctx.fillRect(t.x - 2.5, t.y - 2.5, 5, 5);
+  }
+  ctx.restore();
+}
+
+// FISSION on a projectile: at the first hit the shot splits toward the side
+// lanes (half damage). Children do not split again, except once with CASCADE.
+function fission(pb, i, stats, e) {
+  const f = pb.flags[i];
+  if (!stats.fission || (f & F_FISSION2) || ((f & F_FISSION) && !stats.cascade)) return;
+  const lane = Math.max(0, Math.min(LANES - 1, Math.round((pb.x[i] - laneX(0)) / LANE_W)));
+  const childFlag = f & F_FISSION ? F_FISSION2 : F_FISSION;
+  for (const l of forkLanes(lane, stats)) {
+    const vx = (laneX(l) - pb.x[i]) / 0.25;
+    const bi = spawn(playerBullets, pb.x[i], pb.y[i] - 6, vx, -480, Math.max(2, pb.r[i] * 0.75), pb.dmg[i] * 0.5, 0, pb.pierce[i]);
+    if (bi < 0) continue;
+    playerBullets.lane[bi] = l;                       // HYDRA: seekers steer from the new lane
+    playerBullets.lastHit[bi] = e.id;
+    // MIRV: with rockets every fragment explodes; F_WAVE dropped (it would snap back)
+    playerBullets.flags[bi] = ((f & ~F_WAVE & ~F_RANGE & ~F_ROCKET) | childFlag | (stats.mirv ? F_EXPLODE : 0));
+    playerBullets.ox[bi] = pb.y[i];
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Wingmen: friendly drones in neighbouring lanes
@@ -62,15 +153,31 @@ export function drawWingmen() {
 
 // Movement-driven shots
 export function groundPound(p, stats) {
-  const lanes = stats.aftershock ? [p.lane - 1, p.lane, p.lane + 1] : [p.lane];
+  // METEOR (SKYSHOT + GROUND POUND): three lanes wide, with the air bonus
+  const lanes = stats.aftershock || stats.meteor ? [p.lane - 1, p.lane, p.lane + 1] : [p.lane];
+  const sky = stats.meteor ? (stats.skyshot > 1 ? 1.9 : 1.5) : 1;
   for (const l of lanes) {
     if (l < 0 || l >= LANES) continue;
-    spawn(playerBullets, laneX(l), PLAYER_Y - 10, 0, -620, 6, currentDamage(p, stats) * 2 * stats.groundPound, BIG, 20);
+    spawn(playerBullets, laneX(l), PLAYER_Y - 10, 0, -620, 6, currentDamage(p, stats) * 2 * stats.groundPound * sky, BIG, 20);
   }
   rings.push({ x: p.x, y: PLAYER_Y, r: 34, t: 0.25 });
 }
 export function slipBurst(p, stats) {
-  for (const sp of [560, 640, 720]) spawn(playerBullets, p.x, PLAYER_Y - 14, 0, -sp, 2.6, currentDamage(p, stats) * 0.7 * stats.slipstream, 0, stats.pierce);
+  // DRIFT (MOMENTUM + SLIPSTREAM): two lane changes within 0.5 s charge the burst
+  const lt = p.laneTimes || [];
+  const drift = stats.drift && lt.length >= 2 && lt[1] - lt[0] < 0.5;
+  const k = drift ? 1.8 : 1;
+  for (const sp of [560, 640, 720]) spawn(playerBullets, p.x, PLAYER_Y - 14, 0, -sp, 2.6 * (drift ? 2 : 1), currentDamage(p, stats) * 0.7 * stats.slipstream * k, 0, stats.pierce);
+}
+// AIR RAID (SKYSHOT + KICKFLIP): landing fires a skyshot into the three lanes around you.
+export function airRaid(p, stats) {
+  const d = currentDamage(p, stats) * (stats.skyshot > 1 ? 1.9 : 1.5);
+  for (const o of [-1, 0, 1]) {
+    const l = p.lane + o;
+    if (l < 0 || l >= LANES) continue;
+    const bi = spawn(playerBullets, laneX(l), PLAYER_Y - 14, 0, -600, stats.bulletSize * 1.4, d, BIG, stats.pierce + stats.skyshot);
+    if (bi >= 0) playerBullets.lane[bi] = l;
+  }
 }
 export function addRing(x, y, r) { rings.push({ x, y, r, t: 0.25 }); }
 
@@ -158,7 +265,7 @@ function lockTargets(p, stats, specs) {
 }
 
 function buildPath(p, spec, wave, phase) {
-  const x0 = p.x, y0 = PLAYER_Y - 22;
+  const x0 = spec.fromX ?? p.x, y0 = PLAYER_Y - 22;
   const pts = [];
   if (spec.target) {
     // Curve onto the locked target, then carry on straight up (for pierce).
@@ -229,7 +336,8 @@ export function updateWeapon(p, stats, dt, rateMul = 1, hit = null) {
 // ---- projectiles (bolt / rocket carriers) ---------------------------------
 function fireProjectiles(p, stats) {
   const rocket = stats.carrier === 'rocket';
-  const dmg = currentDamage(p, stats) * (rocket ? 1.4 : 1);
+  const mod = shotMods(p, stats);
+  const dmg = currentDamage(p, stats) * (rocket ? 1.4 : 1) * mod.dmg;
   const speed = rocket ? 180 * stats.shotSpeed : stats.bulletSpeed;
   const y = PLAYER_Y - 14;
   let flags = 0;
@@ -237,9 +345,16 @@ function fireProjectiles(p, stats) {
   if (rocket) flags |= F_ROCKET;
   if (stats.hasScatter && !rocket) flags |= F_RANGE;
   if (stats.hasSine) flags |= F_WAVE;
+  flags |= mod.flags;
 
-  // ECHO: every Nth volley is one huge piercing round.
-  if (!stats.hasScatter && stats.echo && p.shotCount % stats.echo === 0) {
+  // TWIN LINK: for a moment after a lane change, the lane you left fires too.
+  if (stats.twinlink && p.twinT > 0) {
+    const bi = spawn(playerBullets, laneX(p.twinLane), y, 0, -speed, stats.bulletSize * dmgScale(dmg) * mod.size, dmg, 0, stats.pierce + mod.pierce);
+    if (bi >= 0) { tagLane(bi, p.twinLane); playerBullets.flags[bi] = flags & ~F_WAVE; playerBullets.ox[bi] = y; }
+  }
+
+  // ECHO: every Nth volley is one huge piercing round (RESONANCE: so is a charged one).
+  if (!stats.hasScatter && ((stats.echo && p.shotCount % stats.echo === 0) || (mod.charged && stats.resonance))) {
     const bi = spawn(playerBullets, p.x, y, 0, -stats.bulletSpeed * 0.9, stats.bulletSize * 2.4 * dmgScale(dmg), dmg * stats.echoMul, BIG, stats.pierce + 3);
     if (bi >= 0) { tagLane(bi, p.lane); playerBullets.flags[bi] = flags & ~F_ROCKET; }
     sfx.shoot();
@@ -254,8 +369,8 @@ function fireProjectiles(p, stats) {
     if (pt.angle !== undefined) { vx = Math.sin(pt.angle) * speed; vy = -Math.cos(pt.angle) * speed; }
     else { vx = (laneX(pt.lane) - p.x) / travel; vy = -speed; }
     const shotDmg = dmg * pt.mul / (strands > 1 ? strands * 0.8 : 1);
-    const size = (stats.hasScatter ? 2.4 + stats.bulletSize * 0.25 : stats.bulletSize) * dmgScale(shotDmg);
-    const pierce = stats.pierce + (stats.buckshot ? 1 : 0);
+    const size = (stats.hasScatter ? 2.4 + stats.bulletSize * 0.25 : stats.bulletSize) * dmgScale(shotDmg) * mod.size * (stats.artillery ? 1.6 : 1);
+    const pierce = stats.pierce + (stats.buckshot ? 1 : 0) + mod.pierce;
     for (let k = 0; k < strands; k++) {
       const bi = spawn(playerBullets, p.x + side, y, vx, vy, rocket ? 4 * dmgScale(shotDmg) : size, shotDmg, 0, pierce);
       if (bi < 0) continue;
@@ -272,19 +387,34 @@ function fireProjectiles(p, stats) {
 // ---- rail carrier: instant strikes along every path -----------------------
 function fireRail(p, stats, hit) {
   if (!hit) return;
-  const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * stats.pierce);
+  const mod = shotMods(p, stats);
+  const siege = mod.charged && stats.siege;
+  const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * stats.pierce) * (siege ? 2.5 / 1.8 : 1) * mod.dmg;
   const specs = lockTargets(p, stats, pattern(p, stats));
+  if (stats.twinlink && p.twinT > 0) specs.push({ lane: p.twinLane, mul: 1, fromX: laneX(p.twinLane) });
   if (stats.overload && p.shotCount % 3 === 0) for (const o of [-1, 1]) specs.push({ lane: aimLane(p, stats) + o, mul: 1 });
   const phase = p.shotCount * 1.7;
   for (const spec of specs) {
     if (spec.lane !== undefined && (spec.lane < 0 || spec.lane >= LANES)) continue;
     const pts = buildPath(p, spec, stats.hasSine, phase);
-    const { hits } = hitsAlong(pts, 6, 99);
+    const { hits } = hitsAlong(pts, 6 * mod.size, 99);
     for (const { e } of hits) {
       onHit(e, dmg * spec.mul, stats, hit, true);
       if (stats.hasRocket) blast(e.x, e.y, dmg * spec.mul, stats, e);
+      if (siege && e.type === 'boss') e.stunT = 0.6;     // SIEGE: the boss reels
     }
-    rails.push({ pts, t: 0.2, w: spec.mul });
+    rails.push({ pts, t: 0.2, w: spec.mul * mod.size });
+    if (stats.afterglow) addTrail(pts, 0.35, stats, p);
+    // FISSION: from the first target two rails fork into the side lanes.
+    if (stats.fission && hits.length && !spec.fork) {
+      const f = hits[0].e;
+      for (const l of forkLanes(Math.round((f.x - laneX(0)) / LANE_W), stats)) {
+        const fpts = [];
+        for (let y = f.y; y > -10; y -= 12) fpts.push(f.x + (laneX(l) - f.x) * Math.min(1, (f.y - y) / 90), y);
+        for (const h of hitsAlong(fpts, 6, 99).hits) if (h.e !== f) onHit(h.e, dmg * spec.mul * 0.5, stats, hit, false);
+        rails.push({ pts: fpts, t: 0.2, w: spec.mul * 0.5 });
+      }
+    }
   }
   sfx.rail();
   shake(2, 0.06);
@@ -310,16 +440,41 @@ function updateBeam(p, stats, dt, rateMul, hit) {
     p.surgeT = Math.max(0, (p.surgeT || 0) - dt);
     if (p.surgeT > 0) { surge *= stats.echoMul; widthMul *= 1.8; }
   }
+  // CHARGE / OVERCHARGE on a beam: a short heavy surge.
+  if (p.charged) { p.charged = false; p.stillT = 0; p.chargeSurgeT = 0.4; }
+  if (p.chargeSurgeT > 0) { p.chargeSurgeT -= dt; surge *= 1.8; widthMul *= 1.6; }
+  if (p.overchargeT > 0) { surge *= 1.8; widthMul *= 1.4; }
+  const ghost = stats.ghost && p.phaseT > 0;
+  if (ghost) surge *= 2;
   const dps = stats.fireRate * rateMul * currentDamage(p, stats) * 1.15 * surge;
   const tick = p.laserTick <= 0;
   if (tick) { p.laserTick += 0.1; p.laserCount = (p.laserCount || 0) + 1; }
   const width = (4 + stats.bulletSize * 0.9) * widthMul * dmgScale(currentDamage(p, stats));
   const phase = p.beamT * 5;
-  for (const spec of lockTargets(p, stats, pattern(p, stats))) {
+  const specs = lockTargets(p, stats, pattern(p, stats));
+  if (stats.twinlink && p.twinT > 0) specs.push({ lane: p.twinLane, mul: 0.7, fromX: laneX(p.twinLane) });
+  // AFTERGLOW + LASER (SCAR): changing lane leaves the old beam burning.
+  if (stats.afterglow && p.ev && p.ev.lane && p.lastBeam) addTrail(p.lastBeam, stats.scar ? 1 : 0.35, stats, p);
+  const pierceN = ghost ? 99 : 1 + stats.pierce + (stats.skyshot && p.jumpT > 0 ? stats.skyshot : 0);
+  for (const spec of specs) {
     const pts = buildPath(p, spec, stats.hasSine, phase);
-    const { hits, end } = hitsAlong(pts, width * 0.5, 1 + stats.pierce);
-    const shown = hits.length >= 1 + stats.pierce ? pts.slice(0, end) : pts;
+    const { hits, end } = hitsAlong(pts, width * 0.5, pierceN);
+    const shown = hits.length >= pierceN ? pts.slice(0, end) : pts;
+    if (spec === specs[0]) p.lastBeam = shown;
     beams.push({ pts: shown, w: width * (spec.mul < 1 ? 0.55 : 1), a: Math.min(1, spec.mul + 0.3) });
+    // FISSION (FORK): the beam forks at its first targets into the side lanes.
+    if (stats.fission) {
+      for (const h of hits.slice(0, 2)) {
+        const f = h.e;
+        for (const l of forkLanes(Math.round((f.x - laneX(0)) / LANE_W), stats)) {
+          const fpts = [];
+          for (let y = f.y; y > -10; y -= 12) fpts.push(f.x + (laneX(l) - f.x) * Math.min(1, (f.y - y) / 90), y);
+          const fh = hitsAlong(fpts, width * 0.3, 1).hits.filter((x) => x.e !== f);
+          beams.push({ pts: fh.length ? fpts.slice(0, fh[0].at + 2) : fpts, w: width * 0.6, a: 0.7 });
+          if (tick && hit) for (const x of fh) onHit(x.e, dps * 0.05 * spec.mul, stats, hit, false);
+        }
+      }
+    }
     if (tick && hit) {
       for (const { e } of hits) onHit(e, dps * 0.1 * spec.mul, stats, hit, p.laserCount % 3 === 0);
       const last = hits[hits.length - 1];
@@ -371,11 +526,17 @@ export function steerBullets(stats, dt) {
     const xMin = laneX(Math.max(0, lane - 1)) - LANE_W * 0.5;
     const xMax = laneX(Math.min(LANES - 1, lane + 1)) + LANE_W * 0.5;
     let bestX = 0, bd = 1e9, found = false;
+    // BLOODHOUND: toward a branded enemy the reach is two lanes (the one
+    // exception to the seeker's one-lane rule).
+    const xMin2 = laneX(Math.max(0, lane - 2)) - LANE_W * 0.5;
+    const xMax2 = laneX(Math.min(LANES - 1, lane + 2)) + LANE_W * 0.5;
     for (const e of enemies) {
       if (e.dead || e.y > pb.y[i]) continue;
+      const wide = stats.bloodhound && e.brandMul;
+      const lo = wide ? xMin2 : xMin, hi = wide ? xMax2 : xMax;
       // Big targets (bosses): aim at their closest point inside the allowed lanes.
-      const tx = Math.max(xMin, Math.min(xMax, e.x));
-      if (!e.hitboxes && (e.x < xMin || e.x > xMax)) continue;
+      const tx = Math.max(lo, Math.min(hi, e.x));
+      if (!e.hitboxes && (e.x < lo || e.x > hi)) continue;
       const d = Math.abs(tx - pb.x[i]) + (pb.y[i] - e.y) * 0.3;
       if (d < bd) { bd = d; bestX = tx; found = true; }
     }
@@ -405,15 +566,27 @@ function overlaps(e, x, y, r) {
 // Applies all on-hit effects. `ctx` gives access to rng and run callbacks.
 function onHit(e, dmg, stats, run, primary, flags = 0) {
   let d = dmg;
+  let crit = false;
   if (primary && stats.crit > 0 && run.rng.next() < stats.crit) {
-    d *= stats.critMul;
+    crit = true;
+    // EXECUTION: crits on a branded enemy hit x5
+    d *= stats.execution && e.brandMul ? Math.max(5, stats.critMul) : stats.critMul;
     burst(e.x, e.y, PAL.white, 8, 200, 0.3, 2);
     run.onCrit(e);
   }
   damageEnemy(e, d);
   sfx.hit();
-  if (stats.toxin > 0) {
-    e.poison = Math.min(12, Math.max(e.poison, stats.toxin));
+  // BRAND: the first hit marks the enemy
+  if (stats.brand && !e.brandMul && !e.dead) e.brandMul = stats.brand > 1 ? 1.35 : 1.2;
+  // EXECUTION: a branded enemy killed by a crit passes the brand on
+  if (crit && stats.execution && e.dead && e.brandMul) {
+    const next = enemies.filter((o) => !o.dead && !o.brandMul).sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))[0];
+    if (next) { next.brandMul = e.brandMul; arcs.push({ x1: e.x, y1: e.y, x2: next.x, y2: next.y, t: 0.15 }); }
+  }
+  if (flags & F_SLOW) e.slowT = 1;                    // WRAITH
+  if (stats.toxin > 0 || flags & F_TOXIC) {
+    const stacks = Math.max(stats.toxin, 1) * (flags & F_TOXIC ? 2 : 1);
+    e.poison = Math.min(12, Math.max(e.poison, stacks));
     e.poisonT = 3;
     e.poisoned = true;
   }
@@ -432,9 +605,10 @@ function onHit(e, dmg, stats, run, primary, flags = 0) {
     }
   }
   if (stats.arc > 0) {
+    // CONDUIT: branded enemies are reached first, and one more jump
     const targets = enemies.filter((o) => o !== e && !o.dead && Math.hypot(o.x - e.x, o.y - e.y) < 170)
-      .sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))
-      .slice(0, stats.arc);
+      .sort((a, b) => (stats.conduit ? (b.brandMul ? 1 : 0) - (a.brandMul ? 1 : 0) : 0) || Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))
+      .slice(0, stats.arc + (stats.conduit ? 1 : 0));
     let from = e;
     for (const t of targets) {
       arcs.push({ x1: from.x, y1: from.y, x2: t.x, y2: t.y, t: 0.15 });
@@ -454,6 +628,7 @@ export function resolvePlayerHits(stats, run) {
       if (e.dead || pb.lastHit[i] === e.id) continue;
       if (!overlaps(e, pb.x[i], pb.y[i], pb.r[i])) continue;
       onHit(e, pb.dmg[i], stats, run, true, pb.flags[i]);
+      fission(pb, i, stats, e);
       if (pb.pierce[i] > 0) {
         pb.pierce[i]--;
         pb.lastHit[i] = e.id;
@@ -537,6 +712,7 @@ function texturedBeam(pts, w, alpha, t) {
 }
 
 export function drawWeaponFx() {
+  if (trails.length) drawTrails();
   const t = performance.now() / 1000;
   for (const b of beams) {
     const flick = 0.85 + Math.random() * 0.15;
@@ -562,4 +738,4 @@ export function drawWeaponFx() {
   for (const r of rings) ring(r.x, r.y, r.r * (1 - r.t * 2), PAL.orange, 2, r.t / 0.25);
 }
 
-export function clearWeaponFx() { arcs.length = 0; rings.length = 0; wingmen.length = 0; beams.length = 0; rails.length = 0; }
+export function clearWeaponFx() { arcs.length = 0; rings.length = 0; wingmen.length = 0; beams.length = 0; rails.length = 0; trails.length = 0; }

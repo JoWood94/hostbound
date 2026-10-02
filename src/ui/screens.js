@@ -9,6 +9,7 @@ import { text, line, strokePoly, ring } from '../render/draw.js';
 import { button, area, wrap } from '../core/ui.js';
 import { ITEMS, ITEM_BY_ID, RARITY, CAT_COLOR, SYNERGIES, STAT_DEFS, statDelta } from '../game/items.js';
 import { BOARDS } from '../game/boards.js';
+import { laneX, LANE_W } from '../game/world.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
 import { shipSprite, drawSprite } from '../render/sprites.js';
@@ -313,7 +314,20 @@ export function drawPause(run) {
 }
 
 export function drawDead(run) {
-  dim(Math.min(0.8, run.deadT * 1.4));   // fade in: let the death burst play first
+  // Freeze frame: for 0.6 s the world stays visible with what killed you
+  // circled and your lane lit, then the screen fades in.
+  const k = run.lastHit;
+  if (k && run.deadT < 1.4) {
+    ctx.save();
+    ctx.translate(0, -UI_OFFSET);                      // world coordinates
+    const a = Math.min(1, 1.4 - run.deadT);
+    ctx.globalAlpha = 0.18 * a; ctx.fillStyle = k.color;
+    ctx.fillRect(laneX(k.lane) - LANE_W / 2, 0, LANE_W, H);
+    ctx.globalAlpha = a; ctx.strokeStyle = k.color; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(k.x, k.y, 22 + Math.sin(run.deadT * 14) * 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+  dim(Math.min(0.8, Math.max(0, run.deadT - 0.6) * 1.4));
   const jitter = run.deadT < 0.5 ? (Math.random() - 0.5) * 6 : 0;
   text('SIGNAL LOST', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center' });
   text(`${Math.floor(run.distance)}m`, W / 2, 158, { color: PAL.cyan, size: 30, align: 'center' });
@@ -322,9 +336,10 @@ export function drawDead(run) {
   const rs = run.rs;
   text(`KILLS ${rs.kills}   BOSSES ${rs.bosses}   LV ${run.level}`, W / 2, 212, { color: PAL.white, size: 11, align: 'center' });
   text(`BEST ${run.save.best}m`, W / 2, 230, { color: PAL.mute, size: 10, align: 'center' });
+  if (k && run.deadT > 0.6) text(`KILLED BY: ${k.what}`, W / 2, 248, { color: k.color, size: 10, align: 'center' });
   if (run.newUnlocks.length) {
-    text('UNLOCKED', W / 2, 264, { color: PAL.acid, size: 12, align: 'center' });
-    [...new Set(run.newUnlocks)].slice(0, 6).forEach((n, i) => text(n, W / 2, 284 + i * 16, { color: PAL.magenta, size: 11, align: 'center' }));
+    text('UNLOCKED', W / 2, 272, { color: PAL.acid, size: 12, align: 'center' });
+    [...new Set(run.newUnlocks)].slice(0, 6).forEach((n, i) => text(n, W / 2, 292 + i * 16, { color: PAL.magenta, size: 11, align: 'center' }));
   }
   if (run.deadT > 0.8) {
     button('retry', 60, 420, W - 120, 50, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PAL.cyan, size: 18 });

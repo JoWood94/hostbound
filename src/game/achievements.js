@@ -3,7 +3,7 @@
 import { ITEMS } from './items.js';
 import { BOARDS } from './boards.js';
 
-const T = (save, rs, key) => save.totals[key] + (rs ? rs[key] || 0 : 0);
+const T = (save, rs, key) => (save.totals[key] || 0) + (rs ? rs[key] || 0 : 0);
 
 export const ACHIEVEMENTS = [
   { id: 'dist_1000', name: 'COMMUTER', desc: 'Reach 1000m in one run', progress: (s, r) => [Math.max(s.best, r ? r.distance : 0), 1000] },
@@ -36,6 +36,26 @@ export const ACHIEVEMENTS = [
   { id: 'scatter_boss', name: 'CLOSE RANGE', desc: 'Defeat a boss while holding SCATTER', progress: (s, r) => [r && r.scatterBoss ? 1 : 0, 1], runOnly: true },
   { id: 'modes_3', name: 'ARSENAL', desc: 'Pick up 3 different shot modifiers', progress: (s) => [(s.modesUsed || []).length, 3] },
   { id: 'discover_18', name: 'COLLECTOR', desc: 'Discover 18 different items', progress: (s) => [s.discovered.length, 18] },
+  // v1.1: unlocks for the new items
+  { id: 'dist_4000', name: 'GRAVEYARD SHIFT', desc: 'Reach 4000m in one run', progress: (s, r) => [Math.max(s.best, r ? r.distance : 0), 4000] },
+  { id: 'dist_5000', name: 'DEEP CURRENT', desc: 'Reach 5000m in one run', progress: (s, r) => [Math.max(s.best, r ? r.distance : 0), 5000] },
+  { id: 'dist_6000', name: 'EVENT HORIZON', desc: 'Reach 6000m in one run', progress: (s, r) => [Math.max(s.best, r ? r.distance : 0), 6000] },
+  { id: 'kills_1000', name: 'EXTINCTION', desc: 'Destroy 1000 enemies (total)', progress: (s, r) => [T(s, r, 'kills'), 1000] },
+  { id: 'kills_run_100', name: 'MASSACRE', desc: 'Destroy 100 enemies in one run', progress: (s, r) => [r ? r.kills : 0, 100], runOnly: true },
+  { id: 'kills_run_150', name: 'FRENZY', desc: 'Destroy 150 enemies in one run', progress: (s, r) => [r ? r.kills : 0, 150], runOnly: true },
+  { id: 'air_kills_50', name: 'HIGH GROUND', desc: 'Destroy 50 enemies while in the air (total)', progress: (s, r) => [T(s, r, 'airKills'), 50] },
+  { id: 'rift_30', name: 'RIFTWALKER', desc: 'Phase through 30 tears or veils (total)', progress: (s, r) => [T(s, r, 'riftDodges'), 30] },
+  { id: 'boss_7', name: 'APEX', desc: 'Defeat 7 bosses (total)', progress: (s, r) => [T(s, r, 'bosses'), 7] },
+  { id: 'boss_10', name: 'REGICIDE', desc: 'Defeat 10 bosses (total)', progress: (s, r) => [T(s, r, 'bosses'), 10] },
+  { id: 'boss_3run', name: 'HAT TRICK', desc: 'Defeat 3 bosses in one run', progress: (s, r) => [r ? r.bosses : 0, 3], runOnly: true },
+  { id: 'level_10', name: 'METAMORPH', desc: 'Reach level 10 in one run', progress: (s, r) => [r ? r.level : 0, 10], runOnly: true },
+  { id: 'level_12', name: 'ABOMINATION', desc: 'Reach level 12 in one run', progress: (s, r) => [r ? r.level : 0, 12], runOnly: true },
+  { id: 'level_15', name: 'LEVIATHAN', desc: 'Reach level 15 in one run', progress: (s, r) => [r ? r.level : 0, 15], runOnly: true },
+  { id: 'cells_run_300', name: 'HOARDER', desc: 'Collect 300 cells in one run', progress: (s, r) => [r ? r.coins : 0, 300], runOnly: true },
+  { id: 'cells_run_500', name: 'BIOMASS', desc: 'Collect 500 cells in one run', progress: (s, r) => [r ? r.coins : 0, 500], runOnly: true },
+  { id: 'jump_300', name: 'SKYBOUND', desc: 'Jump over 300 low waves or wires (total)', progress: (s, r) => [T(s, r, 'lowJumps'), 300] },
+  { id: 'elite_50', name: 'GOLD STANDARD', desc: 'Destroy 50 elite enemies (total)', progress: (s, r) => [T(s, r, 'elites'), 50] },
+  { id: 'phase_run_40', name: 'PHANTOM', desc: 'Phase 40 times in one run', progress: (s, r) => [r ? r.phases : 0, 40], runOnly: true },
 ];
 
 // What an achievement unlocks, for display.

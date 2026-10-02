@@ -144,6 +144,9 @@ Bomb (pulisce schermo), Time Slow 3 s, Overdrive (sparo x3 per 5 s), Heal.
 - Alcuni item **escludono** altri (Laser esclude Big Shot).
 - Max stack per item (es. Split max 4).
 
+### Item v1.1
+32 item nuovi (76 in tutto), 24 combo e un trio, descritti in `DESIGN_V1.1.md` parte B. In breve: modificatori di colpo che valgono per tutti e quattro i tipi di colpo (FISSION, SHRAPNEL, BRAND, CHARGE, SKYSHOT, GHOSTROUND, AFTERGLOW, TWIN LINK), statistiche con un prezzo (DENSE CORE, ADRENAL GLAND, HOLLOW BONES, KERATIN, SYNAPSE, FOCUS LENS, MOMENTUM, MITOSIS), power-up (PREMONITION, CARAPACE, SPORE CLOUD, CELL WALL, SECOND SKIN, UNDERTOW, SYMBIONT EGG), attivi (BLACK HOLE, MIRROR FIELD, OVERCHARGE, WARP, MOLT) e rischio (LEAD WEIGHTS, FEVER, DOUBLE OR NOTHING, PARASITE). Item in conflitto si escludono dal mazzo (`conflicts`). Ogni scelta di livello contiene almeno un item già posseduto e ancora impilabile. Il trio FISSION + SHRAPNEL + CHAIN REACTION si chiama CHAIN FISSION (MELTDOWN era già LASER + TOXIN). Unica eccezione alla regola del seeker ±1 corsia: BLOODHOUND (BRAND + SEEKER) arriva a ±2 verso i nemici marchiati.
+
 ## 8. Livelli (al posto del market)
 
 - La valuta sono le **cellule** (verdi, membrana e nucleo). Sono **esperienza**: riempiono la barra acida in cima allo schermo.

@@ -15,9 +15,13 @@ export const POWER_EXP = 0.5;
 export const tier = (m) => Math.floor(m / 1000);
 export const heat = (m) => Math.max(0, Math.min(1, ((m % 1000) - 150) / 700));
 
-// HP stops inflating past ~3000 m (d 7.5): beyond that more HP is tedium, not
-// danger. Danger comes from tempo, volleys, density and elites instead.
-export const enemyHpMul = (d, power) => (1 + 0.28 * Math.min(d, 7.5) + 0.08 * Math.max(0, d - 7.5)) * Math.pow(power, POWER_EXP);
+// Enemy HP keeps kill time / time on screen about constant along the run
+// (scripts/balance.mjs, column "ratio"): enemies must live long enough to fire
+// the extra volleys that make deep tiers dangerous, and no longer. Player power
+// counts a bit more than for bosses (0.6 vs 0.5) because late builds otherwise
+// erase regular enemies before they shoot.
+export const ENEMY_POWER_EXP = 0.6;
+export const enemyHpMul = (d, power) => (1 + 0.28 * d) * Math.pow(power, ENEMY_POWER_EXP);
 export const enemyHp = (base, d, power, elite = false) => Math.max(1, Math.round(base * enemyHpMul(d, power) * (elite ? 2.2 : 1)));
 
 export const bossHp = (index, power) => Math.round(120 * (1 + 0.5 * index) * Math.pow(power, POWER_EXP) * (index >= 5 ? 1.25 : 1));

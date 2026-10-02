@@ -10,6 +10,8 @@ import { SYNERGIES, ITEM_BY_ID, computeStats } from './items.js';
 // shot carrier (e.g. rockets only spiral if rockets are what you fire).
 const pair = (a, b, name, desc, id = `${a}+${b}`, when = null) => ({ id, a, b, name, desc, when });
 const carrierIs = (c) => (s) => s.carrier === c;
+// A trio: three items. Same shape, with `c` as the third.
+const trio = (a, b, c, name, desc) => ({ ...pair(a, b, name, desc, `${a}+${b}+${c}`), c });
 
 export const COMBOS = [
   // Named synergies (they also carry a stat bonus in items.js)
@@ -38,6 +40,33 @@ export const COMBOS = [
   pair('scatter', 'split', 'WIDE SPREAD', 'More shots in a wider cone.'),
   pair('rockets', 'frag', 'BIG BADDA', 'Bigger blasts.'),
   pair('rockets', 'pierce', 'CLUSTER', 'Rockets punch through and blow up again.'),
+
+  // v1.1
+  pair('fission', 'split', 'CASCADE', 'Fission fragments split once more.'),
+  pair('fission', 'rockets', 'MIRV', 'Every fission fragment explodes.'),
+  pair('fission', 'homing', 'HYDRA', 'Fission fragments hunt from their new lanes.'),
+  pair('fission', 'laser', 'FORK', 'The beam forks at its first two targets.'),
+  pair('shrapnel', 'chain', 'GRENADE', 'Shrapnel shards explode.'),
+  pair('shrapnel', 'toxin', 'SPORE BURST', 'Shrapnel shards poison twice as hard.'),
+  pair('brand', 'crit', 'EXECUTION', 'Crits on branded enemies hit x5; the brand jumps on.'),
+  pair('brand', 'arc', 'CONDUIT', 'Arcs reach branded enemies first, one more jump.'),
+  pair('brand', 'homing', 'BLOODHOUND', 'Seekers reach branded enemies two lanes away.'),
+  pair('charge', 'railgun', 'SIEGE', 'A charged rail hits x2.5 and staggers bosses.', undefined, carrierIs('rail')),
+  pair('charge', 'echo', 'RESONANCE', 'A charged shot is always an echo round.'),
+  pair('skyshot', 'kickflip', 'AIR RAID', 'Landing fires a skyshot into three lanes.'),
+  pair('skyshot', 'pound', 'METEOR', 'Ground pound: three lanes wide, with the air bonus.'),
+  pair('ghostround', 'mirror', 'SPECTRE', 'Reflected shots are ghost shots.'),
+  pair('ghostround', 'blink', 'WRAITH', 'Longer phase; ghost shots slow what they hit.'),
+  pair('afterglow', 'sine', 'RIBBON', 'Trails last twice as long: an acid net.'),
+  pair('afterglow', 'laser', 'SCAR', 'Changing lane leaves the beam burning for 1 s.'),
+  pair('premonition', 'adrenaline', 'SIXTH SENSE', 'On your last heart, lanes light two ticks early.'),
+  pair('cellwall', 'greed', 'HIVE MIND', 'A blue heart every 15 cells.'),
+  pair('carapace', 'plating', 'EXOSKELETON', 'The shell holds two hits per section.'),
+  pair('blackhole', 'orbital', 'EVENT HORIZON', 'After a black hole, orbitals eat shots twice as wide.'),
+  pair('leadweights', 'slug', 'ARTILLERY', 'Huge shots, and SLUG no longer slows them.'),
+  pair('sporecloud', 'toxin', 'MIASMA', 'The spore cloud poisons enemies in it.'),
+  pair('momentum', 'slipstream', 'DRIFT', 'Two quick lane changes charge the slipstream burst.'),
+  trio('fission', 'shrapnel', 'chain', 'CHAIN FISSION', 'Every kill starts a chain of splitting, exploding shards.'),
 ];
 
 export const COMBO_BY_ID = Object.fromEntries(COMBOS.map((c) => [c.id, c]));
@@ -46,7 +75,7 @@ const held = (stacks, id) => (stacks[id] || 0) > 0;
 
 // Combos currently formed by the build.
 export function activeCombos(stacks, stats) {
-  return COMBOS.filter((c) => held(stacks, c.a) && held(stacks, c.b) && (!c.when || !stats || c.when(stats)));
+  return COMBOS.filter((c) => held(stacks, c.a) && held(stacks, c.b) && (!c.c || held(stacks, c.c)) && (!c.when || !stats || c.when(stats)));
 }
 
 // What an offered item would form with the current build.
@@ -54,8 +83,11 @@ export function offerHints(id, stacks, save, board) {
   const out = [];
   const after = board ? computeStats(board, { ...stacks, [id]: (stacks[id] || 0) + 1 }) : null;
   for (const c of COMBOS) {
-    const partner = c.a === id ? c.b : c.b === id ? c.a : null;
-    if (!partner || !held(stacks, partner) || held(stacks, id)) continue;
+    const members = c.c ? [c.a, c.b, c.c] : [c.a, c.b];
+    if (!members.includes(id) || held(stacks, id)) continue;
+    const others = members.filter((m) => m !== id);
+    if (!others.every((m) => held(stacks, m))) continue;
+    const partner = others[0];
     if (c.when && after && !c.when(after)) continue;
     out.push({ combo: c, partner: ITEM_BY_ID[partner], known: !!(save.combos && save.combos[c.id]) });
   }

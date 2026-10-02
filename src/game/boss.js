@@ -5,7 +5,7 @@ import { ctx, W, H, SAFE_TOP } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
 import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
-import { look, glowLane, beatClock, onGridSpeed, TICK_SEC } from './enemies.js';
+import { look, glowLane, beatClock, onGridSpeed, TICK_SEC, teleBonusNow } from './enemies.js';
 import { sheet, drawCell } from '../render/images.js';
 
 // Generated boss sheet: 4x5 cells of 256x128, cropped to content by
@@ -273,6 +273,8 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
     sfx.bossWarn();
   }
 
+  // SIEGE: a charged rail makes the boss reel (its schedule pauses)
+  if (b.stunT > 0) { b.stunT -= dt; b.stateT -= dt; }
   if (b.phase === 3 && b.state !== 'enter') frenzy(b, difficulty);
 
   const a = currentAttack(b);
@@ -292,7 +294,7 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
       break;
     case 'telegraph':
       // Armed: the attack starts on the next tick of the shared metronome.
-      if (b.stateT >= a.tele / m && beatClock() >= Math.ceil(b.armAt ?? (b.armAt = beatClock()))) {
+      if (b.stateT >= a.tele / m + teleBonusNow() * tickNow() && beatClock() >= Math.ceil(b.armAt ?? (b.armAt = beatClock()))) {
         b.state = 'fire';
         b.stateT = 0;
         b.armAt = undefined;

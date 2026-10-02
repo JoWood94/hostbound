@@ -413,6 +413,33 @@ Desaturated rock, colour only from the glow. No green in the art, no text.
 
 ---
 
+## 6b. Icone degli item v1.1 — secondo foglio
+
+Stesso stile e colori per categoria del primo foglio (allegalo come riferimento).
+512×256, 8 colonne × 4 righe, celle 64×64, i 32 item nuovi nell'ordine del gioco.
+```
+Match the attached item icon sheet exactly: same grotesque bioluminescent alien organs,
+same dark outline, same category colour accents. A sprite sheet of item icons, 512x256
+pixels, 8 columns x 4 rows of 64x64 cells, one icon centred per cell, flat pure black
+#000000 background, no grid lines, no text, no numbers.
+Read cells left to right, top to bottom:
+Row 1: 1 a glowing cell splitting into two, 2 a bone cracking into sharp acid splinters,
+3 a hot branding iron shaped like an eye, 4 a coiled muscle glowing with stored energy,
+5 a winged spore rising, 6 a translucent ghost larva, 7 a comet of acid with a long trail,
+8 two linked twin embryos.
+Row 2: 1 a dense black pearl in flesh, 2 a pumping gland with green droplets, 3 a light
+hollow bird bone, 4 a thick plate of horn, 5 a branching glowing neuron, 6 a lens made of
+an eyeball, 7 a cell in mitosis with two nuclei, 8 a rolling ball of tendons.
+Row 3: 1 a third eye opening, 2 a ribbed beetle shell, 3 a puff of acid spores, 4 a wall of
+stacked cells, 5 a peeled second skin, 6 a whirlpool of plasma, 7 a cracked glowing egg,
+8 a lead weight with a hook.
+Row 4: 1 a feverish red-hot organ, 2 a coin-like cell split in half, 3 a parasitic worm,
+4 a tiny black hole with an accretion ring, 5 a mirror-like membrane, 6 an overloaded
+crackling heart, 7 a tear in space, 8 a shed husk.
+Colour accents: weapons acid green #c6ff1a, defence cyan #19f0ff, economy dirty yellow
+#ffd23f, risk blood red #ff1f4b, actives toxic orange #ff6a00.
+```
+
 ## 7. Come esportare e consegnarmeli
 
 1. PNG con **trasparenza vera**. Molti siti mostrano una scacchiera grigia ma esportano un

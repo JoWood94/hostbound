@@ -1,5 +1,15 @@
 # NEON OVERDRIFT — Design v1.1: difficoltà, coreografia, nuovi item
 
+> **Stato: implementato** (commit dopo `16c4a21`). Deviazioni rispetto al testo qui sotto, decise misurando:
+> - **HP nemici (A.3.7):** la formula "appiattita" faceva scendere il rapporto tempo-per-uccidere / tempo-a-schermo da 0,08 a 0,04 tra 3000 e 8000 m: i nemici morivano prima di sparare le raffiche extra e la nuova difficoltà spariva. Implementato invece `(1 + 0.28·d)·power^0.6` (boss invariati a `^0.5`), che tiene il rapporto costante a 0,07–0,09. Il target "0,45–0,75" del testo era sbagliato per questa metrica (TTK a uptime pieno): conta che il rapporto resti **costante**, banda 0,06–0,10 (`scripts/balance.mjs`).
+> - **Rinforzi (A.3.5):** partono dal tier 2 con probabilità bassa, non dal 3: senza, tra il tier 0 e il 2 la pressione calava (33 → 24 raffiche/min).
+> - **Sezioni A.4:** alcune coppie di nemici del testo coprivano tutte e 5 le corsie (la guardia delle 2 corsie libere le avrebbe solo fatte slittare): ricombinate, stesso spirito (`trident` con Stalker ai bordi, `net` con Weaver ai lati, `firing-squad` con 3 droni, ecc.).
+> - **Trio B.7:** rinominato CHAIN FISSION (MELTDOWN esiste già: LASER + TOXIN).
+> - **Frenesia boss (A.3.9):** salta gli attacchi a righe ritmiche (il varco si sposta ogni battuta e una volée potrebbe caderci dentro); le volée della frenesia hanno l'avviso standard di 4 tick.
+> - **Bug trovato e corretto durante il lavoro:** alla morte del boss il bottino e un livello in coda si aprivano nello stesso frame e il livello sovrascriveva il bottino.
+>
+> Strumenti: `node scripts/verify-sections.mjs` (equità di tutte le sezioni, anche specchiate), `node scripts/balance.mjs` (curva), `?debug&mute` nel browser (`__game.tick`, `draw`, `hit`, `boss(def, index)`, `obstacle`, `spawn`).
+
 Documento di design per chi implementa. Due parti indipendenti:
 
 - **Parte A** — perché la difficoltà si appiattisce e come farla crescere senza rompere le regole di equità.
@@ -326,7 +336,7 @@ Formato: `pair(a, b, NOME, 'descrizione esplicita')` con `when` carrier-conditio
 | 23 | SPORE CLOUD + TOXIN | MIASMA | La nuvola avvelena i nemici che la attraversano. | `clearBulletsIn` |
 | 24 | MOMENTUM + SLIPSTREAM | DRIFT | Ogni raffica di SLIPSTREAM è anche caricata (CHARGE) se hai cambiato corsia due volte in 0,5 s. | `slipBurst` |
 
-Trio consigliato (uno solo, raro, da scoprire): **FISSION + SHRAPNEL + CHAIN REACTION = "MELTDOWN"**: ogni uccisione innesca una catena di schegge che si dividono, con cap di 24 proiettili generati per evento (anti-lag, anti-screen-clear gratuito).
+Trio consigliato (uno solo, raro, da scoprire): **FISSION + SHRAPNEL + CHAIN REACTION = "CHAIN FISSION"** (non "MELTDOWN": è già il nome di LASER + TOXIN): ogni uccisione innesca una catena di schegge che si dividono, con cap di 24 proiettili generati per evento (anti-lag, anti-screen-clear gratuito).
 
 ### B.8 Bilanciamento e pool
 

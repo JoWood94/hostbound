@@ -6,9 +6,9 @@ import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
-import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn } from './bullets.js';
+import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_WAVE, F_TOXIC } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
-import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC } from './enemies.js';
+import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus } from './enemies.js';
 import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
 import { survivable, rowsOf } from './fairness.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
@@ -19,7 +19,7 @@ import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
-import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets } from './weapon.js';
+import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic, syncMusic } from '../audio/music.js';
@@ -87,7 +87,7 @@ export function createRun(save, opts = {}) {
   // Starting items from the board ('?' = random unlocked non-active item)
   const pool = unlockedItems(save).filter((id) => ITEM_BY_ID[id].cat !== 'active');
   for (const id of board.start) {
-    const pick = id === '?' ? run.rng.pick(pool.filter((x) => (run.stacks[x] || 0) < ITEM_BY_ID[x].max)) : id;
+    const pick = id === '?' ? run.rng.pick(pool.filter((x) => (run.stacks[x] || 0) < ITEM_BY_ID[x].max && !(ITEM_BY_ID[x].conflicts || []).length)) : id;
     if (pick) acquire(run, pick, true);
   }
 
@@ -188,7 +188,31 @@ function useActive(run) {
     sfx.emp();
     shake(5, 0.3);
   } else if (a.id === 'patch') {
-    if (p.hearts < run.stats.maxHearts) p.hearts++; else p.blueHearts++;
+    heal(run, 1, true);
+    sfx.heart();
+  } else if (a.id === 'blackhole') {
+    run.bhT = 1.5;
+    if (run.stats.horizon) run.horizonT = 5.5;      // EVENT HORIZON: orbitals eat wider after it
+    for (const e of enemies) if (!e.dead && Math.abs(e.x - p.x) < LANE_W * 0.6) damageEnemy(e, 8);
+    shake(6, 0.3); sfx.emp();
+  } else if (a.id === 'mirrorfield') {
+    run.mirrorT = 2;
+    sfx.shield();
+  } else if (a.id === 'overcharge') {
+    p.overcharge = 3; p.overchargeT = 2;
+    sfx.synergy();
+  } else if (a.id === 'warp') {
+    if (run.boss || run.pending || run.warnT > 0) { a.charge = a.max; sfx.deny(); return false; }
+    for (const e of enemies) if (e.type !== 'boss') { e.dead = true; e.noReward = true; }
+    clearPool(enemyBullets);
+    for (const o of obstacles) o.dead = true;
+    for (let i = pickups.length - 1; i >= 0; i--) if (!pickups[i].fly) pickups.splice(i, 1);
+    run.distance = Math.min(run.nextEvent - 20, run.distance + 120);
+    run.sec = null; run.secCalmUntil = beatClock() + 2;
+    run.flashT = 0.5; shake(8, 0.3); sfx.emp();
+  } else if (a.id === 'molt') {
+    heal(run, 2);
+    p.shrinkT = 3;
     sfx.heart();
   }
   return true;
@@ -361,6 +385,7 @@ function startSection(run, d) {
     return x;
   }).sort((p, q) => p.at - q.at);
   run.sec = { id: def.id, evs, i: 0, enemyIds: [], tier: T };
+  run.player.carapace = run.stats.carapace;          // CARAPACE regrows every section
 }
 
 function direct(run, d) {
@@ -455,7 +480,7 @@ export function pickItem(run, i) {
 // Skipping a pick patches you up instead (1 heart if hurt).
 export function skipPick(run) {
   const p = run.player;
-  if (p.hearts < run.stats.maxHearts) { p.hearts++; sfx.heart(); } else sfx.select();
+  if (p.hearts < run.stats.maxHearts && heal(run)) sfx.heart(); else sfx.select();
   run.pickChoices = [];
   run.mode = 'play';
 }
@@ -465,7 +490,7 @@ function onBossKilled(run, b) {
   if (run.stats.hasScatter) run.rs.scatterBoss = true;
   if (!run.bossHit) run.rs.bossNoHit = true;
   if (run.player.hearts === 1) run.rs.boss1Heart = true;
-  if (run.stats.repair && run.player.hearts < run.stats.maxHearts) run.player.hearts++;
+  if (run.stats.repair) heal(run);
   dropCoins(b.x, b.y, 12 + 4 * run.bossIndex);
   // Corrupted items decrypt: unlocked forever
   for (const id of run.corrupt) {
@@ -499,6 +524,12 @@ function addCoins(run, n) {
   run.rs.coins += whole;
   // Cells are experience: fill the bar, queue a pick per level gained.
   run.xp += whole;
+  // CELL WALL: cells grow blue hearts (HIVE MIND with GREED: faster)
+  if (run.stats.cellWall) {
+    run.cellWallN = (run.cellWallN || 0) + whole;
+    const need = run.stats.hiveMind ? 15 : run.stats.cellWall > 1 ? 18 : 25;
+    while (run.cellWallN >= need) { run.cellWallN -= need; run.player.blueHearts++; toast(run, 'CELL WALL +1', '', PAL.blue, 1.4); }
+  }
   while (run.xp >= B.xpNeed(run.level)) {
     run.xp -= B.xpNeed(run.level);
     run.level++;
@@ -518,13 +549,69 @@ function nothingIncoming() {
   return !obstacles.some((o) => !o.dead && o.y < PLAYER_Y + 20 && o.y > PLAYER_Y - 340);
 }
 
+// Per-frame effects of v1.1 items and actives.
+function itemEffects(run, dt) {
+  const p = run.player, st = run.stats, eb = enemyBullets;
+  // PREMONITION (SIXTH SENSE on the last heart: two ticks)
+  setTeleBonus(st.premonition ? (st.sixthSense && p.hearts === 1 ? 2 : 1) : 0);
+  // SPORE CLOUD: wipe shots in three lanes; MIASMA also poisons enemies there
+  if (run.sporeT > 0) {
+    run.sporeT -= dt;
+    const lo = laneX(run.sporeLane - 1) - LANE_W / 2, hi = laneX(run.sporeLane + 1) + LANE_W / 2;
+    for (let i = 0; i < eb.n; i++) if (eb.x[i] > lo && eb.x[i] < hi && eb.y[i] < PLAYER_Y + 20) { burst(eb.x[i], eb.y[i], PAL.acid, 2, 60, 0.2, 1.5); kill(eb, i); i--; }
+    if (st.miasma) for (const e of enemies) if (!e.dead && e.x > lo && e.x < hi) { e.poison = Math.max(e.poison, 3); e.poisonT = 3; e.poisoned = true; }
+    if (Math.random() < 0.5) burst(laneX(run.sporeLane) + (Math.random() - 0.5) * LANE_W * 3, PLAYER_Y - Math.random() * 260, PAL.acid, 1, 30, 0.5, 2);
+  }
+  // SECOND SKIN: a blue heart regrows every 45 s up to the starting count
+  if (st.secondSkin) {
+    const base = st.blueStart + 2 * (run.stacks.icewall || 0);
+    if (p.blueHearts < base) { run.skinT = (run.skinT || 0) + dt; if (run.skinT >= 45) { run.skinT = 0; p.blueHearts++; toast(run, 'SECOND SKIN', '', PAL.blue, 1.4); } }
+    else run.skinT = 0;
+  }
+  // UNDERTOW: phasing pulls every cell (and hearts with 2 stacks)
+  if (st.undertow && p.phaseT > 0) for (const pk of pickups) if (pk.kind === 'coin' || (st.undertow > 1 && (pk.kind === 'heart' || pk.kind === 'blue'))) pk.fly = true;
+  // MIRROR FIELD, EVENT HORIZON timers
+  if (run.mirrorT > 0) run.mirrorT -= dt;
+  if (run.horizonT > 0) run.horizonT -= dt;
+  // BLACK HOLE: shots are pulled toward your lane and destroyed well above you
+  if (run.bhT > 0) {
+    run.bhT -= dt;
+    for (let i = 0; i < eb.n; i++) {
+      eb.x[i] += (p.x - eb.x[i]) * Math.min(1, dt * 4);
+      if (eb.y[i] > PLAYER_Y - 120) { burst(eb.x[i], eb.y[i], PAL.violet, 3, 80, 0.2, 1.5); kill(eb, i); i--; }
+    }
+  }
+}
+
+// Death clarity: who fired the shot that hit you (nearest shooter in that lane).
+function shooterName(run, x, low) {
+  if (run.boss) return `${run.boss.name}${low ? ' (low wave)' : ''}`;
+  const lane = Math.round((x - laneX(0)) / LANE_W);
+  const e = enemies.filter((o) => !o.dead && o.type !== 'boss' && Math.abs(o.lane - lane) <= 1).sort((a, b) => Math.abs(a.lane - lane) - Math.abs(b.lane - lane))[0];
+  const who = e ? e.type.toUpperCase() : 'A STRAY SHOT';
+  return low ? `${who} (low wave: jump)` : who;
+}
+
+// Every heal goes through here: FEVER halves (or thirds) it. Fractions add up.
+function heal(run, n = 1, overflowBlue = false) {
+  const p = run.player, st = run.stats;
+  run.healAcc = (run.healAcc || 0) + n * (st.healMul ?? 1);
+  let healed = false;
+  while (run.healAcc >= 1) {
+    run.healAcc -= 1;
+    if (p.hearts < st.maxHearts) { p.hearts++; healed = true; }
+    else if (overflowBlue) { p.blueHearts++; healed = true; }
+  }
+  return healed;
+}
+
 function openPick(run, kind) {
   const n = 3 + (run.stats.extraChoices || 0);
   run.pickChoices = rollItems(run.rng, unlockedItems(run.save), run.stacks, n, run.stats.luck, { source: kind });
   run.pickKind = kind;
   if (run.pickChoices.length) { run.mode = 'pick'; run.toasts = []; sfx.select(); return true; }
   // Pool exhausted: a level-up still pays out a heart.
-  if (run.player.hearts < run.stats.maxHearts) run.player.hearts++;
+  heal(run);
   return false;
 }
 
@@ -537,6 +624,11 @@ export function onCrit(run) {
 // ---------------------------------------------------------------------------
 function onHurt(run, result) {
   if (result === 'iframe') return;
+  // SPORE CLOUD: real damage releases spores over your lane and the next ones
+  if (run.stats.spore && (result === 'red' || result === 'blue')) {
+    run.sporeT = run.stats.spore > 1 ? 1.4 : 0.8;
+    run.sporeLane = run.player.lane;
+  }
   buzz(result === 'shield' ? 25 : 70);
   run.wasHit = true;
   if (run.boss) run.bossHit = true;
@@ -580,6 +672,7 @@ export function updateRun(run, input, dt) {
   if (run.levelUps > 0 && run.pickDelay <= 0 && run.warnT <= 0 && !p.dead && (calmBetweenSections(run) || (run.levelWaitT > LEVEL_WAIT && nothingIncoming()))) {
     run.levelUps--;
     if (!run.levelUps) run.levelWaitT = 0;
+    if (st.parasite && p.hearts > 1) { p.hearts--; toast(run, 'PARASITE FEEDS', '-1 heart', PAL.red, 1.6); }
     sfx.synergy();
     if (openPick(run, 'level')) return;
   }
@@ -643,6 +736,7 @@ export function updateRun(run, input, dt) {
   if (p.ev.lane && st.slipstream && run.slipCd <= 0) { slipBurst(p, st); run.slipCd = 0.2; }
   if (p.ev.land && st.groundPound) { groundPound(p, st); sfx.explode(); shake(3, 0.12); }
   if (p.ev.shield) sfx.shield();
+  if (p.ev.land && st.airRaid) airRaid(p, st);
   if (p.ev.land) {
     sfx.land();
     if (st.kickflip) {
@@ -684,10 +778,13 @@ export function updateRun(run, input, dt) {
   updateObstacles(edt, run.speed);
   updateFx(dt, run.speed);
   updateWeaponFx(dt);
+  updateTrails(st, edt, p);
 
   // Hits on enemies
   resolvePlayerHits(st, { rng: run.rng, onCrit: () => onCrit(run) });
   tickPoison(edt);
+
+  itemEffects(run, dt);
 
   // Enemy bullets vs player / orbitals
   const eb = enemyBullets;
@@ -699,27 +796,36 @@ export function updateRun(run, input, dt) {
       let eaten = false;
       for (const o of orbs) {
         const dx = eb.x[i] - o.x, dy = eb.y[i] - o.y;
-        if (dx * dx + dy * dy < 100) { eaten = true; burst(o.x, o.y, PAL.blue, 4, 80, 0.2, 1.5); break; }
+        if (dx * dx + dy * dy < (run.horizonT > 0 ? 400 : 100)) { eaten = true; burst(o.x, o.y, PAL.blue, 4, 80, 0.2, 1.5); break; }
       }
       if (eaten) { kill(eb, i); i--; continue; }
     }
     const dx = eb.x[i] - p.x, dy = eb.y[i] - PLAYER_Y;
     const hit = low
       ? Math.abs(dx) < LANE_W * 0.4 && Math.abs(dy) < 9
-      : dx * dx + dy * dy < (eb.r[i] + p.r) ** 2;
+      : dx * dx + dy * dy < (eb.r[i] + p.r * (p.shrinkT > 0 ? 0.7 : 1)) ** 2;
     if (!hit) continue;
     if (low && air) {
       if (!eb.pierce[i]) { eb.pierce[i] = 1; run.rs.lowJumps++; }
       continue;
     }
+    // MIRROR FIELD (active): reflect instead of getting hit
+    if (run.mirrorT > 0) {
+      spawn(playerBullets, eb.x[i], eb.y[i], 0, -480, 4, 2 * st.damageMul, 0, 1);
+      burst(eb.x[i], eb.y[i], PAL.cyan, 4, 90, 0.2, 1.5);
+      kill(eb, i); i--;
+      continue;
+    }
     if (isPhased(p)) {
       run.rs.phaseDodges++;
-      if (st.mirror) spawn(playerBullets, eb.x[i], eb.y[i], 0, -480, 4, 2 * st.damageMul * (st.counter ? 3 : 1), 0, 1);
+      // SPECTRE (GHOSTROUND + MIRROR SKIN): reflections are ghost shots
+      if (st.mirror) spawn(playerBullets, eb.x[i], eb.y[i], 0, -480, 4, 2 * st.damageMul * (st.counter ? 3 : 1) * (st.spectre ? 2 : 1), 0, st.spectre ? 99 : 1);
       burst(eb.x[i], eb.y[i], PAL.white, 4, 90, 0.2, 1.5);
       kill(eb, i); i--;
       continue;
     }
     if (p.iframes > 0) continue;
+    run.lastHit = { what: shooterName(run, eb.x[i], low), x: eb.x[i], y: PLAYER_Y, lane: p.lane, color: low ? PAL.orange : PAL.magenta };
     kill(eb, i); i--;
     onHurt(run, hurtPlayer(p, st));
   }
@@ -730,6 +836,7 @@ export function updateRun(run, input, dt) {
       if (e.dead || e.type === 'boss') continue;
       const dx = e.x - p.x, dy = e.y - PLAYER_Y;
       if (dx * dx + dy * dy < (e.r + p.r) ** 2) {
+        run.lastHit = { what: e.type.toUpperCase(), x: e.x, y: e.y, lane: p.lane, color: e.T.color };
         damageEnemy(e, 999);
         e.noReward = true;
         onHurt(run, hurtPlayer(p, st));
@@ -745,7 +852,7 @@ export function updateRun(run, input, dt) {
     const veil = o.type === 'veil' || o.type === 'rift';
     const overlap = (o.type === 'veil' || Math.abs(o.x - p.x) < hwLane) && Math.abs(o.y - PLAYER_Y) < OB_H[o.type] / 2 + 6;
     if (overlap && !o.hit) {
-      if (veil && (p.phaseT > 0 || o.phased)) { if (!o.phased) { o.phased = true; run.rs.phaseDodges++; burst(p.x, PLAYER_Y, PAL.cyan, 14, 180, 0.35, 2); } }
+      if (veil && (p.phaseT > 0 || o.phased)) { if (!o.phased) { o.phased = true; run.rs.phaseDodges++; run.rs.riftDodges = (run.rs.riftDodges || 0) + 1; burst(p.x, PLAYER_Y, PAL.cyan, 14, 180, 0.35, 2); } }
       else if (o.type === 'low' && air) o.jumped = true;
       else if (o.type === 'low' && st.breakLow) {
         o.dead = true;
@@ -756,6 +863,8 @@ export function updateRun(run, input, dt) {
         sfx.explode();
       } else if (p.iframes <= 0) {
         o.hit = true;
+        const OB_NAME = { wall: ['BARRIER', PAL.magenta], low: ['WIRE (jump it)', PAL.orange], veil: ['VEIL (phase it)', PAL.cyan], rift: ['TEAR (phase it)', PAL.cyan] };
+        run.lastHit = { what: OB_NAME[o.type][0], x: o.x, y: o.y, lane: p.lane, color: OB_NAME[o.type][1] };
         onHurt(run, hurtPlayer(p, st));
       }
     }
@@ -788,7 +897,7 @@ export function updateRun(run, input, dt) {
   const got = updatePickups(edt, run.speed, p, PLAYER_Y, st.magnet);
   for (const g of got) {
     if (g.kind === 'coin') { addCoins(run, 1); sfx.coin(); }
-    else if (g.kind === 'heart') { if (p.hearts < st.maxHearts) p.hearts++; else p.blueHearts++; sfx.heart(); }
+    else if (g.kind === 'heart') { heal(run, 1, true); sfx.heart(); }
     else if (g.kind === 'blue') { p.blueHearts++; sfx.heart(); }
     else if (g.kind === 'corrupt') {
       run.corrupt.push(g.itemId);
@@ -807,6 +916,7 @@ export function updateRun(run, input, dt) {
     if (e.type === 'boss') { onBossKilled(run, e); continue; }
     if (e.noReward) continue;
     run.rs.kills++;
+    if (p.jumpT > 0) run.rs.airKills = (run.rs.airKills || 0) + 1;
     if (e.poisoned) run.rs.toxinKills++;
     if (st.hasBeam) run.rs.laserKills = (run.rs.laserKills || 0) + 1;
     if (st.chain) {
@@ -816,10 +926,25 @@ export function updateRun(run, input, dt) {
       for (const o of enemies) if (!o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < radius + o.r) damageEnemy(o, dmg);
       sfx.explode();
     }
+    // SHRAPNEL: the kill bursts into acid shards flying up its lane and the next
+    // ones. They carry the shot traits: rockets explode (GRENADE with CHAIN
+    // too), sine weaves, toxin poisons twice (SPORE BURST). Capped per kill.
+    if (st.shrapnel) {
+      const n = Math.min(24, 3 + 2 * (st.shrapnel - 1));
+      const dmg = currentDamage(p, st) * 0.6 * (1 + 0.5 * (st.shrapnel - 1));
+      const lane = Math.max(0, Math.min(LANES - 1, Math.round((e.x - laneX(0)) / LANE_W)));
+      let flags = (st.hasRocket || st.grenade ? F_EXPLODE : 0) | (st.hasSine ? F_WAVE : 0) | (st.sporeBurst ? F_TOXIC : 0);
+      for (let k = 0; k < n; k++) {
+        const l = Math.max(0, Math.min(LANES - 1, lane + ((k % 3) - 1)));
+        const bi = spawn(playerBullets, e.x + (Math.random() - 0.5) * 8, e.y - 4 - Math.floor(k / 3) * 10, (laneX(l) - e.x) / 0.3, -460, 2.4, dmg, 0, st.pierce);
+        if (bi < 0) break;
+        playerBullets.lane[bi] = l; playerBullets.flags[bi] = flags; playerBullets.ox[bi] = e.x;
+      }
+    }
     if (st.leech) {
       run.leechKills++;
       const need = st.leech >= 2 ? 22 : 30;
-      if (run.leechKills >= need && p.hearts < st.maxHearts) { p.hearts++; run.leechKills = 0; sfx.heart(); toast(run, 'LEECH +1', '', PAL.red, 1.5); }
+      if (run.leechKills >= need && p.hearts < st.maxHearts) { heal(run); run.leechKills = 0; sfx.heart(); toast(run, 'LEECH +1', '', PAL.red, 1.5); }
       else run.leechKills = Math.min(run.leechKills, need);
     }
     const n = 1 + (st.toxinCoins && e.poisoned ? 1 : 0) + (BIG_ENEMIES.has(e.type) ? 1 : 0) + (e.elite ? 2 : 0);
@@ -853,6 +978,15 @@ export function updateRun(run, input, dt) {
 
   setMusic(run.boss || run.warnT > 0 ? 'boss' : 'run', d);
 
+  // SYMBIONT EGG: once per run, death hatches you again
+  if (p.dead && st.egg && !run.eggUsed) {
+    run.eggUsed = true;
+    p.dead = false; p.hearts = 1; p.iframes = 2;
+    clearPool(enemyBullets);
+    burst(p.x, PLAYER_Y, PAL.acid, 50, 260, 0.9, 3);
+    toast(run, 'THE EGG HATCHES', 'Second life', PAL.acid, 2.5);
+    sfx.heart();
+  }
   if (p.dead) endRun(run);
 }
 
@@ -863,12 +997,14 @@ export function endRun(run) {
   buzz([120, 60, 180]);
   const s = run.save;
   const rs = run.rs;
+  // What kills players: tells us which sections are unfair.
+  if (run.lastHit) { if (!s.deathBy) s.deathBy = {}; const k = run.lastHit.what.split(' (')[0]; s.deathBy[k] = (s.deathBy[k] || 0) + 1; }
   // Run-only achievements already checked live; merge totals then check the rest.
   for (const a of checkAchievements(s, rs)) {
     const rw = rewardOf(a.id);
     if (rw) run.newUnlocks.push(rw.name);
   }
-  for (const k of ['kills', 'bosses', 'coins', 'purchases', 'phaseDodges', 'lowJumps', 'obstacles', 'toxinKills', 'elites', 'laserKills']) s.totals[k] += rs[k] || 0;
+  for (const k of ['kills', 'bosses', 'coins', 'purchases', 'phaseDodges', 'lowJumps', 'obstacles', 'toxinKills', 'elites', 'laserKills', 'airKills', 'riftDodges']) s.totals[k] = (s.totals[k] || 0) + (rs[k] || 0);
   if (run.daily) s.totals.dailies++;
   s.totals.distance += Math.floor(rs.distance);
   if (run.daily) {
