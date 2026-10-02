@@ -11,12 +11,18 @@ import { sheet, drawCell } from '../render/images.js';
 // Generated boss sheet: 4x5 cells of 256x128, cropped to content by
 // import-sheet.py --fit (no cuts). Columns: 0-1 idle, 2 warning, 3 wounded.
 const BROOD_BOSSES = sheet('bosses_brood', 256, 128);
-const BOSS_ROW = { sentinel: 0, hive: 1, hunter: 2, prism: 3, warden: 4 };
+const BROOD_BOSSES2 = sheet('bosses_brood2', 256, 128);
+// boss id -> [sheet, row]
+const BOSS_ART = {
+  sentinel: [BROOD_BOSSES, 0], hive: [BROOD_BOSSES, 1], hunter: [BROOD_BOSSES, 2], prism: [BROOD_BOSSES, 3], warden: [BROOD_BOSSES, 4],
+  maw: [BROOD_BOSSES2, 0], choir: [BROOD_BOSSES2, 1], mother: [BROOD_BOSSES2, 2], spine: [BROOD_BOSSES2, 3], eclipse: [BROOD_BOSSES2, 4],
+};
 const PLAYER_ROW = H * 0.78;
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
 import { enemies, spawnEnemy, newId } from './enemies.js';
+import { spawnObstacle, spawnVeil } from './obstacles.js';
 import { sfx } from '../audio/audio.js';
 import { bossHp, bossSpeed, timeMul } from './balance.js';
 
@@ -40,6 +46,11 @@ const atk = (parts, tele = 0.9, rest = 0.9) => ({ parts, tele, rest });
 // lanes are at most one hop apart, so a beat is always enough to answer.
 const rows = (rs, beat = 0.5) => ({ kind: 'rows', rows: rs, beat });
 const R = (rs, beat = 0.5, tele = 0.8, rest = 0.7) => atk([rows(rs, beat)], tele, rest);
+// OBSTACLE rows fired by the boss down the track: 'B' barrier, 'T' wire,
+// 'P' tear, 'PPPPP' a full veil, '.' free. They scroll at track speed.
+const O = (rs, beat = 0.6, tele = 0.9, rest = 0.7) => atk([{ kind: 'obs', rows: rs, beat }], tele, rest);
+const FAN_OUT = (g) => [sw([2, 1, 0], g), sw([2, 3, 4], g)];   // from the mouth outward
+const FAN_IN = (g) => [sw([0, 1, 2], g), sw([4, 3, 2], g)];
 const hole = (...safe) => ALL.map((l) => (safe.includes(l) ? '.' : 'x')).join('');
 const corridor = (path, w = 1) => path.map((l) => hole(...Array.from({ length: w }, (_, i) => l + i)));
 // Safe lane walking one lane per beat between lo and hi, bouncing at the ends.
@@ -154,6 +165,84 @@ export const BOSSES = [
       [R(['LxLxL', 'xLxLx', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.', 'LxLxL'], 0.45), atk([low(ALL), beam([1, 3], 0.5)], 1.0), atk([sw([0, 1, 2, 3, 4], 0.14)], 0.7)],
     ],
   },
+  // ---- second circle (districts 6-10): new Brood bosses -------------------
+  {
+    // Inhales, then spits: fans from the mouth outward, low waves on a beat.
+    id: 'maw', name: 'MAW', color: '#ff7aa8',
+    hit: [{ x: 0, y: 0, hw: 72, hh: 40 }],
+    phases: [
+      [atk(FAN_OUT(0.25), 1.1), R(['LLLLL', 'LLLLL', 'LLLLL'], 0.7), atk([v([1, 3], 3)], 0.8)],
+      [atk(FAN_IN(0.2), 0.9), R(['LxLxL', 'LLLLL', 'xLxLx'], 0.6), atk([v([0, 2, 4], 3), low([1, 3])], 0.9)],
+      [atk(FAN_OUT(0.16), 0.8, 0.4), atk(FAN_IN(0.16), 0.8, 0.4), R(['LxLxL', 'xLxLx', 'LLLLL', 'LxLxL'], 0.5)],
+    ],
+    mk2: [
+      [R(MARCH(6), 0.42), atk(FAN_OUT(0.2), 0.9), R(['LLLLL', 'x.x.x', 'LLLLL', '.x.x.'], 0.55)],
+      [atk([...FAN_IN(0.18), low([0, 4])], 0.9), R(['xLxLx', 'LxLxL', 'xLxLx', 'LLLLL'], 0.45), atk(FAN_OUT(0.14), 0.7)],
+      [atk(FAN_OUT(0.14), 0.7, 0.3), R(chase(10), 0.36), atk([...FAN_IN(0.14), low([2])], 0.7)],
+    ],
+  },
+  {
+    // Sings in canon: beams alternate between the even and the odd lanes.
+    id: 'choir', name: 'CHOIR', color: '#ffb000',
+    hit: [{ x: 0, y: -12, hw: 26, hh: 24 }, { x: -58, y: -2, r: 22 }, { x: 58, y: -2, r: 22 }, { x: -92, y: 16, r: 18 }, { x: 92, y: 16, r: 18 }],
+    phases: [
+      [atk([beam([0, 2, 4], 0.5)], 0.9), atk([beam([1, 3], 0.5)], 0.8), R(MARCH(4), 0.55)],
+      [atk([beamSweep([0, 2, 4], 0.3, 0.3)], 0.9), atk([beamSweep([3, 1], 0.3, 0.3)], 0.8), atk([beam([0, 4], 0.6), v([2], 3)], 0.9)],
+      [R(MARCH(6), 0.38), atk([beam([1, 3], 0.45), low([0, 2, 4])], 0.9), atk([beamSweep([0, 1, 2, 3], 0.2)], 0.8)],
+    ],
+    mk2: [
+      [atk([beam([0, 2, 4], 0.4)], 0.7, 0.3), atk([beam([1, 3], 0.4)], 0.6, 0.3), R(MARCH(8), 0.36)],
+      [atk([beamSweep([0, 1, 2, 3], 0.18)], 0.7), atk([beamSweep([4, 3, 2, 1], 0.18)], 0.7), atk([beam([0, 4], 0.5), low([1, 2, 3])], 0.8)],
+      [R(corridor(bounce(0, 1, 12)), 0.32), atk([beam([1, 3], 0.4), low([0, 2, 4])], 0.7), R(MARCH(8), 0.32)],
+    ],
+  },
+  {
+    // The brood queen: rows of eggs to jump, drones hatching beside you.
+    id: 'mother', name: 'MOTHER', color: '#ffd23f',
+    hit: [{ x: 0, y: 0, hw: 44, hh: 38 }],
+    phases: [
+      [atk([summon([0, 4])], 0.6, 1.2), R(['LLLLL', 'LLLLL'], 0.7), atk([v([2], 4)], 0.8)],
+      [atk([summon([1, 3])], 0.6, 1.0), R(['LLLLL', 'LxLxL', 'LLLLL'], 0.6), atk([low([0, 2, 4])], 0.8)],
+      [atk([summon([0, 2, 4])], 0.5, 0.8), R(['LLLLL', 'LLLLL', 'LLLLL', 'LLLLL'], 0.65), atk([low(ALL)], 0.8)],
+    ],
+    mk2: [
+      [atk([summon([0, 2, 4])], 0.5, 0.8), R(['LLLLL', 'LxLxL', 'LLLLL', 'xLxLx'], 0.55), atk([v([1, 3], 4)], 0.7)],
+      [atk([summon([1, 3])], 0.5, 0.6), R(corridor(bounce(2, 1, 8, 1, 3)), 0.4), atk([low(ALL)], 0.7), R(['LLLLL', 'LLLLL', 'LLLLL'], 0.55)],
+      [atk([summon([0, 2, 4])], 0.4, 0.6), R(['LxLxL', 'LLLLL', 'xLxLx', 'LLLLL', 'LxLxL'], 0.45), atk([low([1, 3]), v([2], 3)], 0.7)],
+    ],
+  },
+  {
+    // A centipede across the track: its body comes down as rows of barriers
+    // with gaps between the segments.
+    id: 'spine', name: 'SPINE', color: '#e8d6a8',
+    hit: [{ x: -92, y: 16, r: 18 }, { x: -50, y: 0, r: 19 }, { x: 0, y: -8, r: 20 }, { x: 50, y: 0, r: 19 }, { x: 92, y: 16, r: 18 }],
+    phases: [
+      [O(['BB.BB', 'B.BBB', 'BB.BB'], 0.6), atk([v([0, 4], 3)], 0.8), O(['BBB.B', 'BB.BB', 'B.BBB', '.BBBB'], 0.55)],
+      [O(['B.BBB', 'BTBBB', 'B.BBB', 'BB.BB'], 0.6), atk([sw([0, 1, 2, 3, 4], 0.2)], 0.9), O(['.BBBB', 'B.BBB', 'BB.BB', 'BBB.B', 'BBBB.'], 0.5)],
+      [O(['BB.BB', 'BT.TB', 'B.B.B', '.B.B.', 'B.B.B'], 0.45), atk([v([1, 3], 4)], 0.7), O(['B.BBB', '.BBBB', 'B.BBB', 'BB.BB', 'BBB.B'], 0.42)],
+    ],
+    mk2: [
+      [O(['BB.BB', 'B.BBB', '.BBBB', 'B.BBB', 'BB.BB', 'BBB.B'], 0.45), atk([v([0, 4], 4)], 0.7)],
+      [O(['B.B.B', '.B.B.', 'B.B.B', '.B.B.', 'BB.BB'], 0.42), atk([sw([0, 1, 2, 3, 4], 0.16), low([2])], 0.8)],
+      [O(['BB.BB', 'BT.TB', '.BBBB', 'B.BBB', 'BB.BB', 'BBB.B', 'BBBB.'], 0.38), atk([v([1, 3], 4)], 0.6)],
+    ],
+  },
+  {
+    // The void eye: veils and tears to phase through, volleys between them.
+    // Phase obstacles are kept >= 2.3 s apart across attacks (see fireEvent).
+    id: 'eclipse', name: 'ECLIPSE', color: '#a64dff',
+    hit: [{ x: 0, y: 0, r: 46 }],
+    phases: [
+      [O(['PPPPP'], 0.8), atk([v([0, 2, 4], 3)], 0.9), atk([v([1, 3], 3)], 0.8)],
+      [O(['BBPBB'], 0.8), atk([beam([0, 1]), beam([3, 4], 0.5)], 0.9), O(['PPPPP'], 0.8), atk([sw([4, 3, 2, 1, 0], 0.18)], 0.8)],
+      [O(['PPPPP'], 0.7), atk([beam([1, 3], 0.5), low([0, 2, 4])], 0.9), O(['BPBBB'], 0.7), atk([sw([0, 1, 2, 3, 4], 0.15)], 0.7)],
+    ],
+    mk2: [
+      [O(['PPPPP'], 0.7), R(MARCH(6), 0.4), O(['BBPBB'], 0.7), atk([v([0, 4], 4)], 0.7)],
+      [O(['BPBBB'], 0.6), atk([beam([2, 3, 4], 0.5)], 0.7), O(['PPPPP'], 0.6), R(chase(8), 0.38)],
+      [O(['PPPPP'], 0.6), atk([sw([4, 3, 2, 1, 0], 0.13), low([2])], 0.7), O(['BBBPB'], 0.6), R(MARCH(8), 0.34)],
+    ],
+  },
 ];
 
 // index: how many bosses this run has beaten; defIndex: which boss (run order).
@@ -204,6 +293,11 @@ function currentAttack(b) {
 
 function resolveParts(b, a) {
   return a.parts.flatMap((p) => {
+    // Obstacle rows: the telegraph lights the barrier lanes of the first row.
+    if (p.kind === 'obs') {
+      const first = p.rows[0];
+      return [{ ...p, lanes: [...first].flatMap((c, l) => (c === 'B' ? [l] : [])) }];
+    }
     if (p.kind !== 'rows') return [{ ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes }];
     let rs = typeof p.rows === 'function' ? p.rows(b.playerLane) : p.rows;
     // MK3+: two more rows, repeating the last two (same transitions, still fair).
@@ -218,7 +312,7 @@ function resolveParts(b, a) {
   });
 }
 
-const ROW_SHOT = { kind: 'rowshot' }, ROW_LOW = { kind: 'rowlow' };
+const ROW_SHOT = { kind: 'rowshot' }, ROW_LOW = { kind: 'rowlow' }, OBS_ROW = { kind: 'obsrow' };
 
 // Boss rhythm lives on the game's tick grid too: an interval written in
 // seconds (at base tempo) becomes a whole number of ticks, shortened by the
@@ -240,6 +334,12 @@ function buildEvents(b, parts) {
     else if (p.kind === 'beam') for (let t = 0; t < p.dur; t += 0.045) ev.push({ t, part: p, lanes: p.lanes });
     else if (p.kind === 'summon') ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * onTicks(p.gap, b) + t, part: p, lanes: [l] }); });
+    else if (p.kind === 'obs') {
+      // wires need a whole jump between them, like low waves
+      const hasT = p.rows.some((r) => r.includes('T'));
+      const beat = Math.max(onTicks(p.beat, b, 2), hasT ? Math.ceil(JUMP_GAP / tickNow()) * tickNow() : 0);
+      p.rows.forEach((r, i) => ev.push({ t: i * beat, part: OBS_ROW, lanes: [], row: r }));
+    }
     else if (p.kind === 'rows') {
       // A row needs at least a beat to answer; rows with low waves need a whole
       // jump (0.45 s) plus a margin, or two in a row cannot both be cleared.
@@ -259,9 +359,27 @@ function buildEvents(b, parts) {
 
 const rowSpeed = (b) => 270 + (b.speed - 1) * 90;
 
+const PHASE_GAP = 2.3;   // s between two phase obstacles (phase cooldown 2 s)
 function fireEvent(b, e, difficulty) {
   const p = e.part;
   const y = b.y + b.hh;
+  if (p.kind === 'obsrow') {
+    const phase = e.row.includes('P');
+    // a phase obstacle too close to the previous one waits (never unfair)
+    if (phase && b.t - (b.lastPhaseAt ?? -99) < PHASE_GAP) {
+      b.events.push({ ...e, t: b.stateT + PHASE_GAP - (b.t - b.lastPhaseAt) });
+      b.events.sort((x, z) => x.t - z.t);
+      return;
+    }
+    if (phase) b.lastPhaseAt = b.t;
+    if (e.row === 'PPPPP') { spawnVeil(y); return; }
+    [...e.row].forEach((c, l) => {
+      if (c === 'B') spawnObstacle('wall', l, y);
+      else if (c === 'T') spawnObstacle('low', l, y);
+      else if (c === 'P') spawnObstacle('rift', l, y);
+    });
+    return;
+  }
   for (const l of e.lanes) {
     const x = laneX(l);
     // Row parts share one speed so their spacing on screen is the beat itself.
@@ -382,7 +500,7 @@ export function drawBossTelegraph(b) {
   if (!b || !b.teleParts.length) return;
   const prog = b.state === 'telegraph' ? Math.min(1, b.stateT / (currentAttack(b).tele / b.speed)) : 1;
   for (const p of b.teleParts) {
-    const c = p.kind === 'low' ? PAL.orange : p.kind === 'summon' ? PAL.magenta : b.color;
+    const c = p.kind === 'low' ? PAL.orange : p.kind === 'summon' || p.kind === 'obs' ? PAL.magenta : b.color;
     if (!p.lanes.length) continue;
     // Rhythm rows: once firing, the bullets themselves are the read; drop the glow.
     if (b.state === 'fire' && (p.kind === 'rows' || p.tele)) continue;
@@ -419,9 +537,15 @@ export function drawBoss(b, alpha) {
   ctx.beginPath(); ctx.ellipse(x + 6, y + hh + 14, hw * 0.8, 9, 0, 0, Math.PI * 2); ctx.fill();
   ctx.globalAlpha = 1;
 
-  if (BROOD_BOSSES.ready) {
+  const art = BOSS_ART[id];
+  if (art && art[0].ready) {
     const col = b.state === 'telegraph' ? 2 : b.phase >= 2 ? 3 : Math.floor(t * 2) % 2;
-    drawCell(BROOD_BOSSES, BOSS_ROW[id], col, x, y, 236, { flash: b.hitFlash > 0 ? 0.6 : b.phaseFlash > 0 ? 0.9 : 0 });
+    // MAW inhales while it telegraphs: motes drift into the mouth
+    if (id === 'maw' && b.state === 'telegraph' && Math.random() < 0.6) {
+      const a = Math.random() * Math.PI * 2;
+      burst(x + Math.cos(a) * 110, y + Math.sin(a) * 50, b.color, 1, 0, 0.3, 1.5);
+    }
+    drawCell(art[0], art[1], col, x, y, 236, { flash: b.hitFlash > 0 ? 0.6 : b.phaseFlash > 0 ? 0.9 : 0 });
     if (id === 'hunter') {   // keep the aim telegraph: it is gameplay information
       const tx = laneX(b.playerLane);
       const aim = b.state === 'telegraph' ? 0.9 : 0.25;
@@ -429,6 +553,12 @@ export function drawBoss(b, alpha) {
       ring(tx, PLAYER_ROW, 16 + Math.sin(t * 10) * 2, b.color, 1.5, aim);
     }
     if (b.poison > 0) drawGlowDot(x + hw * 0.8, y - hh - 6, PAL.acid, 3);
+    return;
+  }
+  if (!['sentinel', 'hive', 'hunter', 'prism', 'warden'].includes(id)) {
+    // art still loading: a glowing core so the fight stays readable
+    drawGlowDot(x, y, b.color, 40, 0.6);
+    drawGlowDot(x, y, '#ffffff', 8, 0.9);
     return;
   }
   if (id === 'prism') {

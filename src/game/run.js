@@ -71,12 +71,13 @@ export function createRun(save, opts = {}) {
   run.stats = computeStats(board, run.stacks);
   run.player = makePlayer(run.stats, board.color, board.id);
   run.rs.daily = daily;
-  // Boss order is shuffled per run (Fisher-Yates on the run seed).
-  run.bossOrder = BOSSES.map((_, i) => i);
-  for (let i = run.bossOrder.length - 1; i > 0; i--) {
-    const j = run.rng.int(0, i);
-    [run.bossOrder[i], run.bossOrder[j]] = [run.bossOrder[j], run.bossOrder[i]];
-  }
+  // Boss order: the first circle (5 bosses) in a shuffled order, then the
+  // second circle (5 more) shuffled; after all ten they come back as MK2.
+  const shuffled = (ids) => {
+    for (let i = ids.length - 1; i > 0; i--) { const j = run.rng.int(0, i); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    return ids;
+  };
+  run.bossOrder = [...shuffled([0, 1, 2, 3, 4]), ...shuffled(BOSSES.slice(5).map((_, i) => i + 5))];
 
   clearPool(playerBullets);
   clearPool(enemyBullets);
