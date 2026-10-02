@@ -24,7 +24,6 @@ import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickIt
 import { drawHud } from './ui/hud.js';
 import { drawMenu, drawArchive, drawPick, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
-import { setHaptics, buzz } from './core/haptics.js';
 import { startMusic, setMusic } from './audio/music.js';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +43,6 @@ let comboPage = 0;
 const MUTE = new URLSearchParams(location.search).has('mute');
 const audioSettings = () => (MUTE ? { ...save.settings, sfx: false, music: false } : save.settings);
 applySettings(audioSettings());
-setHaptics(save.settings.haptics);
 // Logo fonts (direction B). Offline the canvas falls back to system fonts.
 if (document.fonts) { document.fonts.load('64px Yellowtail').catch(() => {}); document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
 
@@ -149,7 +147,6 @@ function update(dt) {
     else if (id === 'archive') { screen = 'archive'; sfx.select(); }
     else if (id === 'sfx') { save.settings.sfx = !save.settings.sfx; applySettings(audioSettings()); writeSave(save); sfx.select(); }
     else if (id === 'music') { save.settings.music = !save.settings.music; applySettings(audioSettings()); writeSave(save); sfx.select(); }
-    else if (id === 'haptics') { save.settings.haptics = !save.settings.haptics; setHaptics(save.settings.haptics); writeSave(save); buzz(30); sfx.select(); }
     return;
   }
 
@@ -288,6 +285,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get run() { return run; },
     save,
     start: () => startRun(),
+    warp: (metres) => warpTo(run, metres),
     acquire: (id) => acquire(run, id),
     spawn: (type, lane, elite = false) => spawnEnemy(type, lane, 1, { chance: () => Math.random() < 0.5 }, { elite }),
     get enemies() { return enemies; },

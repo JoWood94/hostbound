@@ -227,6 +227,23 @@ const travelTicks = (d) => (d >= 15 ? 5 : d >= 7.5 ? 6 : 7);
 export const shotSpeed = (y, d) => (PLAYER_Y - y) / (travelTicks(d) * TICK / timeMul(d));
 const JUMP_GAP = 0.65;    // s between two low waves in a row: one jump (0.45) + reaction
 let clock = 0;            // in ticks
+// Every tick at which something must be jumped reaches the player row: low
+// waves already fired and wire rows on their way (run.js notes those). Each
+// enemy spaces its own waves, but nothing spaced two enemies, or a wave and a
+// row: two jumps 0.1-0.4 s apart, too close for two and too far for one.
+// Now a new low wave lands on one of them (one jump takes both) or a whole
+// jump away; otherwise it waits a tick, its lane still lit.
+const jumps = new Map();  // key -> { tick, row }
+export function noteJump(key, tick, row = false) { jumps.set(key, { tick: Math.round(tick), row }); }
+export function jumpClash(tick, d, { wavesOnly = false } = {}) {
+  const gap = Math.ceil(JUMP_GAP / (TICK / timeMul(d)));
+  tick = Math.round(tick);
+  for (const j of jumps.values()) {
+    if (wavesOnly && j.row) continue;
+    if (j.tick !== tick && Math.abs(j.tick - tick) < gap) return true;
+  }
+  return false;
+}
 let simT = 0;             // seconds, for the danger glow
 export const beatClock = () => clock;
 // Rhythm-game trick: nudge a shot's speed (a few %) so it reaches the player
@@ -292,6 +309,7 @@ export function updateEnemies(dt, difficulty) {
   clock += (dt * timeMul(d)) / TICK;
   simT += dt;
   for (const [l, v] of danger) if (v.until < simT) danger.delete(l);
+  for (const [k, j] of jumps) if (j.tick < clock - 8) jumps.delete(k);
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
     const T = e.T;
@@ -351,6 +369,8 @@ export function updateEnemies(dt, difficulty) {
         break;
       case 'fire':
         if (clock >= e.fireAt) {
+          const due = e.steps[e.step + 1];
+          if (due && due.low && jumpClash(clock + travelTicks(d), d)) { e.fireAt += 1; break; }
           e.step++;
           if (e.step >= e.steps.length) {
             e.volleys++;
@@ -363,6 +383,7 @@ export function updateEnemies(dt, difficulty) {
           } else {
             const st = e.steps[e.step];
             fire(e, st, d);
+            if (st.low) noteJump({}, clock + travelTicks(d));
             e.telegraphLanes = e.steps.slice(e.step + 1).flatMap((x) => x.lanes);
             // Two low waves back to back need a whole jump between them.
             const next = e.steps[e.step + 1];
@@ -588,4 +609,4 @@ export function drawEnemies(alpha) {
   }
 }
 
-export function clearEnemies() { enemies.length = 0; corpses.length = 0; danger.clear(); }
+export function clearEnemies() { enemies.length = 0; corpses.length = 0; danger.clear(); jumps.clear(); }

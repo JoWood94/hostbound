@@ -5,8 +5,9 @@
 // rows: [{ beat, row: 'BTP..' }] sorted by beat (veils are 'PPPPP').
 // Between rows the player may move one lane per beat (a hop is 0.11 s, a beat
 // is 0.27 s at 220 BPM). B: cannot be there. T: must jump, two jumps need
-// JUMP_BEATS between them. P: must phase, two phases need PHASE_BEATS.
-export const JUMP_BEATS = 3;     // a jump (0.45 s) + reaction, at any tempo <= 270 BPM
+// JUMP_BEATS between them. P: must phase, two phases need PHASE_BEATS. A
+// phase may follow a jump at once: a swipe down in the air drops and phases.
+export const JUMP_BEATS = 3;     // a jump (0.45 s at the start, the same in ticks later) + reaction, at any tempo <= 270 BPM
 export const PHASE_BEATS = 8;    // phase cooldown 2 s: 8 beats = 2.18 s at 220 BPM
 const NEG = -1e9;
 

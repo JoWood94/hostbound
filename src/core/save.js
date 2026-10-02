@@ -16,7 +16,7 @@ function fresh() {
     modesUsed: [],         // fire modes ever equipped
     combos: {},            // combo id -> true once discovered
     board: 'stock',
-    settings: { sfx: true, music: true, haptics: true },
+    settings: { sfx: true, music: true },
     daily: { date: '', best: 0 },
   };
 }
@@ -28,6 +28,7 @@ function migrate(data) {
   const out = { ...base, ...data };
   out.totals = { ...base.totals, ...(data.totals || {}) };
   out.settings = { ...base.settings, ...(data.settings || {}) };
+  delete out.settings.haptics; // vibration toggle removed
   out.daily = { ...base.daily, ...(data.daily || {}) };
   out.achievements = { ...(data.achievements || {}) };
   out.discovered = Array.isArray(data.discovered) ? data.discovered : [];

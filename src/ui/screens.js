@@ -123,8 +123,10 @@ export function drawMenu(save, t, boardIdx) {
   // Board selector
   const b = BOARDS[boardIdx];
   const unlocked = unlockedBoards(save).includes(b.id);
-  button('boardPrev', 16, 238, 44, 96, '◄', { color: PAL.white, size: 18 });
-  button('boardNext', W - 60, 238, 44, 96, '►', { color: PAL.white, size: 18 });
+  if (BOARDS.length > 1) {
+    button('boardPrev', 16, 238, 44, 96, '◄', { color: PAL.white, size: 18 });
+    button('boardNext', W - 60, 238, 44, 96, '►', { color: PAL.white, size: 18 });
+  }
   ctx.strokeStyle = unlocked ? b.color : PAL.dim;
   ctx.lineWidth = 2;
   ctx.strokeRect(66, 238, W - 132, 96);
@@ -150,11 +152,10 @@ export function drawMenu(save, t, boardIdx) {
   const nUnl = unlockedItems(save).length;
   text(`${nUnl}/${ITEMS.length} ITEMS · ${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length} GOALS`, W / 2, 494, { color: PAL.mute, size: 8, align: 'center' });
 
-  const bw = (W - 136) / 3;
+  const bw = (W - 128) / 2;
   const st = save.settings;
   button('sfx', 60, 506, bw, 30, `SFX ${st.sfx ? 'ON' : 'OFF'}`, { color: st.sfx ? PAL.white : PAL.dim, size: 10 });
   button('music', 68 + bw, 506, bw, 30, `MUSIC ${st.music ? 'ON' : 'OFF'}`, { color: st.music ? PAL.white : PAL.dim, size: 10 });
-  button('haptics', 76 + bw * 2, 506, bw, 30, `BUZZ ${st.haptics ? 'ON' : 'OFF'}`, { color: st.haptics ? PAL.white : PAL.dim, size: 10 });
 
   text('SWIPE OR TAP ◄ ► LANE · ▲ JUMP · ▼ PHASE', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
   if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 582, { color: PAL.acid, size: 12, align: 'center' });

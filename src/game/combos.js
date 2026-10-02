@@ -64,7 +64,7 @@ export const COMBOS = [
   pair('cellwall', 'greed', 'HIVE MIND', 'A blue heart every 15 cells.'),
   pair('carapace', 'plating', 'EXOSKELETON', 'The shell holds two hits per section.'),
   pair('blackhole', 'orbital', 'EVENT HORIZON', 'After a black hole, orbitals eat shots twice as wide.'),
-  pair('leadweights', 'slug', 'ARTILLERY', 'Huge shots, and SLUG no longer slows them.'),
+  // pair('leadweights', 'slug', 'ARTILLERY', 'Huge shots, and SLUG no longer slows them.'),   // LEAD WEIGHTS is off
   pair('sporecloud', 'toxin', 'MIASMA', 'The spore cloud poisons enemies in it.'),
   pair('momentum', 'slipstream', 'DRIFT', 'Two quick lane changes charge the slipstream burst.'),
   trio('fission', 'shrapnel', 'chain', 'CHAIN FISSION', 'Every kill starts a chain of splitting, exploding shards.'),

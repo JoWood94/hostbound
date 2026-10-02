@@ -114,7 +114,8 @@ export function updatePlayer(p, input, dt, stats) {
   }
   if (p.jumpT <= 0 && p.jumpBuf > 0 && stats.canJump) {
     p.jumpBuf = 0;
-    p.jumpDur = stats.jumpTime;
+    // shorter as the clock speeds up (run.js sets airMul): the same jump in ticks
+    p.jumpDur = stats.jumpTime * (p.airMul || 1);
     p.jumpT = p.jumpDur;
     p.ev.jump = true;
     p.squash = -1;
@@ -122,12 +123,14 @@ export function updatePlayer(p, input, dt, stats) {
   if (p.squash > 0) p.squash = Math.max(0, p.squash - dt * 7);
   else if (p.squash < 0) p.squash = Math.min(0, p.squash + dt * 6);
 
-  // Swipe down in the air = fast fall (Subway Surfers style). On the ground = phase.
+  // Swipe down in the air: with phase ready, drop to the track and phase at
+  // once (a jump never takes the phase away); on cooldown, fast fall only.
+  // On the ground = phase.
   let phaseInput = input.phase;
-  if (input.phase && p.jumpT > 0.07) {
-    p.jumpT = 0.07;
-    phaseInput = false;
+  if (input.phase && p.jumpT > 0) {
     p.ev.slam = true;
+    if (p.phaseCd <= 0 && p.phaseT <= 0) { p.jumpT = 0; p.ev.land = true; p.squash = 1; }
+    else if (p.jumpT > 0.07) { p.jumpT = 0.07; phaseInput = false; }
   }
 
   // Phase: brief invulnerability in place

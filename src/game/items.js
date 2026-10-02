@@ -272,9 +272,11 @@ export const ITEMS = [
     desc: 'Once per run, death hatches you again with 1 heart.',
     apply: (s) => { s.egg = true; } },
   // ---- risk ----
-  { id: 'leadweights', name: 'LEAD WEIGHTS', code: 'LDW', cat: 'risk', rarity: 1, max: 1, unlock: 'jump_300',
-    desc: 'You can no longer jump. DMG +60%.', conflicts: ['kickflip', 'pound', 'skyshot'],
-    apply: (s) => { s.canJump = false; s.damageMul *= 1.6; } },
+  // LEAD WEIGHTS is off while the game is balanced around the stock moveset
+  // (it takes the jump away). Uncomment, with ARTILLERY in combos.js, to restore.
+  // { id: 'leadweights', name: 'LEAD WEIGHTS', code: 'LDW', cat: 'risk', rarity: 1, max: 1, unlock: 'jump_300',
+  //   desc: 'You can no longer jump. DMG +60%.', conflicts: ['kickflip', 'pound', 'skyshot'],
+  //   apply: (s) => { s.canJump = false; s.damageMul *= 1.6; } },
   { id: 'fever', name: 'FEVER', code: 'FVR', cat: 'risk', rarity: 1, max: 2, unlock: 'kills_run_150',
     desc: 'RATE +30%, but every heal is halved. Stack: +55%, heals a third.',
     apply: (s, n) => { s.fireRate *= 1 + (n > 1 ? 0.55 : 0.3); s.healMul = n > 1 ? 1 / 3 : 0.5; } },

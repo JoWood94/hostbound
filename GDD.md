@@ -32,7 +32,8 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 | Sparo | Automatico, sempre | — |
 | Pausa | Tap in alto / perdi focus | Esc / P |
 
-- **Salto**: supera ostacoli bassi (barriere, buchi). Durante salto sei ancora colpibile dai proiettili.
+- **Salto**: supera ostacoli bassi (barriere, buchi). Durante salto sei ancora colpibile dai proiettili (in aria si cambia corsia). Dura 0,45 s all'inizio e si accorcia col tempo del gioco (stessa durata in tick: ~0,29 s a 230 BPM); KICKFLIP ×1,3 sopra.
+- **Swipe giù in aria**: con il phase pronto atterri e fai phase subito (un salto non toglie mai il phase); in cooldown solo caduta rapida.
 - **Phase**: invulnerabilità sul posto per 0,45 s, quanto un salto (la board "sfasa"). Cooldown 2 s. Item lo modificano (es. phase = dash di 2 corsie).
 - Dead zone tocco e sensibilità configurabili in impostazioni.
 
@@ -172,7 +173,16 @@ Prima i boss avevano gli stessi pattern a 1000 m e a 10000 m: a 5000 m HIVE era 
 Misurato col bot (azioni al minuto, fase 1/2/3): HIVE 36/40/56 a 900 m, 44/48/68 a 4900, 60/64/88 a 7900; a 4900 m quasi tutti i boss tra 50 e 110. 450 prove (10 boss × MK1–3 × 3 fasi × 5 distanze fino a 11900 m): 4 colpi singoli, nessuno ripetibile.
 
 ### Controlli
-Nel gioco il tap scatta dopo 45 ms di dito fermo, senza aspettare il rilascio (era tutto il ritardo del tap). Lo swipe scatta a 14 px (prima 22) e legge tutti i campioni del movimento tra un frame e l'altro. Un trascinamento laterale dopo un tap anticipato non conta come secondo comando; uno swipe verticale entro 150 ms dal tap anticipato annulla il cambio corsia del tap (il dito era fermo prima di saltare o fare phase), senza aggiungere ritardo. Il phase dura quanto il salto, 0,45 s. Menu e schermate di scelta restano a tap sul rilascio (protezione dalle scelte accidentali).
+Nel gioco il tap scatta dopo 45 ms di dito fermo, senza aspettare il rilascio (era tutto il ritardo del tap). Lo swipe scatta a 14 px (prima 22) e legge tutti i campioni del movimento tra un frame e l'altro. Un trascinamento laterale dopo un tap anticipato non conta come secondo comando; uno swipe verticale entro 150 ms dal tap anticipato annulla il cambio corsia del tap (il dito era fermo prima di saltare o fare phase), senza aggiungere ritardo. Il phase dura 0,45 s. Menu e schermate di scelta restano a tap sul rilascio (protezione dalle scelte accidentali).
+
+### Salto sul clock del distretto
+Il salto durava sempre 0,45 s: a 230 BPM sono ~3,5 tick in aria, senza phase (lo swipe giù era solo caduta rapida), e la sezione dopo chiedeva già la mossa successiva. Ora la durata segue il tempo (`airMul` = BPM iniziale / BPM, in `run.js`) e lo swipe giù in aria atterra e fa phase se è pronto. Misurato col bot sulle stesse partite (seed fisso, build media, 75 partite da 2 minuti tra 5000 e 12000 m): 30 colpi prima, 3 dopo (onde basse da 24 a 1). Nessuna differenza tra 1000 e 4500 m (4 e 4); con KICKFLIP 3 → 1. Il bot ora fa phase quando è chiuso tra due colpi ed esce dalla corsia di un kamikaze.
+
+### Un solo personaggio (per ora)
+Il gioco si bilancia attorno al moveset base (5 corsie, salto, phase): restano solo la nave STOCK e gli item che non tolgono il salto. Le navi GHOST, TANK, VIRAL, GLITCH e l'item LEAD WEIGHTS (con la combo ARTILLERY) sono commentati in `boards.js`, `items.js`, `combos.js`, pronti da riattivare. Motivo: senza salto le onde basse a tutta larghezza e le file di fili si superano solo col phase (2 s di cooldown), e il bot prendeva 6–18 colpi al minuto; la TANK sfondava i fili ma non le onde basse. Quando torneranno, ogni percorso dovrà essere fattibile sia saltando sia sfondando.
+
+### Registro dei salti
+Ogni nemico distanziava le proprie onde basse (0,65 s), ma niente distanziava due nemici diversi, o un'onda e una fila di fili: a 5500 m arrivavano due salti obbligati (nessuna corsia libera) a 0,1–0,4 s, troppo vicini per due salti e troppo lontani per uno. Ora `enemies.js` tiene un registro dei tick in cui qualcosa da saltare arriva sulla riga del giocatore (onde sparate e file di fili annunciate da `run.js` 24 tick prima). Un'onda bassa parte solo se arriva nello stesso tick di un'altra (un salto le prende entrambe) o a un salto intero (0,65 s); altrimenti aspetta un tick con la corsia accesa (l'avviso si allunga, mai si accorcia). Una fila che cadrebbe troppo vicina a un'onda già sparata slitta con il resto della sezione. Misurato (seed fissi, build media): coppie di salti obbligati a meno di 0,6 s tra 5000 e 6500 m da 56/877 a 1/769 (e quella a 0,05 s, cioè un salto solo); 5000–12000 m 2/1510. Pressione invariata: stesse onde basse per partita (182 contro 179), stesse uccisioni.
 
 ### Prestazioni
 Gli ostacoli sono pre-renderizzati: 12 fotogrammi di animazione in loop per tipo e variante, preparati all'avvio della partita (~40 ms una volta sola) e stampati con `drawImage`. Prima ogni ostacolo ricalcolava fili, sfumature e `shadowBlur` a ogni frame: una scena con 25 ostacoli e un velo costava 74 ms per frame, ora 7.

@@ -8,7 +8,7 @@ import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_TOXIC } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
-import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus } from './enemies.js';
+import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus, noteJump, jumpClash } from './enemies.js';
 import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
 import { survivable, rowsOf } from './fairness.js';
 import { intensity, generateCourse, generateCombat } from './generator.js';
@@ -24,7 +24,6 @@ import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeapon
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic, syncMusic } from '../audio/music.js';
-import { buzz } from '../core/haptics.js';
 import { ACTIVE_BTN } from '../ui/hud.js';
 
 export const EVENT_EVERY = 1000;      // metres between bosses: one at the end of each district
@@ -145,7 +144,7 @@ export function acquire(run, id, silent = false) {
   run.rs.defItems = ITEMS.filter((x) => x.cat === 'defense' && run.stacks[x.id] > 0).length;
 
   if (!silent) {
-    sfx.pickup(); buzz(15);
+    sfx.pickup();
     toast(run, it.name, it.desc.length < 44 ? it.desc : '', RARITY[it.rarity].color);
     if (it.cat === 'active') toast(run, 'ACTIVE ITEM', 'Kills fill the orange button: tap it when full', PAL.orange, 4.5);
   }
@@ -407,12 +406,14 @@ function startSection(run, d) {
   const evs = events.map((x) => {
     // rows and veils are timed by ARRIVAL; spawn them early by their travel time
     x.at = t0 + x.beat * BEAT - (x.kind === 'row' || x.kind === 'veil' ? travelTicks : 0);
+    if (x.kind === 'row') x.travel = travelTicks;
     return x;
   }).sort((p, q) => p.at - q.at);
   run.sec = { id: def.id, evs, i: 0, enemyIds: [], tier: T };
   run.player.carapace = run.stats.carapace;          // CARAPACE regrows every section
 }
 
+const JUMP_HORIZON = 24;   // ticks ahead that wire rows are announced to the enemies
 function direct(run, d) {
   const now = beatClock();
   if (!run.sec) {
@@ -423,6 +424,20 @@ function direct(run, d) {
     startSection(run, d);
   }
   const sec = run.sec;
+  // Wire rows due soon go into the jump ledger, so enemies time their low
+  // waves around them. A row that would land too close to a wave already
+  // fired slides later, with the rest of the section.
+  for (let k = sec.i; k < sec.evs.length; k++) {
+    const ev = sec.evs[k];
+    if (ev.kind !== 'row' || !ev.row.includes('T')) continue;
+    const arrive = ev.at + ev.travel;
+    if (arrive > now + JUMP_HORIZON) break;
+    if (jumpClash(arrive, d, { wavesOnly: true })) {
+      for (let q = k; q < sec.evs.length; q++) sec.evs[q].at += 1;
+      break;
+    }
+    noteJump(ev, arrive, true);
+  }
   while (sec.i < sec.evs.length && sec.evs[sec.i].at <= now) {
     const ev = sec.evs[sec.i];
     // Guard against the tail of the previous section: an enemy enters only if
@@ -531,7 +546,6 @@ function onBossKilled(run, b) {
   burst(b.x, b.y, PAL.white, 30, 200, 0.8, 3);
   shake(14, 0.6);
   sfx.bossDie();
-  buzz([40, 40, 90]);
   clearPool(enemyBullets);
   run.boss = null;
   run.bossIndex++;
@@ -654,7 +668,6 @@ function onHurt(run, result) {
     run.sporeT = run.stats.spore > 1 ? 1.4 : 0.8;
     run.sporeLane = run.player.lane;
   }
-  buzz(result === 'shield' ? 25 : 70);
   run.wasHit = true;
   if (run.boss) run.bossHit = true;
   sfx[result === 'shield' ? 'shield' : 'hurt']();
@@ -748,7 +761,8 @@ export function updateRun(run, input, dt) {
 
   // Player + weapon
   if (run.time > 0.5) tip(run, 'lanes', 'SWIPE OR TAP LEFT / RIGHT', 'Change lane. Lit lanes are about to be shot');
-  if (run.time > 8) tip(run, 'phase', 'SWIPE DOWN TO PHASE', 'Brief invulnerability. In the air: fast fall');
+  if (run.time > 8) tip(run, 'phase', 'SWIPE DOWN TO PHASE', 'Brief invulnerability. In the air: drop and phase');
+  p.airMul = B.timeMul(0) / B.timeMul(d);        // jumps last the same in ticks as the clock speeds up
   updatePlayer(p, input, dt, st);
   if (p.ev.jump) sfx.jump();
   if (p.ev.lane) sfx.lane();
@@ -1036,7 +1050,6 @@ export function endRun(run) {
   run.mode = 'dead';
   run.deadT = 0;
   sfx.death();
-  buzz([120, 60, 180]);
   const s = run.save;
   const rs = run.rs;
   // What kills players: tells us which sections are unfair.
