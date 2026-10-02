@@ -107,7 +107,8 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 // ---------------------------------------------------------------------------
 // Logo: Japanese neon sign. HOST in a cyan tube, BOUND in a pink tube (Train One
 // draws its letters as double tubes), the katakana reading underneath, a faint
-// RGB split and scanlines. Each word flickers on its own now and then, like
+// RGB split and scanlines, slightly italic, underlined by a crackling plasma
+// bolt. Each word flickers on its own now and then, like
 // real signage. Baked once per word when the font has loaded.
 // ---------------------------------------------------------------------------
 const LOGO_FONT = '"Train One", "Russo One", sans-serif';
@@ -130,6 +131,8 @@ function bakeLogo(k) {
   const gap = 6, total = ws[0] + ws[1] + gap;
   const xs = [LOGO_W / 2 - total / 2, LOGO_W / 2 - total / 2 + ws[0] + gap];
   const tube = (x, txt, px, py, col, core) => {
+    x.save(); x.translate(px, py); x.transform(1, 0, -0.16, 1, 0, 0);   // italic
+    px = 0; py = 0;
     x.textAlign = 'left'; x.textBaseline = 'middle';
     x.shadowColor = col; x.shadowBlur = 10; x.fillStyle = col; x.fillText(txt, px, py);
     x.shadowBlur = 3; x.shadowColor = core; x.fillStyle = core; x.globalAlpha = 0.85; x.fillText(txt, px, py);
@@ -139,6 +142,7 @@ function bakeLogo(k) {
     x.fillStyle = '#ff2050'; x.fillText(txt, px + 1.5, py);
     x.fillStyle = '#2050ff'; x.fillText(txt, px - 1.5, py);
     x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1;
+    x.restore();
   };
   const words = LOGO_PARTS.map((p, i) => {
     const [c, x] = mk();
@@ -155,24 +159,52 @@ function bakeLogo(k) {
   const spacing = 3;
   let px = xs[1] + ws[1] - (kw + spacing * (LOGO_KANA.length - 1));
   for (const ch of LOGO_KANA) { tube(kx, ch, px, LOGO_CY + 33, '#ff2bd6', '#ffe0f8'); px += kx.measureText(ch).width + spacing; }
-  return { words, kana: kc, k };
+  return { words, kana: kc, k, x0: xs[0], x1: xs[1] + ws[1] };
+}
+
+// Irregular plasma underline: a crackling cyan bolt with a magenta one
+// twisting around it and short magenta branches, re-struck ~15 times a second.
+let plasmaSeed = 0, plasmaT = -1;
+function plasmaUnderline(x0, x1, y, t) {
+  const tick = Math.floor(t * 15);
+  if (tick !== plasmaT) { plasmaT = tick; plasmaSeed = Math.random() * 1000; }
+  let sd = plasmaSeed;
+  const rnd = () => { sd = (sd * 9301 + 49297) % 233280; return sd / 233280; };
+  const bolt = (amp, jit, phase) => {
+    const pts = [];
+    for (let x = x0; x <= x1; x += 5) {
+      const u = (x - x0) / (x1 - x0);
+      const env = Math.sin(Math.PI * Math.min(1, u * 1.15)) * 0.7 + 0.3;     // thinner at the ends
+      const yy = y + (Math.sin(x * 0.09 + t * 2.2 + phase) * amp + Math.sin(x * 0.23 - t * 3.1 + phase) * amp * 0.5 + (rnd() - 0.5) * jit) * env;
+      pts.push([x - u * 6, yy]);     // leans with the italic
+    }
+    return pts;
+  };
+  const stroke = (pts, col, w, blur, a) => {
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = blur; ctx.globalAlpha = a;
+    ctx.beginPath(); pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py))); ctx.stroke();
+  };
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const main = bolt(2.2, 3, 0);
+  stroke(main, PAL.cyan, 3.2, 14, 0.55);
+  stroke(main, '#d8ffff', 1.2, 4, 0.95);
+  const vein = bolt(3.2, 4.5, 2.4);
+  stroke(vein, '#e020c0', 1.4, 10, 0.85);
+  // short branches forking off the main bolt
+  for (let i = 0; i < 5; i++) {
+    const [bx, by] = main[Math.floor(rnd() * main.length)];
+    const dir = rnd() < 0.5 ? -1 : 1;
+    const br = [[bx, by]];
+    let cx = bx, cy = by;
+    for (let j = 0; j < 3; j++) { cx += 3 + rnd() * 5; cy += dir * (1.5 + rnd() * 3); br.push([cx, cy]); }
+    stroke(br, rnd() < 0.6 ? '#ff2bd6' : PAL.cyan, 1, 6, 0.7);
+  }
+  ctx.restore();
 }
 
 function drawLogo(t) {
   const CY = 150;
-  // Cosmic current behind the sign.
-  ctx.save();
-  for (const [col, amp, fr, sp, a] of [[PAL.cyan, 3, 0.045, 1.2, 0.45], [PAL.violet, 4.5, 0.03, -0.8, 0.4]]) {
-    ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = 1.5;
-    ctx.shadowColor = col; ctx.shadowBlur = 8;
-    ctx.beginPath();
-    for (let x = 0; x <= W; x += 6) {
-      const y = CY + 24 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
-      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
   const k = ctx.getTransform().a || 1;
   const fontReady = !document.fonts || (document.fonts.check(`42px ${LOGO_FONT}`, 'HOSTBOUND') && document.fonts.check(`13px ${LOGO_FONT}`, LOGO_KANA));
   if (!logoBake || logoBake.k !== k || (!logoBake.final && fontReady)) {
@@ -180,6 +212,7 @@ function drawLogo(t) {
     logoBake.final = fontReady;
   }
   const ox = W / 2 - LOGO_W / 2, oy = CY - LOGO_CY;
+  plasmaUnderline(ox + logoBake.x0 - 10, ox + logoBake.x1 + 4, CY + 21, t);
   // Flicker: now and then a word stutters off for a few frames.
   for (let i = 0; i < 2; i++) {
     if (logoFlick[i] > 0) logoFlick[i]--;
