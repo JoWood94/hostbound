@@ -136,6 +136,7 @@ export function makeBoss(index, defIndex, power = 1) {
     type: 'boss',
     def,
     name: loop > 0 ? `${def.name} MK${loop + 1}` : def.name,
+    loop,
     color: def.color,
     T: { color: def.color },
     x: W / 2, y: -90, prevX: W / 2, prevY: -90,
@@ -160,15 +161,21 @@ export function makeBoss(index, defIndex, power = 1) {
   return b;
 }
 
+// MK3 (third loop) bosses open with the Hive's drones as well.
+const MK3_SUMMON = atk([summon([0, 4])], 0.6, 1.2);
 function currentAttack(b) {
-  const list = b.def.phases[b.phase];
+  // Phase 3 is the MK2+ frenzy: phase 2's attacks with volleys layered on top.
+  let list = b.def.phases[Math.min(2, b.phase)];
+  if (b.loop >= 2 && b.phase === 0) list = [...list, MK3_SUMMON];
   return list[b.atkIndex % list.length];
 }
 
 function resolveParts(b, a) {
   return a.parts.flatMap((p) => {
     if (p.kind !== 'rows') return [{ ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes }];
-    const rs = typeof p.rows === 'function' ? p.rows(b.playerLane) : p.rows;
+    let rs = typeof p.rows === 'function' ? p.rows(b.playerLane) : p.rows;
+    // MK2+: two more rows, repeating the last two (same transitions, still fair).
+    if (b.loop >= 1 && rs.length >= 2) rs = [...rs, rs[rs.length - 2], rs[rs.length - 1]];
     // Telegraph shows the first row: shots in the boss colour, lows in orange.
     const first = [...rs[0]];
     const shots = first.flatMap((c, l) => (c === 'x' ? [l] : []));
@@ -252,7 +259,7 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
   b.x = W / 2 + Math.sin(b.t * 0.8) * 4;
 
   // Phase change by HP
-  const want = b.hp < b.maxHp / 3 ? 2 : b.hp < (b.maxHp * 2) / 3 ? 1 : 0;
+  const want = b.loop >= 1 && b.hp < b.maxHp * 0.15 ? 3 : b.hp < b.maxHp / 3 ? 2 : b.hp < (b.maxHp * 2) / 3 ? 1 : 0;
   if (want > b.phase && b.state !== 'enter') {
     b.phase = want;
     b.atkIndex = 0;
@@ -265,6 +272,8 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
     burst(b.x, b.y, b.color, 30, 260, 0.7, 3);
     sfx.bossWarn();
   }
+
+  if (b.phase === 3 && b.state !== 'enter') frenzy(b, difficulty);
 
   const a = currentAttack(b);
   const m = b.speed;
@@ -303,7 +312,39 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
   return !b.dead;
 }
 
+// Frenzy (MK2+, under 15% HP): every 4 beats a 3-shot volley is layered on
+// one lane that nothing else threatens, with the same 4-tick warning as any
+// enemy. Only when at least 3 lanes are free, so 2 always stay open.
+function frenzy(b, difficulty) {
+  const now = beatClock();
+  // queued shots of a volley already fired
+  if (b.frenzyQueue && b.frenzyQueue.length && b.t >= b.frenzyQueue[0].t) {
+    fireEvent(b, b.frenzyQueue.shift(), difficulty);
+  }
+  if (b.frenzyShot) {
+    if (now >= b.frenzyShot.at) {
+      const l = b.frenzyShot.lane;
+      b.frenzyQueue = [0, 1, 2].map((k) => ({ t: b.t + k * 0.12, part: { kind: 'volley' }, lanes: [l] }));
+      b.frenzyShot = null;
+    }
+    return;
+  }
+  if (now < (b.frenzyNext ?? 0)) return;
+  // Never over a rhythm-row attack: its free lane moves every beat and a volley
+  // could land right in it.
+  if (currentAttack(b).parts.some((p) => p.kind === 'rows')) return;
+  b.frenzyNext = Math.ceil(now) + 8;
+  const busy = new Set();
+  const eb = enemyBullets;
+  for (let i = 0; i < eb.n; i++) if (eb.kind[i] !== LOW && eb.y[i] < PLAYER_ROW) busy.add(Math.round((eb.x[i] - laneX(0)) / LANE_W));
+  for (const p of b.teleParts) for (const l of p.lanes || []) busy.add(l);
+  const free = [0, 1, 2, 3, 4].filter((l) => !busy.has(l));
+  if (free.length < 3) return;
+  b.frenzyShot = { lane: free[Math.floor(now) % free.length], at: Math.ceil(now) + 4 };
+}
+
 export function drawBossTelegraph(b) {
+  if (b && b.frenzyShot) glowLane(b.frenzyShot.lane, b.color, 0.9);
   if (!b || !b.teleParts.length) return;
   const prog = b.state === 'telegraph' ? Math.min(1, b.stateT / (currentAttack(b).tele / b.speed)) : 1;
   for (const p of b.teleParts) {

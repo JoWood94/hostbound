@@ -10,6 +10,7 @@ import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spa
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC } from './enemies.js';
 import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
+import { survivable, rowsOf } from './fairness.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
 import { pickups, spawnPickup, dropCoins, updatePickups, clearPickups } from './pickups.js';
@@ -285,7 +286,6 @@ function safeToEnter(type, lane) {
 const BEAT = 2;            // ticks per beat
 // Big enemies pay one extra coin.
 const BIG_ENEMIES = new Set(['crusher', 'throb', 'weaver', 'wall', 'tank']);
-const BREATH = 2;          // beats of calm between sections
 
 // Fight, run, fight, run: combat sections and obstacle courses alternate, so
 // the run breathes between shooting and reading the track.
@@ -293,7 +293,10 @@ const inRange = (x, dist) => x.from <= dist && (x.to === undefined || dist < x.t
 function pickSection(run) {
   const wantCourse = run.lastKind === 'combat';
   const lib = wantCourse ? COURSES : SECTIONS;
-  let pool = lib.filter((x) => inRange(x, run.distance) && !run.recentSec.includes(x.id));
+  // Sawtooth: right after a boss (heat 0) only sections from the previous
+  // districts, so the new tempo is read on familiar shapes.
+  const cap = B.heat(run.distance) <= 0 ? Math.max(1000, B.tier(run.distance) * 1000 - 1000) : Infinity;
+  let pool = lib.filter((x) => inRange(x, run.distance) && x.from <= cap && !run.recentSec.includes(x.id));
   if (!pool.length) pool = (wantCourse ? SECTIONS : COURSES).filter((x) => inRange(x, run.distance) && !run.recentSec.includes(x.id));
   if (!pool.length) pool = SECTIONS.filter((x) => inRange(x, run.distance));
   // Newer sections (unlocked in the last ~1500 m) come up twice as often.
@@ -303,21 +306,61 @@ function pickSection(run) {
   return def;
 }
 
+// Narrow enemies that can reinforce a combat section at high tiers.
+const REINFORCEMENTS = ['drone', 'stalker', 'hopper'];
+
+// Courses at tier 4+: rows come faster (2 beats -> 1.5 beats = 3 ticks) and
+// one more row joins at the end. Both changes are kept only if the course is
+// still survivable (fairness.js), otherwise the authored version plays.
+const TAIL_ROWS = ['TTTTT', '.B.B.', 'B.B.B', 'BB.BB', 'TBTBT'];
+function tightenCourse(run, events) {
+  const rowEvs = events.filter((x) => x.kind === 'row' || x.kind === 'veil');
+  if (!rowEvs.length) return events;
+  const first = Math.min(...rowEvs.map((x) => x.beat));
+  const squeezed = events.map((x) => (x.kind === 'row' || x.kind === 'veil' || x.kind === 'coins'
+    ? { ...x, beat: x.beat <= first ? x.beat : first + (x.beat - first) * 0.75 }
+    : x));
+  let out = survivable(rowsOf(squeezed)).ok ? squeezed : events;
+  const last = Math.max(...rowsOf(out).map((x) => x.beat));
+  for (const row of [...TAIL_ROWS].sort(() => run.rng.next() - 0.5)) {
+    const withTail = [...out, { beat: last + 2, kind: 'row', row }];
+    if (survivable(rowsOf(withTail)).ok) { out = withTail; break; }
+  }
+  return out;
+}
+
 function startSection(run, d) {
   const def = pickSection(run);
   run.recentSec = [def.id, ...run.recentSec].slice(0, 3);
   const mirror = run.rng.chance(0.5);
+  const T = B.tier(run.distance), h = B.heat(run.distance);
+  let events = def.events.map((ev) => (mirror ? mirrorEvent(ev) : { ...ev }));
+  if (run.lastKind === 'course' && T >= 4) events = tightenCourse(run, events);
+  // Reinforcements: from tier 3 a combat section may get one more narrow enemy
+  // (two from tier 6), in a lane two away from every enemy of the section.
+  // safeToEnter still guards them when they arrive.
+  if (run.lastKind === 'combat' && h > 0 && run.rng.chance(B.reinforceChance(T, h))) {
+    const taken = events.filter((x) => x.kind === 'enemy').map((x) => x.lane);
+    const n = T >= 6 ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const free = [0, 1, 2, 3, 4].filter((l) => taken.every((t) => Math.abs(t - l) >= 2));
+      if (!free.length) break;
+      const lane = run.rng.pick(free);
+      const type = T >= 5 ? run.rng.pick(REINFORCEMENTS) : 'drone';
+      events.push({ beat: k * 4, kind: 'enemy', type, lane, reinforcement: true });
+      taken.push(lane);
+    }
+  }
   const now = beatClock();
   const t0 = Math.ceil(now / BEAT) * BEAT + BEAT;          // on the next beat
   const tickSec = TICK_SEC / B.timeMul(d);
   const travelTicks = ((PLAYER_Y + 30) / Math.max(1, run.speed)) / tickSec;
-  const evs = def.events.map((ev) => {
-    const x = mirror ? mirrorEvent(ev) : { ...ev };
+  const evs = events.map((x) => {
     // rows and veils are timed by ARRIVAL; spawn them early by their travel time
     x.at = t0 + x.beat * BEAT - (x.kind === 'row' || x.kind === 'veil' ? travelTicks : 0);
     return x;
   }).sort((p, q) => p.at - q.at);
-  run.sec = { id: def.id, evs, i: 0, enemyIds: [] };
+  run.sec = { id: def.id, evs, i: 0, enemyIds: [], tier: T };
 }
 
 function direct(run, d) {
@@ -343,7 +386,7 @@ function direct(run, d) {
     sec.i++;
     if (ev.kind === 'enemy') {
       if (!TYPES[ev.type] || TYPES[ev.type].unlockAt > run.distance + 400) continue;
-      const en = spawnEnemy(ev.type, ev.lane, d, run.rng, { power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
+      const en = spawnEnemy(ev.type, ev.lane, d, run.rng, { power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d, B.heat(run.distance))) });
       if (en) sec.enemyIds.push(en.id);
     } else if (ev.kind === 'row') {
       [...ev.row].forEach((ch, l) => {
@@ -358,14 +401,16 @@ function direct(run, d) {
     }
   }
   sec.lastNow = now;
-  // Over when every event fired, its enemies are on their last volley (or
+  // Over when every event fired, its enemies are near their last volley (or
   // gone), and its obstacles are past the middle of the screen. The next
   // section's enemies need ~1.5 s to enter and telegraph, so it overlaps only
   // with the tail of this one.
-  const busy = (en) => sec.enemyIds.includes(en.id) && !en.dead && en.state !== 'leave' && en.volleys < en.maxVolleys - 1;
+  // Deeper tiers let the next section start earlier (more volleys left).
+  const left = B.overlapVolleys(sec.tier);
+  const busy = (en) => sec.enemyIds.includes(en.id) && !en.dead && en.state !== 'leave' && en.volleys < en.maxVolleys - left;
   if (sec.i >= sec.evs.length && !enemies.some(busy) && !obstacles.some((o) => !o.dead && o.y < H * 0.45)) {
     run.sec = null;
-    run.secCalmUntil = now + BREATH * BEAT;
+    run.secCalmUntil = now + B.breathBeats(sec.tier) * BEAT;
   }
 }
 

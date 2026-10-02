@@ -12,45 +12,10 @@
 //   1. some path survives every row (reachability with jump/phase cooldowns)
 //   2. no course leaves the centre lane free all the way (it must ask for a move)
 import { SECTIONS, COURSES, mirrorEvent } from '../src/game/sections.js';
+import { survivable, rowsOf as rowsOfEvents } from '../src/game/fairness.js';
 
-const JUMP_BEATS = 3;     // a jump (0.45 s) + reaction fits in 3 beats at any tempo <= 270 BPM
-const PHASE_BEATS = 8;    // phase cooldown 2 s: 8 beats = 2.18 s at 220 BPM
-const NEG = -1e9;
-
-function rowsOf(sec, mirror) {
-  const evs = sec.events.map((e) => (mirror ? mirrorEvent(e) : e));
-  return evs
-    .filter((e) => e.kind === 'row' || e.kind === 'veil')
-    .map((e) => ({ beat: e.beat, row: e.kind === 'veil' ? 'PPPPP' : e.row }))
-    .sort((a, b) => a.beat - b.beat);
-}
-
-// State: lane + beat of the last jump + beat of the last phase.
-function survives(rows) {
-  let states = new Map();
-  for (let l = 0; l < 5; l++) states.set(`${l}|${NEG}|${NEG}`, { l, j: NEG, p: NEG });
-  let prev = null;
-  for (const { beat, row } of rows) {
-    const hops = prev === null ? 4 : Math.max(1, Math.floor(beat - prev));
-    const next = new Map();
-    for (const s of states.values()) {
-      for (let d = -hops; d <= hops; d++) {
-        const l = s.l + d;
-        if (l < 0 || l > 4) continue;
-        const ch = row[l];
-        let { j, p } = s;
-        if (ch === 'B') continue;
-        if (ch === 'T') { if (beat - j < JUMP_BEATS) continue; j = beat; }
-        if (ch === 'P') { if (beat - p < PHASE_BEATS) continue; p = beat; }
-        next.set(`${l}|${j}|${p}`, { l, j, p });
-      }
-    }
-    states = next;
-    prev = beat;
-    if (!states.size) return { ok: false, at: beat };
-  }
-  return { ok: true };
-}
+const rowsOf = (sec, mirror) => rowsOfEvents(sec.events.map((e) => (mirror ? mirrorEvent(e) : e)));
+const survives = survivable;
 
 const problems = [];
 for (const [lib, isCourse] of [[SECTIONS, false], [COURSES, true]]) {

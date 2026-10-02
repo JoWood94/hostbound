@@ -8,7 +8,7 @@
 //   crusher -> jump (low wave across 3 lanes) or move 2 lanes away
 import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { strokePoly, drawGlowDot, line, ring } from '../render/draw.js';
+import { strokePoly, drawGlowDot, line, ring, text } from '../render/draw.js';
 import { enemySprite, drawSprite, drawEye, EYES } from '../render/sprites.js';
 import { sheet, drawCell } from '../render/images.js';
 
@@ -57,7 +57,7 @@ export const newId = () => nextId++;
 
 export const enemies = [];
 
-import { timeMul, enemyHp } from './balance.js';
+import { timeMul, enemyHp, extraVolleys } from './balance.js';
 import { TICK_BASE } from '../core/tempo.js';
 
 // The enemy's lane and its neighbours, clamped to the track.
@@ -186,8 +186,12 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
     step: 0,
     steps: null,
     volleys: 0,
-    // Fixed per type (elites +1): a section always lasts the same, so it can be learned.
-    maxVolleys: minion ? 1 : T.volleys + (elite ? 1 : 0),
+    // Fixed per type and tier (elites +1): the same section lasts the same at
+    // the same depth, and gains a volley at tiers 3 and 6.
+    maxVolleys: minion ? 1 : T.volleys + extraVolleys(Math.floor(difficulty / 2.5)) + (elite ? 1 : 0),
+    // From tier 6 elites carry one trait (shown above the amber ring).
+    trait: elite && difficulty >= 15 ? rng.pick(['shell', 'nervous', 'prolific']) : null,
+    rng,
     telegraphLanes: [],
     dead: false,
   };
@@ -204,12 +208,13 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
 // ---------------------------------------------------------------------------
 const TICK = TICK_BASE;
 // The reaction rule. A lane lights up TELE_TICKS before the first shot leaves,
-// and every shot needs TRAVEL_TICKS to reach you, whatever enemy fired it and
+// and every shot needs travelTicks(d) to reach you, whatever enemy fired it and
 // from whatever height (its speed adapts). So "lit lane" always means the same
 // time to react: learnable, with or without sound. It shortens only when the
 // tempo steps up (one step per district).
 const TELE_TICKS = 4;
-const TRAVEL_TICKS = 8;
+// 8 ticks; one tick less from the 10th district (220 BPM: 1.5 s total). Never lower.
+const travelTicks = (d) => (d >= 25 ? 7 : 8);
 const JUMP_GAP = 0.65;    // s between two low waves in a row: one jump (0.45) + reaction
 let clock = 0;            // in ticks
 let simT = 0;             // seconds, for the danger glow
@@ -235,7 +240,7 @@ function fire(e, st, d) {
   // One speed for every regular enemy shot, high or low: rhythm is readable
   // only if the spacing on screen matches the spacing in time.
   const y = e.y + MOUTH;
-  const s = (PLAYER_Y - y) / (TRAVEL_TICKS * TICK / timeMul(d));
+  const s = (PLAYER_Y - y) / (travelTicks(d) * TICK / timeMul(d));
   const travel = (PLAYER_Y + 24 - y) / s;
   for (const l of st.lanes) {
     if (st.low) spawn(enemyBullets, laneX(l), y, 0, s, 10, 1, LOW);
@@ -301,6 +306,7 @@ export function updateEnemies(dt, difficulty) {
       e.jinkOff = Math.sin(Math.min(1, t) * Math.PI) * e.jinkDir * LANE_W * 0.45;
     } else e.jinkOff = 0;
     if (e.jinkCd > 0) e.jinkCd -= dt;
+    if (e.shellCd > 0) e.shellCd -= dt;
     if (e.type !== 'boss') e.x = baseX + (e.jinkOff || 0);
 
     if (e.muzzle > 0) e.muzzle -= dt;
@@ -332,7 +338,8 @@ export function updateEnemies(dt, difficulty) {
             e.telegraphLanes = [];
             e.state = e.volleys >= e.maxVolleys ? 'leave' : 'rest';
             e.stateT = 0;
-            e.restUntil = clock + ticksOf(T.rest);
+            // NERVOUS elites rest half as long (the warning itself never shortens)
+            e.restUntil = clock + Math.max(1, Math.round(ticksOf(T.rest) * (e.trait === 'nervous' ? 0.5 : 1)));
             if (e.state === 'rest' && T.afterVolley) T.afterVolley(e);
           } else {
             const st = e.steps[e.step];
@@ -368,6 +375,12 @@ export function updateEnemies(dt, difficulty) {
 const JINK_TIME = 0.55;
 export function damageEnemy(e, dmg) {
   if (e.dead) return false;
+  // SHELL elites shrug off one hit every 1.5 s (big, rare hits beat it).
+  if (e.trait === 'shell' && !(e.shellCd > 0) && e.state !== 'enter') {
+    e.shellCd = 1.5;
+    burst(e.x, e.y, '#c9c2b0', 6, 110, 0.25, 2);
+    return false;
+  }
   if (e.elite && !(e.jinkCd > 0) && e.state !== 'enter') {
     e.jinkT = JINK_TIME;
     e.jinkCd = 2.2;
@@ -382,6 +395,14 @@ export function damageEnemy(e, dmg) {
     burst(e.x, e.y, e.T.color, 18, 180, 0.5, 2.5);
     burst(e.x, e.y, PAL.white, 6, 90, 0.3, 2);
     shake(3, 0.1);
+    // PROLIFIC elites burst into two fragile drones in the free lanes beside them.
+    if (e.trait === 'prolific') {
+      for (const l of [e.lane - 1, e.lane + 1]) {
+        if (l < 0 || l >= LANES || enemies.some((o) => !o.dead && o.lane === l && o.state !== 'leave')) continue;
+        const m = spawnEnemy('drone', l, e.d, e.rng, { minion: true });
+        m.y = e.y; m.prevY = e.y;
+      }
+    }
     return true;
   }
   return false;
@@ -484,6 +505,11 @@ export function drawEnemies(alpha) {
     if (e.elite) {
       ring(x, y, r + 9 + Math.sin(t * 6) * 1.5, PAL.amber, 2, 0.85);
       ring(x, y, r + 13, PAL.amber, 1, 0.35);
+      if (e.trait) {
+        const glyph = { shell: '◆', nervous: '!!', prolific: '+' }[e.trait];
+        const col = e.trait === 'shell' ? (e.shellCd > 0 ? PAL.dim : '#d8d0bc') : e.trait === 'nervous' ? PAL.red : PAL.acid;
+        text(glyph, x, y - r - 20, { color: col, size: 10, align: 'center' });
+      }
     }
 
     // Live parts under the body

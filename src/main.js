@@ -256,7 +256,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get obstacles() { return obstacles; },
     get pickups() { return pickups; },
     obstacle: (type, lane, y = 200) => spawnObstacle(type, lane, y),
-    boss: (def) => { run.boss = makeBoss(0, def, 1); run.nextEvent = 1e9; },
+    boss: (def, index = 0) => { run.boss = makeBoss(index, def, 1); run.nextEvent = 1e9; },
     covered: () => [...coveredLanes()],
     // Lanes where a high bullet reaches the player row within 0.5 s.
     hot: () => {
