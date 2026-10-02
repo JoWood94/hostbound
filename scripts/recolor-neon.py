@@ -27,7 +27,7 @@ flesh = (a > 0) & (sat > 0.2) & ((hue >= 285) | (hue <= 22))
 
 # brightness ramp: dark outline -> deep violet -> neon violet -> hot pink highlight
 stops = np.array([0, 0.3, 0.6, 0.85, 1.0])
-cols = np.array([[0x14, 0x02, 0x1a], [0x40, 0x08, 0x58], [0x98, 0x1c, 0xb8], [0xe0, 0x48, 0xf0], [0xff, 0x8a, 0xf0]]) / 255
+cols = np.array([[0x18, 0x02, 0x18], [0x4a, 0x08, 0x52], [0xb0, 0x1c, 0xb0], [0xf0, 0x4c, 0xe8], [0xff, 0x90, 0xee]]) / 255
 v = np.clip(mx / 0.7, 0, 1)
 out = rgb.copy()
 for ch in range(3):
@@ -39,7 +39,7 @@ img = Image.fromarray((res * 255).astype(np.uint8), 'RGBA')
 # glow under each cell's silhouette (per cell, so it never bleeds into neighbours)
 W, H = img.size
 final = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-glow_col = np.array([0xd8, 0x4d, 0xf0], np.float32)
+glow_col = np.array([0xe8, 0x4d, 0xe8], np.float32)
 for y in range(0, H, cell):
     for x in range(0, W, cell):
         c = img.crop((x, y, x + cell, y + cell))
