@@ -3,7 +3,9 @@
 Documento di design per chi implementa. Due parti indipendenti:
 
 - **Parte A** — perché la difficoltà si appiattisce e come farla crescere senza rompere le regole di equità.
-- **Parte B** — 26 item nuovi e 22 sinergie, con hook di implementazione nel motore attuale.
+- **Parte B** — 32 item nuovi, 24 sinergie e un trio, con hook di implementazione nel motore attuale.
+
+> **Revisione 2** — correzioni dopo rilettura: (1) il gap di 7 battute tra ostacoli da phase scende sotto i 2 s di cooldown a 220 BPM → **8 battute**; (2) due file saltabili a 2 battute violano `JUMP_GAP` già a 190 BPM → regola delle **3 battute** e verificatore in secondi; (3) il tratto élite "Nervoso" accorciava l'avviso, contro l'invariante 3 → ora accorcia la pausa tra raffiche; (4) la "frenesia" dei boss scendeva sotto il minimo di 1 battuta per fila → tolta la riduzione, resta la volée sovrapposta; (5) l'attivo SURGE aveva lo stesso nome di una sinergia esistente → OVERCHARGE; (6) aggiunti: scelte di livello solo tra una sezione e l'altra (A.3.11), curva livelli non lineare, chiarezza della morte (A.5), regola "una carta già posseduta" nel pool livelli (B.8), DPS effettivo che deve contare gli item on-kill (B.8).
 
 Leggere prima `GDD.md` (regole del gioco) e, nel codice, `src/game/balance.js`, `src/core/tempo.js`, `src/game/enemies.js` (metronomo, `TELE_TICKS`, `TRAVEL_TICKS`), `src/game/run.js` (direttore `direct()`, `pickSection`, `safeToEnter`), `src/game/sections.js`, `src/game/boss.js` (righe ritmiche), `src/game/items.js`, `src/game/combos.js`, `src/game/weapon.js` (motore di sparo componibile).
 
@@ -13,7 +15,8 @@ Invarianti da non violare mai (sono già verificati da script o simulazione; ogn
 2. Almeno **2 corsie libere** in ogni istante (eccezione: la stretta ritmica del Wall, dentro/fuori/dentro).
 3. Una corsia accesa significa sempre lo stesso tempo di reazione **al tempo corrente** (`TELE_TICKS` + `TRAVEL_TICKS`); il tempo cambia solo a scalini di distretto.
 4. Due file saltabili ad almeno `JUMP_GAP` = 0,65 s.
-5. Ostacoli da phase (veli, `P`) ad almeno 7 battute l'uno dall'altro.
+5. Ostacoli da phase (veli, `P`) ad almeno **8 battute** l'uno dall'altro (7 oggi: a 220 BPM fanno 1,9 s, meno dei 2 s di cooldown; 8 ne fanno 2,18). Da aggiornare in `sections.js` e nel verificatore.
+5b. Due file consecutive che richiedono **entrambe un salto sul percorso sicuro** ad almeno **3 battute** (2 battute a 190 BPM sono 0,63 s, già sotto `JUMP_GAP`; a 220 BPM 0,55 s). Il verificatore deve controllarlo **in secondi al tempo massimo a cui la sezione può comparire**, non in battute.
 6. Colori: arancio = salta, magenta = schiva, ciano = phase, verde acido = colpi del giocatore.
 7. Le sezioni sono scritte a mano e tornano uguali (specchio a parte): si imparano.
 
@@ -60,6 +63,7 @@ Tutte le curve qui sotto usano `T` e `heat`. `d` resta per compatibilità ma non
 
 **1. Tempo: togliere il cap a 5000 m.**
 `runBpm = 140 + 10·T`, cap a **220** (T = 8, 8000 m). Tempo di reazione: 2,58 s (T0) → 1,64 s (T8). Oltre T8 non si accelera più il tempo: si tocca la finestra (punto 2).
+Prerequisiti, perché le sezioni sono scritte in battute e le battute si accorciano: gap phase a 8 battute (invariante 5) e regola delle 3 battute tra salti consecutivi (invariante 5b). Rivedere con il verificatore **tutte** le sezioni esistenti prima di alzare il cap: `c-zipper`, `c-drums`, `c-rift-zip`, `c-chaos`, `c-storm`, `c-phase-run` e le righe `L` dei boss sono le candidate a violarla.
 
 **2. Finestra di reazione: scalino tardivo.**
 `TRAVEL_TICKS`: 8 fino a T9, **7 da T10**. `TELE_TICKS` resta 4 sempre (è la promessa di leggibilità). Risultato a T10: 11 tick a 220 BPM = 1,5 s. Sotto non si scende mai.
@@ -80,24 +84,31 @@ Regola generica in `startSection`: con probabilità `p = min(1, 0.25·(T−2) + 
 `eliteChance = min(0.7, 0.06·(d − 2.5))·(0.6 + 0.4·heat)` (cap 70% a ~14 000 m).
 Da T6 ogni élite ha anche **un tratto** (uno a caso, mostrato da un'icona sopra l'anello ambra):
 - **Guscio**: ignora il primo colpo ogni 1,5 s (premia DPS alto / colpi grossi).
-- **Nervoso**: `TELE_TICKS` 3 invece di 4 **solo per lui**, e l'anello lampeggia più veloce (unico caso in cui la finestra scende; è segnalato).
+- **Nervoso**: pausa tra una raffica e l'altra dimezzata (`rest` / 2) e l'anello lampeggia più veloce. L'avviso resta di 4 tick: la finestra di reazione **non si tocca mai** per singolo nemico (invariante 3), si tocca solo la frequenza.
 - **Prolifico**: alla morte lascia 2 minion drone (1 raffica, come quelli del Hive) nelle corsie adiacenti libere.
 
 **7. HP nemici: smettere di gonfiare oltre la soglia utile.**
 Obiettivo: con la build mediana del tier (vedi `scripts/balance.mjs`), un nemico muore in circa **il 60% del tempo che resterebbe a schermo**. Oltre, l'HP è tedio. Formula proposta: `enemyHpMul = (1 + 0.28·min(d, 7.5) + 0.08·max(0, d − 7.5))·power^0.5`. Da verificare con lo script: la tabella "kill time / tempo a schermo" per build mediana a T 0, 2, 4, 6, 8 deve stare tra 0,45 e 0,75. Se esce dall'intervallo si tocca il coefficiente, non le raffiche.
 
 **8. Percorsi: file più strette e una fila in più.**
-- Spaziatura minima tra file: 4 tick (2 battute) fino a T3, **3 tick** da T4 (controllare che `hops` nel verificatore usi i tick, non le battute: un cambio corsia dura 0,11 s, 3 tick a 220 BPM sono 0,41 s, ok). `JUMP_GAP` e il gap di 7 battute dei phase restano.
+- Spaziatura minima tra file **che non richiedono entrambe un salto**: 4 tick (2 battute) fino a T3, **3 tick** da T4 (permettere battute frazionarie in `r()`, es. `r(9.5, …)`; il verificatore deve lavorare in tick: un cambio corsia dura 0,11 s, 3 tick a 220 BPM sono 0,41 s). Le coppie di file saltabili restano a 3 battute (invariante 5b) e il gap dei phase a 8.
 - Da T4 ogni percorso riceve **una fila in più** in coda, scelta tra `TTTTT`, `.B.B.`/`B.B.B` (quella compatibile con l'ultima corsia libera), con le stesse regole di attraversabilità (verificare a runtime con la stessa funzione del test: se la fila aggiunta rende il percorso impossibile, non aggiungerla).
 
 **9. Boss: più fasi, non solo più velocità.**
 - `bossSpeed = min(2.2, 1 + 0.12·i)`.
-- Al secondo giro (MK2, i ≥ 5) ogni boss ha una **4ª fase "frenesia"** sotto il 15% HP: le righe ritmiche della fase 3 con `beat` −1 tick (rispettando `JUMP_GAP` per le `L`) e un attacco di volée sovrapposto ogni 4 battute nelle corsie `.` della riga corrente (resta sempre almeno una corsia libera: la volée va solo su una delle corsie libere se sono ≥ 2).
+- Al secondo giro (MK2, i ≥ 5) ogni boss ha una **4ª fase "frenesia"** sotto il 15% HP: le righe ritmiche della fase 3 (stesso `beat`: il minimo di 1 battuta per fila non si scende, è il tempo di un cambio corsia con margine) **più** una volée sovrapposta ogni 4 battute su una delle corsie `.` della riga corrente, solo se le corsie libere sono ≥ 2 (ne resta sempre una).
 - Da MK2 le righe guadagnano una riga in più per sequenza (`MARCH(n+2)`, `chase(n+2)`, `bounce(…, n+2)`).
 - Dal 10° boss (MK3) l'ordine dei boss è mescolato dal seed e due boss consecutivi hanno il **minion summon** del Hive aggiunto alla fase 1.
 
 **10. Dente di sega dopo il boss.**
-Nei primi 150 m di ogni distretto (`heat = 0`) il direttore pesca solo sezioni con `from ≤ (T−1)·1000` e nessun rinforzo: 10–12 secondi per leggere il nuovo tempo. Poi `heat` sale e con lui rinforzi ed élite.
+Nei primi 150 m di ogni distretto (`heat = 0`) il direttore pesca solo sezioni con `from ≤ max(0, T−1)·1000` e nessun rinforzo: 10–12 secondi per leggere il nuovo tempo. Poi `heat` sale e con lui rinforzi ed élite.
+
+**11. Scelte di livello e ritmo.**
+Oggi un livello apre la schermata di scelta nel momento esatto in cui raccogli la cellula, anche a metà di una sequenza di file: spezza proprio il ritmo che stiamo costruendo, e a fine run (più cellule, GREED, boss) succede sempre più spesso.
+- I livelli guadagnati si mettono in coda (già così) ma la scelta si apre **solo tra una sezione e l'altra** (quando `run.sec` è nullo, nel `BREATH`) o subito dopo il bottino del boss. Se la coda ha più livelli, le scelte si aprono una dopo l'altra nello stesso punto.
+- Per non far aspettare troppo: se la coda resta piena per più di 25 s (sezioni lunghe), la scelta si apre al prossimo istante in cui nessun colpo è in volo verso il giocatore e nessuna fila è a meno di 2 battute.
+- Curva: `xpNeed = 10 + 7·(L−1) + 0.5·(L−1)²` al posto della lineare (L10: 113 cellule invece di 82; L20: 323). Obiettivo misurato: un livello ogni 35–50 s a metà run, non più spesso, con build mediana.
+- La barra XP in alto resta; quando un livello è in coda la barra pulsa, così sai che la scelta arriva.
 
 ### A.4 Nuove sezioni per i tier alti (3500 m +)
 
@@ -118,7 +129,7 @@ Combattimento (SECTIONS):
 Percorsi (COURSES):
 - `c-fast-checker` (4000): scacchiera a 3 tick.
 - `c-double-snake` (4500): due serpenti in sequenza con direzione opposta e un `P` nel punto di inversione.
-- `c-phase-ladder` (5000): `BBPBB`, `BPBBB`, `BBBPB` a 7 battute di distanza, con `TTTTT` tra una e l'altra.
+- `c-phase-ladder` (5000): `BBPBB`, `BPBBB`, `BBBPB` a 8 battute di distanza, con `TTTTT` tra una e l'altra.
 - `c-blender` (5500): zip ×2, scacchiera ×2, `v`, `TTTTT`, snake ×3.
 - `c-no-rest` (6000): 9 file a 3 tick, mai due uguali di fila, un `P` e un `v`.
 
@@ -138,6 +149,10 @@ Script di simulazione (riusare il pattern già usato nel browser con `__game.tic
 | Kill time / tempo a schermo (build mediana) | `scripts/balance.mjs` esteso | tra 0,45 e 0,75 a ogni T |
 
 Più una prova a mano: a 6000 m deve essere *più* difficile che a 3000 m in modo evidente, e un giocatore che muore deve poter dire *cosa* l'ha ucciso.
+
+**Chiarezza della morte (da implementare, è parte della difficoltà "giusta").** Alla morte: 0,6 s di fermo immagine, il colpo o l'ostacolo che ha ucciso cerchiato nel suo colore, la corsia da cui veniva accesa, e nella schermata di fine run una riga "UCCISO DA: Sweeper (corsia 3)" / "Muro" / "Velo (phase mancato)". Serve anche a noi: le statistiche di "ucciso da" dicono quale sezione è ingiusta.
+
+**Determinismo.** Tutto ciò che il direttore decide (sezione, specchio, rinforzi, tratti élite) usa `run.rng`, mai `Math.random`: la daily run deve restare identica per tutti.
 
 ### A.6 Ordine di lavoro consigliato
 
@@ -225,7 +240,7 @@ Diverso da SLIPSTREAM (raffica istantanea): qui per 0,6 s spari da due corsie (l
 ### B.4 Power-up (cat `defense` / `economy`)
 
 **PREMONITION** — `premonition`, PRE, rare, max 1, [L], defense
-*Le corsie si accendono 1 tick prima.* Implementazione: `TELE_TICKS` effettivo +1 **per il rendering e per l'inizio dell'avviso**, non per lo sparo (il nemico spara allo stesso tick: tu vedi prima). È il contro-item della difficoltà A.3.2. Un solo stack per non svuotare la curva.
+*Le corsie si accendono 1 tick prima.* Implementazione semplice e onesta: `TELE_TICKS` effettivo 5 invece di 4 quando posseduto (nemici e boss: `tele` +1 tick). Il nemico spara un tick più tardi, cioè è leggermente più lento: è il contro-item della difficoltà A.3.2 e va bene che lo sia. Un solo stack per non svuotare la curva.
 
 **CARAPACE** — `carapace`, CRP, rare, max 1, [L], defense
 *Il primo colpo subito in ogni sezione viene ignorato (il guscio si rompe e si riforma alla sezione successiva).* Diverso da BARRIER (a tempo). Hook: `run.sec` cambia → `p.carapace = true`; `hurtPlayer` lo consuma. Mostrare il guscio come anello grigio osseo attorno al simbionte.
@@ -249,10 +264,10 @@ Diverso da SLIPSTREAM (raffica istantanea): qui per 0,6 s spari da due corsie (l
 
 | id | nome | code | carica | effetto |
 |---|---|---|---|---|
-| `blackhole` | BLACK HOLE | BLH | 12 kill | Per 1,5 s tutti i colpi nemici vengono risucchiati nella tua corsia e distrutti a 60 px da te; i nemici nella tua corsia subiscono 8 danni. |
+| `blackhole` | BLACK HOLE | BLH | 12 kill | Per 1,5 s tutti i colpi nemici vengono risucchiati verso la tua corsia e distrutti **sempre** almeno 60 px sopra di te (mai un colpo che ti raggiunge a causa del risucchio); i nemici nella tua corsia subiscono 8 danni. |
 | `mirrorfield` | MIRROR FIELD | MRF | 10 kill | Per 2 s ogni colpo nemico che ti raggiunge viene riflesso (come MIRROR SKIN, senza phase). |
-| `surge` | SURGE | SRG | 8 kill | Le prossime 3 raffiche (o 2 s di beam) sono cariche come CHARGE ×2 (anche senza CHARGE). |
-| `warp` | WARP | WRP | 14 kill | Salti avanti di 120 m: lo schermo si svuota (nemici, colpi, ostacoli), niente cellule per quel tratto. Non durante i boss. |
+| `overcharge` | OVERCHARGE | OVC | 8 kill | Le prossime 3 raffiche (o 2 s di beam) sono cariche come CHARGE ×2 (anche senza CHARGE). (Non "SURGE": è già il nome della sinergia LASER + ECHO.) |
+| `warp` | WARP | WRP | 14 kill | Salti avanti di 120 m: lo schermo si svuota (nemici, colpi, ostacoli), niente cellule per quel tratto. Non durante i boss. Implementazione: chiude la sezione corrente (`run.sec = null`, calma di 1 battuta), somma la distanza con clamp a `nextEvent − 20` (non deve saltare l'ingresso del boss). |
 | `molt` | MOLT | MLT | 16 kill | Cura 2 cuori e rimuove il veleno; per 3 s il simbionte è più piccolo (hitbox −30%). |
 
 ### B.6 Rischio (cat `risk`)
@@ -307,7 +322,8 @@ Trio consigliato (uno solo, raro, da scoprire): **FISSION + SHRAPNEL + CHAIN REA
 - Numeri target (build mediana a T4): un modificatore COMMON vale ~+15–20% DPS effettivo; RARE ~+30% con condizione; EPIC cambia la build. Verificare con `scripts/balance.mjs` esteso con i nuovi item (aggiungere 4 build di riferimento: "fissione", "appostamento" (CHARGE+ECHO+RAIL), "aria" (SKYSHOT+KICKFLIP+POUND), "fantasma" (GHOSTROUND+BLINK+MIRROR)).
 - `conflicts` in `rollItems`: LEAD WEIGHTS ↔ KICKFLIP/GROUND POUND/SKYSHOT; PARASITE ↔ GLASS CANNON (fine run a 1 cuore garantita = non divertente).
 - Sblocchi: i nuovi RARE/EPIC vanno agganciati agli achievement esistenti non ancora usati o a 6 nuovi (es. "fai phase attraverso 30 squarci" → GHOSTROUND; "uccidi 50 nemici in aria" → SKYSHOT; "resta 60 s senza cambiare corsia in una run" → CHARGE; "raccogli 300 cellule in una run" → CELL WALL; "sopravvivi a 3 veli consecutivi senza danni" → PREMONITION; "livello 12 in una run" → MITOSIS).
-- Dopo l'aggiunta il pool è di ~70 item: `rollItems` con `source: 'level'` deve continuare a pesare ×1,6 gli item già posseduti, altrimenti i livelli diventano una lotteria. Valutare ×2 se le build non "chiudono".
+- Dopo l'aggiunta il pool è di ~76 item: `rollItems` con `source: 'level'` deve continuare a pesare ×1,6 gli item già posseduti e in più garantire che **almeno una carta per offerta sia un item già posseduto e ancora impilabile** (se ne esiste uno), altrimenti con 76 item i livelli diventano una lotteria e le build non chiudono mai.
+- `effectiveDps` in `items.js` (usato per scalare gli HP via `powerRatio`) deve contare, almeno in modo approssimato, gli item che fanno danno fuori dal colpo diretto: SHRAPNEL, AFTERGLOW, FISSION, BRAND, SKYSHOT. Se non li conta, quelle build sono "potenza nascosta" e i nemici risultano troppo deboli solo per loro.
 
 ### B.9 Ordine di lavoro consigliato
 
