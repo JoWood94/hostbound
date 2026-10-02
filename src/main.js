@@ -47,7 +47,7 @@ const MUTE = new URLSearchParams(location.search).has('mute');
 const audioSettings = () => (MUTE ? { ...save.settings, sfx: false, music: false } : save.settings);
 applySettings(audioSettings());
 // Logo fonts. Offline the canvas falls back to system fonts.
-if (document.fonts) { document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('17px "Kaushan Script"').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
+if (document.fonts) { document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('16px "Racing Sans One"').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
 
 function ensureAudio() {
   unlockAudio();

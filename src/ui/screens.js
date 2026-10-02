@@ -115,14 +115,38 @@ function drawLogo(t) {
   if (!drawCell(LOGO, 0, 0, W / 2, 146, 336, { alpha: flick * breathe })) {
     text('HOSTBOUND', W / 2, 160, { color: PAL.cyan, size: 32, align: 'center' });
   }
-  // Tagline: brush script, tilted and swaying like the Hotline Miami menus.
+  // Tagline: angular racing type with a VHS look (RGB split, a tracking band,
+  // and now and then a torn slice shifted sideways).
   ctx.save();
   ctx.translate(W / 2, 232);
-  ctx.rotate(-0.06 + Math.sin(t * 1.4) * 0.025);
-  ctx.font = '17px "Kaushan Script", cursive';
+  ctx.rotate(-0.05);
+  ctx.font = '16px "Racing Sans One", Impact, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.shadowColor = PAL.cyan; ctx.shadowBlur = 10;
-  ctx.fillStyle = PAL.cyan; ctx.fillText('Run · Shoot · Mutate', 0, 0);
+  const tag = 'RUN · SHOOT · MUTATE';
+  const jit = Math.random() < 0.06 ? (Math.random() - 0.5) * 3 : 0;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.7;
+  ctx.fillStyle = '#ff2050'; ctx.fillText(tag, -1.6 + jit, 0);
+  ctx.fillStyle = '#2050ff'; ctx.fillText(tag, 1.6 + jit, 0.5);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.shadowColor = PAL.cyan; ctx.shadowBlur = 8;
+  ctx.fillStyle = PAL.cyan; ctx.fillText(tag, jit, 0);
+  ctx.shadowBlur = 0;
+  // torn slice
+  if (Math.random() < 0.08) {
+    const sy = -8 + Math.random() * 12, sh = 2 + Math.random() * 3;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(-W / 2, sy, W, sh); ctx.clip();
+    ctx.fillStyle = 'rgba(10,0,8,1)'; ctx.fillRect(-W / 2, sy, W, sh);
+    ctx.fillStyle = PAL.cyan; ctx.fillText(tag, (Math.random() - 0.5) * 10, 0);
+    ctx.restore();
+  }
+  // scanlines and a slow bright tracking band
+  ctx.fillStyle = 'rgba(10,0,8,0.35)';
+  for (let y = -9; y < 10; y += 2) ctx.fillRect(-90, y, 180, 1);
+  const by = -10 + ((t * 9) % 20);
+  ctx.fillStyle = 'rgba(200,255,255,0.12)'; ctx.fillRect(-90, by, 180, 2);
   ctx.restore();
 }
 
