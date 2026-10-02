@@ -371,6 +371,102 @@ smaller toward the tail, a pale head with two curved pincer mandibles, tiny legs
 8 blank.
 ```
 
+## 4c. Rifacimento colpi e effetti (v1.3) — sostituisce i fogli dei colpi sopra
+
+Cinque fogli. Per ognuno: incolla prima STYLE BIBLE e NEGATIVE PROMPT, e allega
+`public/sprites/shots_player.png` come riferimento di stile. Regole che non si toccano:
+**tutto ciò che è tuo è verde acido** (#c6ff1a, nucleo #f4ffd8). Arancio e magenta sono
+riservati alle minacce, quindi non vanno usati nei colpi del giocatore. La varietà si
+fa con la **forma**, non con il colore. In gioco i colpi sono piccoli (8-20 px): servono
+sagome semplici e forti, contorno scuro di 1 px.
+
+**A. Colpi base e varianti per tratto** (512×256, 8 colonne × 4 righe, celle 64×64)
+Il gioco sceglie l'aspetto del colpo in base al tratto dominante della build (stile Isaac).
+```
+A sprite sheet of 32 player projectiles for a bullet-hell game, 512x256 pixels, 8 columns
+x 4 rows of 64x64 cells, one sprite centred per cell, all pointing UP, pixel art, flat
+pure black #000000 background, no grid lines, no text. Every projectile is living
+bio-plasma spat by an alien symbiote: dirty acid green #c6ff1a with a pale hot core
+#f4ffd8, a 1 px near-black outline #07040a, wet and organic, a short glowing smear
+trailing downward. Strong simple silhouettes that still read at 12 px. Variety comes
+from SHAPE, never from colour: no orange, no magenta, no red, no blue.
+Row 1 (base shots): 1 a small glob of spit, 2 a big heavy calcified glob with cracks,
+3 a tiny round pellet of bile, 4 a spore pod rocket with a stubby smoking tail, 5 a wavy
+larva swimming upward, 6 a huge swollen glob ringed with throbbing veins, 7 a long bone
+needle, 8 a glob swollen with stored energy, crackling at its rim (charged shot).
+Row 2 (trait looks): 1 a glob dripping and bubbling with venom (toxin), 2 a glob wrapped
+in a spiky bone shell (frag), 3 a glob crawling with tiny acid sparks (arc), 4 a glob
+with a single small eye looking ahead (seeker), 5 a glob with a burning eye-shaped scar
+on it (brand), 6 a cell caught mid-division into two (fission), 7 a pale ghostly
+translucent glob with a faint outline (ghost round), 8 a rubbery ringed ball (ricochet).
+Row 3: 1 a glob with two small membrane wings (skyshot), 2 a sharp four-pointed star of
+plasma (critical hit shot), 3 a small slim dart (drone shot), 4 a jagged acid shard
+(shrapnel), 5 a small round fission child, 6 a small echo glob (echo fragment),
+7 a fat pulsing glob shaped like a heart (heartbeat volley), 8 a glob trailing a
+shimmering acid ribbon (afterglow).
+Row 4 (impacts, small, centred): 1-3 a spit splash bursting into droplets in 3 frames,
+4 a venom splash with bubbles, 5 a bone shell shattering, 6 a crackling spark burst,
+7 a needle snapping in two, 8 blank.
+```
+
+**B. Corpi dei carrier** (512×128, 8 × 2 celle 64×64): è il prompt della sezione
+"Colpi v1.2" qui sopra (glaive, mine, mortaio, guscio, uovo, larva in 3 pose,
+stinger in 4 stati). Va rifatto con lo stesso stile del foglio A.
+
+**C. Raggi, scie e fili** (512×128, 8 colonne × 2 righe, celle 64×64)
+Le fette verticali vengono ripetute in verticale lungo il percorso: devono raccordarsi
+bene in alto e in basso.
+```
+Match the attached projectile sheet style (acid green #c6ff1a, pale core #f4ffd8,
+1 px dark outline). A sprite sheet of beam and trail pieces, 512x128 pixels, 8 columns
+x 2 rows of 64x64 cells, flat pure black #000000 background, no text.
+Row 1, vertical slices that tile seamlessly top to bottom, each centred in its cell:
+1 a living beam of twisted luminous nerve fibres with a white-hot core, 2 the same beam
+overcharged, almost white, swollen and crackling (charging nova), 3 a thin blinding rail
+streak with a sheath of sparks, 4 a thin glowing sinew cord (tether), 5 a thin taut
+laser wire with tiny beads (tripwire), 6 a wide pillar of white light with green edges
+(nova column), 7 a faint burning acid puddle trail (afterglow), 8 blank.
+Row 2: 1-3 a beam impact point flaring in 3 frames, 4-5 the rail hit flash in 2 frames,
+6 a short jagged refraction flash line, 7 a tether knot where the cord meets a blade,
+8 blank.
+```
+
+**D. Effetti sui nemici** (384×96, 8 colonne × 2 righe, celle 48×48)
+Sovrapposizioni disegnate sopra un nemico: devono funzionare su qualunque nemico e
+lasciarne vedere la sagoma (centro vuoto o semitrasparente). Sono effetti tuoi, quindi
+restano nei colori del giocatore; per l'intorpidimento si usa un lilla pallido.
+```
+A sprite sheet of status effect overlays drawn on top of enemies, 384x96 pixels,
+8 columns x 2 rows of 48x48 cells, pixel art, flat pure black #000000 background,
+no text. Each overlay is a ring or a scatter of marks around an empty centre, so the
+enemy underneath stays visible. Colours: acid green #c6ff1a with pale core #f4ffd8,
+except where noted. No orange, no magenta, no red.
+Row 1: 1-2 venom bubbles and drips rising around the centre, 2 loop frames (poisoned),
+3 a burning eye-shaped brand mark floating above (branded), 4 pale lilac #c9b8ff frost
+cracks and numb sparks around the centre (numbed), 5 pale lilac ice crystals closing
+in, stronger (frozen), 6 slow ghostly wisps trailing downward (slowed), 7 a rotating
+four-corner targeting reticle (locked), 8 a ring of charge filling with light (charge).
+Row 2: 1 a cluster of small larvae biting at the rim (infested), 2 three barbed stingers
+stuck in a ring (stung), 3 a venom death: the body melting into acid foam, 4 a frozen
+death: lilac shards bursting, 5 a cracked translucent husk shell left behind,
+6 a burst egg sac with tiny larvae crawling out (hatching), 7-8 blank.
+```
+
+**E. Esplosioni del giocatore** (512×128, 8 colonne × 2 righe, celle 64×64)
+Diverse dalle esplosioni dei nemici: niente sangue, solo bio-plasma acido.
+```
+Match the attached projectile sheet style. A sprite sheet of player explosions, 512x128
+pixels, 8 columns x 2 rows of 64x64 cells, pixel art, flat pure black #000000
+background, no text. Acid green #c6ff1a bio-plasma with pale core #f4ffd8, wet spores
+and droplets, no fire, no orange, no red, no gore.
+Row 1: an acid spore burst in 8 frames: a bright core swelling, bursting into droplets
+and a ring of spores, then thinning into faint drifting motes (rocket, mine and shell
+bursts).
+Row 2: 1-4 a white-hot nova flash in 4 frames, a blinding white disc with green
+edges collapsing into a ring, 5-7 a small stinger pop in 3 frames (a tight bright
+burst with bone splinters), 8 blank.
+```
+
 ---
 
 ## 5. Sfondi in parallasse e correnti
