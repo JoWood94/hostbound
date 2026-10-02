@@ -463,6 +463,8 @@ Fatto: simbionte MASSA generato esternamente (art/source/symbiote_sheet.jpg), pu
 scripts/import-sheet.py in public/sprites/symbiote.png (8×4 celle da 128). Usato per volo,
 salto (palla), phase, colpo subito, morte; cresce un po' a ogni item. Icone PWA dal suo
 primo fotogramma (scripts/icons-from-sheet.py).
+Il gioco usa public/sprites/symbiote_neon.png: stessa sheet ricolorata viola-rosa neon con bagliore
+(scripts/recolor-neon.py public/sprites/symbiote.png public/sprites/symbiote_neon.png 128); occhi, ossa e frame bianchi restano.
 
 Fatto: razza BROOD (settore 1) generata: public/sprites/enemies_brood.png (8×7, celle 128:
 riposo 0-3, avviso 4-5, morte 6-7) e bosses_brood.png (4×5, celle 256×114: riposo 0-1,

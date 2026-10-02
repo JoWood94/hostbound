@@ -7,7 +7,7 @@ import { sheet, drawCell } from '../render/images.js';
 
 // The symbiote sprite sheet: 8x4 cells of 128 px.
 //   row 0 fly loop · row 1 roll (jump) · row 2 phase 0-5, hit flash 6-7 · row 3 growth 0-2, death 3-7
-const SYM = sheet('symbiote', 128);
+const SYM = sheet('symbiote_neon', 128);   // neon violet recolour (scripts/recolor-neon.py)
 const SYM_SIZE = 62;
 import { LANES, laneX } from './world.js';
 

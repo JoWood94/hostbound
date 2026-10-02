@@ -5,7 +5,7 @@ import { ctx, W, H, UI_OFFSET } from '../core/canvas.js';
 // Screens are laid out for a 640-tall canvas and centred with UI_OFFSET.
 const LH = 640;
 import { PAL } from '../render/palette.js';
-import { text, line, strokePoly, ring, FONT_BODY } from '../render/draw.js';
+import { text, line, strokePoly, FONT_BODY } from '../render/draw.js';
 import { button, area, wrap } from '../core/ui.js';
 import { ITEMS, ITEM_BY_ID, RARITY, CAT_COLOR, SYNERGIES, STAT_DEFS, statDelta } from '../game/items.js';
 import { BOARDS } from '../game/boards.js';
@@ -14,7 +14,7 @@ import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/a
 import { heart } from './hud.js';
 import { shipSprite, drawSprite } from '../render/sprites.js';
 import { sheet, drawCell } from '../render/images.js';
-const MENU_SYM = sheet('symbiote', 128);
+const MENU_SYM = sheet('symbiote_neon', 128);
 import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
 import { version } from '../../package.json';
@@ -132,17 +132,12 @@ export function drawMenu(save, t, boardIdx) {
     button('boardPrev', 16, 238, 44, 96, '◄', { color: PAL.white, size: 18 });
     button('boardNext', W - 60, 238, 44, 96, '►', { color: PAL.white, size: 18 });
   }
-  ctx.strokeStyle = unlocked ? b.color : PAL.dim;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(66, 238, W - 132, 96);
-  ctx.fillStyle = 'rgba(10,0,8,0.85)';
-  ctx.fillRect(66, 238, W - 132, 96);
-  // The protagonist (generated art); procedural fallback until the sheet loads.
-  ring(W / 2, 278, 26, unlocked ? b.color : PAL.mute, 1.5, 0.5);
-  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, W / 2, 278, 58, { alpha: unlocked ? 1 : 0.4 })) {
-    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), W / 2, 278, { sx: 0.95, sy: 0.95, alpha: unlocked ? 1 : 0.45 });
+  // The protagonist, big and free-floating (generated art; procedural fallback until the sheet loads).
+  const bob = Math.sin(t * 2) * 3;
+  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, W / 2, 280 + bob, 104, { alpha: unlocked ? 1 : 0.4 })) {
+    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), W / 2, 280, { sx: 1.4, sy: 1.4, alpha: unlocked ? 1 : 0.45 });
   }
-  text(b.name, W / 2, 322, { color: unlocked ? b.color : PAL.mute, size: 15, align: 'center' });
+  text(b.name, W / 2, 334, { color: unlocked ? PAL.violet : PAL.mute, size: 14, align: 'center' });
 
   button('run', 60, 348, W - 120, 46, 'RUN', { color: PAL.cyan, size: 20, disabled: !unlocked });
   const dBest = save.daily.date === todayKey() ? save.daily.best : 0;
