@@ -72,7 +72,7 @@ export function updatePlayer(p, input, dt, stats) {
       p.tapUndo = input.fromTap ? { lane: p.lane, refund: 0, stillT: p.stillT, laneTimes: p.laneTimes, t: 0.25 } : null;
       p.laneFromX = p.x;
       // TWIN LINK keeps firing from the lane just left for a moment
-      p.twinLane = p.lane; p.twinT = 0.6;
+      p.twinLane = p.lane; p.twinT = stats.twinTime || 0.6;
       p.lane = next;
       p.laneT = 0;
       p.ev.lane = true;

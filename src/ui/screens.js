@@ -65,10 +65,13 @@ function itemCard(id, x, y, w, h, it, { run = null, selected = false } = {}) {
   lines.slice(0, maxLines).forEach((l, i) => text(l, x + 60, y + 50 + i * 12, { color: PAL.white, size: 9, weight: 'normal', alpha: 0.9 }));
   // Combo hint: vague until discovered, explicit afterwards.
   if (hints.length) {
-    const known = hints.find((h) => h.known);
-    const msg = known
-      ? `⟡ ${known.combo.name}: ${known.combo.desc}`
-      : `⟡ RESONATES WITH ${hints.map((h) => h.partner.name).slice(0, 2).join(' + ')}`;
+    const evo = hints.find((h) => h.evo);
+    const known = evo ? (evo.known ? evo : null) : hints.find((h) => h.known);
+    const msg = evo
+      ? (known ? `⟡ EVOLVES: ${known.combo.name}: ${known.combo.desc}` : `⟡ EVOLVES WITH ${evo.partner.name}`)
+      : known
+        ? `⟡ ${known.combo.name}: ${known.combo.desc}`
+        : `⟡ RESONATES WITH ${hints.map((h) => h.partner.name).slice(0, 2).join(' + ')}`;
     const ml = wrap(msg, Math.floor((w - 70) / 4.9));
     ml.slice(0, 2).forEach((l, i) => text(l, x + 60, y + h - 22 + i * 10, { color: PAL.magenta, size: 8, alpha: known ? 1 : 0.75 + Math.sin(performance.now() / 180) * 0.25 }));
   }
@@ -184,8 +187,8 @@ export function drawArchive(save, tab, selected, page = 0) {
     const pg = Math.min(page, pages - 1);
     known.slice(pg * per, pg * per + per).forEach((c, i) => {
       const y = 86 + i * 40;
-      text(c.name, 14, y, { color: PAL.magenta, size: 11 });
-      text(`${ITEM_BY_ID[c.a].name} + ${ITEM_BY_ID[c.b].name}`, W - 14, y, { color: PAL.mute, size: 8, align: 'right' });
+      text(c.name, 14, y, { color: c.evo ? PAL.acid : PAL.magenta, size: 11 });
+      text(`${c.evo ? 'MAX ' : ''}${ITEM_BY_ID[c.a].name} + ${ITEM_BY_ID[c.b].name}`, W - 14, y, { color: c.evo ? PAL.acid : PAL.mute, size: 8, align: 'right' });
       text(c.desc, 14, y + 14, { color: PAL.white, size: 8, weight: 'normal' });
     });
     if (pages > 1) {

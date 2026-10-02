@@ -46,6 +46,9 @@ export function baseStats() {
     fission: 0, shrapnel: 0, brand: 0, charge: 0, skyshot: 0, ghost: false, afterglow: 0, twinlink: false,
     focus: 0, mitosis: false, momentum: 0, premonition: false, carapace: 0, spore: 0, cellWall: 0,
     secondSkin: false, undertow: 0, egg: false, healMul: 1, heartCap: 0, parasite: false,
+    // v1.2: stack thresholds, synergy levels, evolutions
+    twinTime: 0.6, seekReach: 1, pierceRamp: 0, fragReach: false, arcMul: 0.35, arcLanes: false,
+    toxinSpread: 0, critPierce: 0, critCoinsP: 0.3, syn: {}, evo: {},
   };
 }
 
@@ -65,22 +68,22 @@ export const ITEMS = [
     desc: 'SHOT SPEED up: hit moving targets, rails charge faster, pellets reach further.',
     apply: (s, n) => { s.shotSpeed += 0.3 * n; } },
   { id: 'pierce', name: 'PIERCER', code: 'PRC', cat: 'weapon', rarity: 0, max: 3, unlock: null,
-    desc: 'Bullets pass through +1 enemy.',
+    desc: 'Bullets pass through +1 enemy. At 3: every enemy pierced adds +10% damage.',
     apply: (s, n) => { s.pierce += n; } },
   { id: 'homing', name: 'SEEKER CHIP', code: 'SEK', cat: 'weapon', rarity: 1, max: 2, unlock: 'dist_1000',
-    desc: 'Bullets bend toward enemies in your lane and the two next to it. Stack: tighter turns.',
+    desc: 'Bullets bend toward enemies in the lanes next to yours. Stack: two lanes away when nothing is closer.',
     apply: (s, n) => { s.homing += n; } },
   { id: 'frag', name: 'FRAG TIPS', code: 'FRG', cat: 'weapon', rarity: 1, max: 2, unlock: 'kills_150',
-    desc: 'Hits explode for 40% damage around the target.',
+    desc: 'Hits explode for 40% damage around the target. Stack: the blast reaches the next lane.',
     apply: (s, n) => { s.frag += n; } },
   { id: 'arc', name: 'ARC RELAY', code: 'ARC', cat: 'weapon', rarity: 1, max: 3, unlock: 'kills_500',
-    desc: 'Hits jump to +1 nearby enemy for 35% damage.',
+    desc: 'Hits jump to +1 nearby enemy for 35% damage. At 3: 45%, and arcs prefer other lanes.',
     apply: (s, n) => { s.arc += n; } },
   { id: 'toxin', name: 'TOXIN', code: 'TOX', cat: 'weapon', rarity: 0, max: 3, unlock: 'runs_5',
-    desc: 'Hits poison: 1 damage per second for 3s. Stacks.',
+    desc: 'Hits poison: 1 damage per second for 3s. Stacks. At 3: a poisoned death infects a neighbour.',
     apply: (s, n) => { s.toxin += n; } },
   { id: 'crit', name: 'HEADSHOT', code: 'HDS', cat: 'weapon', rarity: 1, max: 3, unlock: 'boss_nohit',
-    desc: '+10% chance to deal triple damage.',
+    desc: '+10% chance to deal triple damage. At 3: crits pierce +1.',
     apply: (s, n) => { s.crit += 0.1 * n; } },
   { id: 'echo', name: 'ECHO CHAMBER', code: 'ECH', cat: 'weapon', rarity: 1, max: 2, unlock: 'dist_2000',
     desc: 'Every 5th shot is a huge piercing round (x2.5). Stack: every 4th.',
@@ -221,9 +224,9 @@ export const ITEMS = [
   { id: 'afterglow', name: 'AFTERGLOW', code: 'AFG', cat: 'weapon', rarity: 1, max: 2, unlock: 'kills_1000',
     desc: 'Shots leave an acid trail for 0.35 s that burns what touches it. Stack: 0.6 s, stronger.',
     apply: (s, n) => { s.afterglow += n; } },
-  { id: 'twinlink', name: 'TWIN LINK', code: 'TWN', cat: 'weapon', rarity: 0, max: 1, unlock: null,
-    desc: 'For 0.6 s after each lane change you also fire from the lane you left.',
-    apply: (s) => { s.twinlink = true; } },
+  { id: 'twinlink', name: 'TWIN LINK', code: 'TWN', cat: 'weapon', rarity: 0, max: 2, unlock: null,
+    desc: 'For 0.6 s after each lane change you also fire from the lane you left. Stack: 1 s.',
+    apply: (s, n) => { s.twinlink = true; s.twinTime = n > 1 ? 1 : 0.6; } },
   // ---- stat modifiers ----
   { id: 'densecore', name: 'DENSE CORE', code: 'DNC', cat: 'weapon', rarity: 0, max: 3, unlock: null,
     desc: 'DMG +0.35, no drawbacks.',
@@ -266,7 +269,7 @@ export const ITEMS = [
     desc: 'A lost blue heart grows back every 45 s (up to what you started with).',
     apply: (s) => { s.secondSkin = true; } },
   { id: 'undertow', name: 'UNDERTOW', code: 'UND', cat: 'economy', rarity: 0, max: 2, unlock: null,
-    desc: 'While phasing you pull every cell on screen. Stack: hearts too.',
+    desc: 'While phasing you pull cells from the lanes next to yours. Stack: two lanes away.',
     apply: (s, n) => { s.undertow += n; } },
   { id: 'egg', name: 'SYMBIONT EGG', code: 'EGG', cat: 'defense', rarity: 2, max: 1, unlock: 'boss_3run',
     desc: 'Once per run, death hatches you again with 1 heart.',
@@ -307,28 +310,31 @@ export const ITEMS = [
 export const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
 
 // Named synergies: announced on screen when first formed.
+// A synergy has a LEVEL: the lowest stack among its items (max 2). Level 2 is
+// about +60% of the level-1 effect, never double. `k` = 1 or 1.6.
+const K = (lvl) => (lvl > 1 ? 1.6 : 1);
 export const SYNERGIES = [
   { id: 'swarm', name: 'SWARM', req: ['split', 'homing'], desc: 'Bullets turn even harder.',
-    apply: (s) => { s.homing += 1; } },
+    apply: (s, l) => { s.homing += K(l); } },
   { id: 'railgun', name: 'RAILGUN', req: ['slug', 'pierce'], desc: 'Faster bullets, +1 pierce.',
-    apply: (s) => { s.shotSpeed += 0.5; s.pierce += 1; } },
+    apply: (s, l) => { s.shotSpeed += 0.5 * K(l); s.pierce += 1; } },
   { id: 'storm', name: 'STORM', req: ['frag', 'arc'], desc: 'Arcs explode too.',
-    apply: (s) => { s.arc += 1; s.frag += 1; } },
+    apply: (s, l) => { s.arc += 1; s.frag += K(l); } },
   { id: 'plague', name: 'PLAGUE', req: ['toxin', 'frag'], desc: 'Explosions poison.',
-    apply: (s) => { s.toxin += 1; } },
+    apply: (s, l) => { s.toxin += K(l); } },
   { id: 'halo', name: 'HALO', req: ['orbital', 'mirror'], desc: '+1 orbital, faster spin.',
     apply: (s) => { s.orbitals += 1; } },
   { id: 'burst', name: 'BURST FIRE', req: ['rapid', 'echo'], desc: 'Echo every 3rd shot.',
     apply: (s) => { s.echo = 3; } },
   { id: 'jackpot', name: 'JACKPOT', req: ['greed', 'lucky'], desc: 'Crits drop cells.',
-    apply: (s) => { s.critCoins = true; } },
+    apply: (s, l) => { s.critCoins = true; s.critCoinsP = 0.3 * K(l); } },
 ];
 
 SYNERGIES.push(
   { id: 'smartrockets', name: 'SMART ROCKETS', req: ['rockets', 'homing'], desc: 'Rockets hunt harder, bigger blasts.',
-    apply: (s) => { s.smartRockets = true; s.homing += 1; } },
+    apply: (s, l) => { s.smartRockets = true; s.homing += K(l); } },
   { id: 'meltdown', name: 'MELTDOWN', req: ['laser', 'toxin'], desc: 'The beam poisons twice as hard.',
-    apply: (s) => { s.toxin += 2; } },
+    apply: (s, l) => { s.toxin += 2 * K(l); } },
   { id: 'buckshot', name: 'BUCKSHOT', req: ['scatter', 'slug'], desc: '+2 pellets, pellets pierce.',
     apply: (s) => { s.buckshot = true; } },
   { id: 'overload', name: 'OVERLOAD', req: ['railgun', 'echo'], desc: 'Every 3rd rail hits 3 lanes.',
@@ -338,18 +344,56 @@ SYNERGIES.push(
   { id: 'aftershock', name: 'AFTERSHOCK', req: ['pound', 'kickflip'], desc: 'Ground pound hits 3 lanes.',
     apply: (s) => { s.aftershock = true; } },
   { id: 'squadron', name: 'SQUADRON', req: ['wingman', 'split'], desc: 'Wingmen fire 50% faster.',
-    apply: (s) => { s.squadron = true; } },
+    apply: (s, l) => { s.squadron = l > 1 ? 0.9 : 0.75; } },
   { id: 'driftking', name: 'DRIFT KING', req: ['slipstream', 'blink'], desc: 'Phasing fires a burst too.',
     apply: (s) => { s.driftKing = true; } },
   { id: 'domino', name: 'DOMINO', req: ['chain', 'frag'], desc: 'Death blasts are bigger.',
-    apply: (s) => { s.domino = true; } },
+    apply: (s, l) => { s.domino = l > 1 ? 1.8 : 1.5; } },
   { id: 'counter', name: 'COUNTERSTRIKE', req: ['ambush', 'mirror'], desc: 'Reflected bullets deal triple.',
     apply: (s) => { s.counter = true; } },
 );
 
+export const synergyLevel = (sy, stacks) => Math.min(2, ...sy.req.map((id) => stacks[id] || 0));
 export function activeSynergies(stacks) {
   return SYNERGIES.filter((sy) => sy.req.every((id) => stacks[id] > 0));
 }
+
+// Evolutions: an item at its max stack + its partner = the item evolves, at
+// once. It keeps its slot and adds a new behaviour (and incorporates the combo
+// the two already formed). Effects are flags read by the weapon and the run.
+export const EVOLUTIONS = [
+  { id: 'bonelance', name: 'BONE LANCE', base: 'pierce', partner: 'slug',
+    desc: 'Shots pierce everything; every enemy pierced adds +15% damage.',
+    apply: (s) => { s.pierce = Math.max(s.pierce, 40); s.pierceRamp = 0.15; } },
+  { id: 'pandemic', name: 'PANDEMIC', base: 'toxin', partner: 'frag',
+    desc: 'Every poisoned death spreads its poison to everything near it.',
+    apply: (s) => { s.toxinSpread = 99; } },
+  { id: 'swarmlord', name: 'SWARMLORD', base: 'split', partner: 'homing',
+    desc: 'Side shots each hunt a different enemy.',
+    apply: () => {} },
+  { id: 'thunderclap', name: 'THUNDERCLAP', base: 'echo', partner: 'rapid',
+    desc: 'Echo rounds burst into three smaller echoes on impact.',
+    apply: () => {} },
+  { id: 'stormcaller', name: 'STORMCALLER', base: 'arc', partner: 'brand',
+    desc: 'Arcs jump through every branded enemy, no limit.',
+    apply: () => {} },
+  { id: 'corona', name: 'CORONA', base: 'orbital', partner: 'mirror',
+    desc: 'Orbitals throw the shots they catch back as yours.',
+    apply: () => {} },
+  { id: 'armada', name: 'ARMADA', base: 'wingman', partner: 'split',
+    desc: 'Wingmen fire your weapon: its traits, its rockets, its beam or rail.',
+    apply: () => {} },
+  { id: 'web', name: 'WEB', base: 'afterglow', partner: 'sine',
+    desc: 'Trails weave into a web that numbs what touches it.',
+    apply: () => {} },
+  { id: 'maelstrom', name: 'MAELSTROM', base: 'undertow', partner: 'magnet', partnerMin: 2,
+    desc: 'Phasing pulls everything on screen, hearts too.',
+    apply: () => {} },
+];
+export const EVO_BY_ID = Object.fromEntries(EVOLUTIONS.map((e) => [e.id, e]));
+const evoReady = (ev, stacks) => (stacks[ev.base] || 0) >= maxOf(ITEM_BY_ID[ev.base], stacks)
+  && (stacks[ev.partner] || 0) >= (ev.partnerMin || 1);
+export function activeEvolutions(stacks) { return EVOLUTIONS.filter((ev) => ITEM_BY_ID[ev.base] && evoReady(ev, stacks)); }
 
 export function computeStats(board, stacks) {
   const s = baseStats();
@@ -358,7 +402,16 @@ export function computeStats(board, stacks) {
     const it = ITEM_BY_ID[id];
     if (it && it.apply && stacks[id] > 0) it.apply(s, stacks[id]);
   }
-  for (const sy of activeSynergies(stacks)) sy.apply(s);
+  for (const sy of activeSynergies(stacks)) { const l = synergyLevel(sy, stacks); s.syn[sy.id] = l; sy.apply(s, l); }
+  // v1.2 stack thresholds: the top stack of a behaviour item adds a new shape
+  const n = (id) => stacks[id] || 0;
+  s.seekReach = n('homing') >= 2 ? 2 : 1;
+  if (n('pierce') >= 3) s.pierceRamp = 0.1;
+  if (n('frag') >= 2) s.fragReach = true;
+  if (n('arc') >= 3) { s.arcMul = 0.45; s.arcLanes = true; }
+  if (n('toxin') >= 3) s.toxinSpread = 1;
+  if (n('crit') >= 3) s.critPierce = 1;
+  for (const ev of activeEvolutions(stacks)) { s.evo[ev.id] = true; ev.apply(s); }
   // v1.1 pair effects (named in combos.js, applied by the shot engine and run)
   const has = (...ids) => ids.every((id) => stacks[id] > 0);
   s.cascade = has('fission', 'split');
@@ -417,7 +470,9 @@ const SOURCE_WEIGHT = {
   boss: [12, 30, 22],
 };
 // Stack cap: MITOSIS lets every COMMON weapon item stack once more.
-export const maxOf = (it, stacks) => it.max + (stacks.mitosis && it.rarity === 0 && it.cat === 'weapon' ? 1 : 0);
+// An active you already hold can come back once from a boss: OVERCLOCK.
+export const maxOf = (it, stacks) => (it.cat === 'active' ? (stacks[it.id] ? 2 : 1) : it.max)
+  + (stacks.mitosis && it.rarity === 0 && it.cat === 'weapon' ? 1 : 0);
 // Items that exclude each other (either side may declare it).
 const conflicting = (it, stacks) => (it.conflicts || []).some((c) => stacks[c] > 0)
   || ITEMS.some((o) => stacks[o.id] > 0 && (o.conflicts || []).includes(it.id));
@@ -474,6 +529,7 @@ export function effectiveDps(s) {
   const sideHit = s.homing > 0 ? Math.min(1, 0.5 + 0.25 * s.homing) : 0;
   let perShot = dmg + 2 * s.split * dmg * s.sideDamage * sideHit;
   if (s.echo) perShot += (dmg * s.echoMul - dmg) / s.echo;
+  if (s.echo && s.evo.thunderclap) perShot += dmg * s.echoMul * 0.3 / s.echo;   // the three small echoes, on other targets
   perShot *= 1 + s.crit * (s.critMul - 1);
   const CARRIER_DPS = { bolt: 1, beam: 1.15, rail: 1.05, rocket: 1 };
   let m = CARRIER_DPS[s.carrier] ?? 1;

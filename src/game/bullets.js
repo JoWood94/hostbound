@@ -32,7 +32,7 @@ function makePool(max) {
     lane: new Int8Array(max),      // player bullets: lane fired from (homing range), -1 = no homing
     ox: new Float32Array(max),     // mode data: sine base x / pellet start y
     aux: new Float32Array(max),    // mode data: sine phase
-    flags: new Uint8Array(max),    // player shot traits, combinable (F_*)
+    flags: new Uint16Array(max),   // player shot traits, combinable (F_*)
   };
 }
 
@@ -48,6 +48,7 @@ export const F_FISSION = 16;  // child of a FISSION split (does not split again)
 export const F_FISSION2 = 32; // CASCADE: a second-generation child
 export const F_TOXIC = 64;    // SPORE BURST shards: heavier poison
 export const F_SLOW = 128;    // WRAITH ghost shots: slow what they hit
+export const F_ECHO = 256;    // THUNDERCLAP: an echo round that bursts on its first hit
 
 export const playerBullets = makePool(384);
 export const enemyBullets = makePool(1024);

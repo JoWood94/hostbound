@@ -1,6 +1,6 @@
 // Player weapon. Reads the final stats object only, so every item combination
 // composes without special cases. Also resolves on-hit effects.
-import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, SHOTS } from './bullets.js';
+import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, SHOTS } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
 import { ctx, makeOffscreen } from '../core/canvas.js';
@@ -86,7 +86,7 @@ export function updateTrails(stats, dt, p) {
     if (e.dead) continue;
     let best = 0;
     for (const t of trails) if (t.dps > best && overlaps(e, t.x, t.y, 5)) best = t.dps;
-    if (best) damageEnemy(e, best * 0.1);
+    if (best) { damageEnemy(e, best * 0.1); if (stats.evo.web) e.slowT = Math.max(e.slowT || 0, 0.4); }   // WEB numbs
   }
 }
 function drawTrails() {
@@ -137,11 +137,22 @@ export function updateWingmen(p, stats, dt) {
     w.x += (laneX(l) - w.x) * Math.min(1, dt * 12);
     w.fireT -= dt;
     if (w.fireT <= 0) {
-      w.fireT += 1 / (stats.fireRate * (stats.squadron ? 0.75 : 0.5));
-      const bi = spawn(playerBullets, w.x, PLAYER_Y - 30, 0, -stats.bulletSpeed, 2.4, currentDamage(p, stats) * 0.6, 0, stats.pierce);
-      if (bi >= 0) playerBullets.lane[bi] = l;
+      w.fireT += 1 / (stats.fireRate * (stats.squadron || 0.5));
+      if (stats.evo.armada && (stats.carrier === 'beam' || stats.carrier === 'rail')) return;   // they ride the beam/rail paths instead
+      const rocket = stats.evo.armada && stats.carrier === 'rocket';
+      const bi = spawn(playerBullets, w.x, PLAYER_Y - 30, 0, -(rocket ? 180 * stats.shotSpeed : stats.bulletSpeed), rocket ? 4 : 2.4, currentDamage(p, stats) * 0.6 * (rocket ? 1.4 : 1), 0, stats.pierce);
+      if (bi >= 0) {
+        playerBullets.lane[bi] = l;
+        // ARMADA: the drones fire your weapon's traits too
+        if (stats.evo.armada) playerBullets.flags[bi] = (stats.hasRocket ? F_EXPLODE : 0) | (rocket ? F_ROCKET : 0);
+      }
     }
   });
+}
+// ARMADA on a beam or a rail: one extra path from every drone.
+function armadaSpecs(stats, mul) {
+  if (!stats.evo.armada || !stats.wingmen) return [];
+  return wingmen.map((w) => ({ lane: Math.max(0, Math.min(LANES - 1, Math.round((w.x - laneX(0)) / LANE_W))), mul, fromX: w.x }));
 }
 export function drawWingmen() {
   for (const w of wingmen) {
@@ -211,9 +222,11 @@ function enemiesInLane(l) {
   return out.sort((a, b) => b.y - a.y);
 }
 // Lane to aim at: own lane if it has a target, else (with SEEKER) a neighbour.
+// SEEKER 2: two lanes away, only when nothing is closer.
 function aimLane(p, stats) {
   if (enemiesInLane(p.lane).length || stats.homing <= 0) return p.lane;
-  for (const o of [-1, 1]) { const l = p.lane + o; if (l >= 0 && l < LANES && enemiesInLane(l).length) return l; }
+  const offs = stats.seekReach > 1 ? [-1, 1, -2, 2] : [-1, 1];
+  for (const o of offs) { const l = p.lane + o; if (l >= 0 && l < LANES && enemiesInLane(l).length) return l; }
   return p.lane;
 }
 
@@ -257,7 +270,7 @@ function lockTargets(p, stats, specs) {
     for (const e of enemies) {
       if (e.dead || e.y > PLAYER_Y - 30) continue;
       const el = Math.round((e.x - laneX(0)) / LANE_W);
-      if (Math.abs(el - lane) > 1) continue;
+      if (Math.abs(el - lane) > (stats.seekReach > 1 || stats.evo.swarmlord ? 2 : 1)) continue;
       const d = Math.abs(el - lane) * 200 + (PLAYER_Y - e.y) * 0.2 + (taken.has(e) ? 500 : 0);
       if (d < bd) { bd = d; best = e; }
     }
@@ -358,7 +371,7 @@ function fireProjectiles(p, stats) {
   // ECHO: every Nth volley is one huge piercing round (RESONANCE: so is a charged one).
   if (!stats.hasScatter && ((stats.echo && p.shotCount % stats.echo === 0) || (mod.charged && stats.resonance))) {
     const bi = spawn(playerBullets, p.x, y, 0, -stats.bulletSpeed * 0.9, stats.bulletSize * 2.4 * dmgScale(dmg), dmg * stats.echoMul, BIG, stats.pierce + 3);
-    if (bi >= 0) { tagLane(bi, p.lane); playerBullets.flags[bi] = flags & ~F_ROCKET; }
+    if (bi >= 0) { tagLane(bi, p.lane); playerBullets.flags[bi] = (flags & ~F_ROCKET) | (stats.evo.thunderclap ? F_ECHO : 0); }
     sfx.shoot();
     return;
   }
@@ -366,6 +379,20 @@ function fireProjectiles(p, stats) {
   const travel = (PLAYER_Y - 150) / speed;
   const strands = stats.hasSine && !stats.hasScatter ? (stats.helix ? 3 : 2) : 1;
   const side = rocket ? (p.shotCount % 2 === 0 ? -8 : 8) : 0;
+  // SWARMLORD: every side shot hunts its own enemy (within a lane of its lane)
+  const hunted = new Set();
+  const huntFor = (lane) => {
+    let best = null, bd = 1e9;
+    for (const e of enemies) {
+      if (e.dead || e.y > PLAYER_Y - 30 || hunted.has(e)) continue;
+      const dl = Math.abs(laneOf(e) - lane);
+      if (dl > 1) continue;
+      const d = dl * 200 + (PLAYER_Y - e.y) * 0.2;
+      if (d < bd) { bd = d; best = e; }
+    }
+    if (best) hunted.add(best);
+    return best;
+  };
   pattern(p, stats).forEach((pt, idx) => {
     let vx, vy;
     if (pt.angle !== undefined) { vx = Math.sin(pt.angle) * speed; vy = -Math.cos(pt.angle) * speed; }
@@ -384,6 +411,10 @@ function fireProjectiles(p, stats) {
       // the same offset and an enemy holding there was never hit.
       playerBullets.aux[bi] = (stats.hasScatter ? idx * Math.PI : (k / strands) * Math.PI * 2) + p.shotCount * 0.9;
       if (flags & F_RANGE) playerBullets.aux[bi] = y;   // pellets remember where they started
+      if (stats.evo.swarmlord && idx > 0 && pt.lane !== undefined && !(flags & F_WAVE)) {
+        const t = huntFor(pt.lane);
+        if (t) { playerBullets.lane[bi] = -2; playerBullets.aux[bi] = t.id; }   // chased in updateModeBullets
+      }
     }
   });
   if (!rocket) sfx.shoot();
@@ -394,17 +425,20 @@ function fireRail(p, stats, hit) {
   if (!hit) return;
   const mod = shotMods(p, stats);
   const siege = mod.charged && stats.siege;
-  const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * stats.pierce) * (siege ? 2.5 / 1.8 : 1) * mod.dmg;
+  const dmg = currentDamage(p, stats) * 6.5 * (1 + 0.25 * Math.min(4, stats.pierce)) * (siege ? 2.5 / 1.8 : 1) * mod.dmg;
   const specs = lockTargets(p, stats, pattern(p, stats));
   if (stats.twinlink && p.twinT > 0) specs.push({ lane: p.twinLane, mul: 1, fromX: laneX(p.twinLane) });
+  specs.push(...armadaSpecs(stats, 0.35));
   if (stats.overload && p.shotCount % 3 === 0) for (const o of [-1, 1]) specs.push({ lane: aimLane(p, stats) + o, mul: 1 });
   const phase = p.shotCount * 1.7;
   for (const spec of specs) {
     if (spec.lane !== undefined && (spec.lane < 0 || spec.lane >= LANES)) continue;
     const pts = buildPath(p, spec, stats.hasSine, phase);
     const { hits } = hitsAlong(pts, 6 * mod.size, 99);
+    let ramp = 1;
     for (const { e } of hits) {
-      onHit(e, dmg * spec.mul, stats, hit, true);
+      onHit(e, dmg * spec.mul * ramp, stats, hit, true);
+      ramp *= 1 + stats.pierceRamp;                       // PIERCER 3 / BONE LANCE
       if (stats.hasRocket) blast(e.x, e.y, dmg * spec.mul, stats, e);
       if (siege && e.type === 'boss') e.stunT = 0.6;     // SIEGE: the boss reels
     }
@@ -458,6 +492,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
   const phase = p.beamT * 5;
   const specs = lockTargets(p, stats, pattern(p, stats));
   if (stats.twinlink && p.twinT > 0) specs.push({ lane: p.twinLane, mul: 0.7, fromX: laneX(p.twinLane) });
+  specs.push(...armadaSpecs(stats, 0.35));
   // AFTERGLOW + LASER (SCAR): changing lane leaves the old beam burning.
   if (stats.afterglow && p.ev && p.ev.lane && p.lastBeam) addTrail(p.lastBeam, stats.scar ? 1 : 0.35, stats, p);
   const pierceN = ghost ? 99 : 1 + stats.pierce + (stats.skyshot && p.jumpT > 0 ? stats.skyshot : 0);
@@ -481,7 +516,8 @@ function updateBeam(p, stats, dt, rateMul, hit) {
       }
     }
     if (tick && hit) {
-      for (const { e } of hits) onHit(e, dps * 0.1 * spec.mul, stats, hit, p.laserCount % 3 === 0);
+      let ramp = 1;
+      for (const { e } of hits) { onHit(e, dps * 0.1 * spec.mul * ramp, stats, hit, p.laserCount % 3 === 0); ramp *= 1 + stats.pierceRamp; }
       const last = hits[hits.length - 1];
       if (last) {
         burst(last.e.x, last.e.y + 8, SHOT, 2, 120, 0.2, 1.5);
@@ -526,8 +562,8 @@ export function updateModeBullets(stats, dt) {
   }
 }
 
-// Homing: a bullet only tracks enemies in the lane it was fired from or the
-// two lanes next to it. Stacks make the turn sharper, never the range wider.
+// Homing: a bullet tracks enemies in the lane it was fired from or the two
+// lanes next to it; with SEEKER x2, two lanes away when nothing is closer.
 export function steerBullets(stats, dt) {
   if (stats.homing <= 0) return;
   const pb = playerBullets;
@@ -553,8 +589,20 @@ export function steerBullets(stats, dt) {
       const d = Math.abs(tx - pb.x[i]) + (pb.y[i] - e.y) * 0.3;
       if (d < bd) { bd = d; bestX = tx; found = true; }
     }
+    // SEEKER 2: nothing within one lane, look two lanes away (gentler turn)
+    let kk = k;
+    if (!found && stats.seekReach > 1) {
+      for (const e of enemies) {
+        if (e.dead || e.y > pb.y[i]) continue;
+        const tx = Math.max(xMin2, Math.min(xMax2, e.x));
+        if (!e.hitboxes && (e.x < xMin2 || e.x > xMax2)) continue;
+        const d = Math.abs(tx - pb.x[i]) + (pb.y[i] - e.y) * 0.3;
+        if (d < bd) { bd = d; bestX = tx; found = true; }
+      }
+      kk = k * 0.7;
+    }
     if (!found) continue;
-    const want = Math.max(-maxVx, Math.min(maxVx, (bestX - pb.x[i]) * k));
+    const want = Math.max(-maxVx, Math.min(maxVx, (bestX - pb.x[i]) * kk));
     pb.vx[i] += (want - pb.vx[i]) * Math.min(1, dt * 6);
   }
 }
@@ -604,7 +652,7 @@ function onHit(e, dmg, stats, run, primary, flags = 0) {
     e.poisoned = true;
   }
   if (flags & F_EXPLODE) blast(e.x, e.y, dmg, stats, e);
-  if (!primary) return;
+  if (!primary) return crit;
   if (stats.frag > 0) {
     const radius = 26 + 12 * stats.frag;
     rings.push({ x: e.x, y: e.y, r: radius, t: 0.25 });
@@ -616,22 +664,42 @@ function onHit(e, dmg, stats, run, primary, flags = 0) {
         if (stats.toxin > 0) { o.poison = Math.max(o.poison, stats.toxin); o.poisonT = 3; o.poisoned = true; }
       }
     }
+    // FRAG x2: the blast also reaches the nearest enemy in the next lanes at about the same height
+    if (stats.fragReach) {
+      for (const o2 of [-1, 1]) {
+        const x = e.x + o2 * LANE_W;
+        const t = enemies.find((o) => !o.dead && o !== e && Math.abs(o.x - x) < LANE_W * 0.5 && Math.abs(o.y - e.y) < 50 && !overlaps(o, e.x, e.y, radius));
+        if (t) { rings.push({ x: t.x, y: t.y, r: 20, t: 0.2 }); damageEnemy(t, dmg * 0.25); }
+      }
+    }
   }
   if (stats.arc > 0) {
     // CONDUIT: branded enemies are reached first, and one more jump
     const targets = enemies.filter((o) => o !== e && !o.dead && Math.hypot(o.x - e.x, o.y - e.y) < 170)
       .sort((a, b) => (stats.conduit ? (b.brandMul ? 1 : 0) - (a.brandMul ? 1 : 0) : 0) || Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))
-      .slice(0, stats.arc + (stats.conduit ? 1 : 0));
+      .sort((a, b) => (stats.arcLanes ? (laneOf(a) === laneOf(e) ? 1 : 0) - (laneOf(b) === laneOf(e) ? 1 : 0) : 0))   // ARC 3: other lanes first
+      .slice(0, Math.floor(stats.arc) + (stats.conduit ? 1 : 0));
+    // STORMCALLER: then on through every branded enemy, nearest first
+    if (stats.evo.stormcaller) {
+      let last = targets[targets.length - 1] || e;
+      const left = enemies.filter((o) => o !== e && !o.dead && o.brandMul && !targets.includes(o));
+      while (left.length && targets.length < 12) {
+        left.sort((a, b) => Math.hypot(a.x - last.x, a.y - last.y) - Math.hypot(b.x - last.x, b.y - last.y));
+        last = left.shift(); targets.push(last);
+      }
+    }
     let from = e;
     for (const t of targets) {
       arcs.push({ x1: from.x, y1: from.y, x2: t.x, y2: t.y, t: 0.15 });
-      damageEnemy(t, dmg * 0.35);
+      damageEnemy(t, dmg * stats.arcMul);
       if (stats.frag > 1) rings.push({ x: t.x, y: t.y, r: 20, t: 0.2 });
       from = t;
     }
     if (targets.length) sfx.arc();
   }
+  return crit;
 }
+const laneOf = (e) => Math.round((e.x - laneX(0)) / LANE_W);
 
 // Player bullets vs all targets (enemies + boss).
 export function resolvePlayerHits(stats, run) {
@@ -640,17 +708,37 @@ export function resolvePlayerHits(stats, run) {
     for (const e of enemies) {
       if (e.dead || pb.lastHit[i] === e.id) continue;
       if (!overlaps(e, pb.x[i], pb.y[i], pb.r[i])) continue;
-      onHit(e, pb.dmg[i], stats, run, true, pb.flags[i]);
+      const crit = onHit(e, pb.dmg[i], stats, run, true, pb.flags[i]);
       fission(pb, i, stats, e);
+      if (pb.flags[i] & F_ECHO) thunderclap(pb, i, e);
+      if (crit && stats.critPierce) pb.pierce[i] = Math.min(255, pb.pierce[i] + stats.critPierce);   // HEADSHOT 3
       if (pb.pierce[i] > 0) {
         pb.pierce[i]--;
         pb.lastHit[i] = e.id;
+        pb.dmg[i] *= 1 + stats.pierceRamp;                    // PIERCER 3 / BONE LANCE
       } else {
         kill(pb, i); i--;
       }
       break;
     }
   }
+}
+
+// THUNDERCLAP (ECHO + RAPID): an echo round bursts into three smaller echoes.
+// The three echoes chase the nearest other enemies (they hold at about the same
+// height, so echoes flying straight up would hit nothing); leftovers fly up.
+function thunderclap(pb, i, e) {
+  pb.flags[i] &= ~F_ECHO;
+  const near = enemies.filter((o) => !o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < 220)
+    .sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y));
+  [-160, 0, 160].forEach((vx, k) => {
+    const t = near[k];
+    const bi = spawn(playerBullets, pb.x[i], pb.y[i] - 8, vx, -520, Math.max(3, pb.r[i] * 0.55), pb.dmg[i] * 0.18, BIG, 1);
+    if (bi < 0) return;
+    playerBullets.lastHit[bi] = e.id;
+    if (t) { playerBullets.lane[bi] = -2; playerBullets.aux[bi] = t.id; }
+  });
+  rings.push({ x: pb.x[i], y: pb.y[i], r: 30, t: 0.25 });
 }
 
 // Poison ticks: 2 ticks per second.

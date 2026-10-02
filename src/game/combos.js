@@ -4,7 +4,7 @@
 // them up later, Isaac-style but without needing a wiki:
 //   - not discovered: an offered item only says it RESONATES with something you hold
 //   - discovered (held both once): the name and effect are shown from then on
-import { SYNERGIES, ITEM_BY_ID, computeStats } from './items.js';
+import { SYNERGIES, ITEM_BY_ID, computeStats, EVOLUTIONS } from './items.js';
 
 // `when(stats)`: the combo only exists if its effect is real for the current
 // shot carrier (e.g. rockets only spiral if rockets are what you fire).
@@ -68,6 +68,9 @@ export const COMBOS = [
   pair('sporecloud', 'toxin', 'MIASMA', 'The spore cloud poisons enemies in it.'),
   pair('momentum', 'slipstream', 'DRIFT', 'Two quick lane changes charge the slipstream burst.'),
   trio('fission', 'shrapnel', 'chain', 'CHAIN FISSION', 'Every kill starts a chain of splitting, exploding shards.'),
+
+  // v1.2 evolutions: base item at its max stack + partner (items.js EVOLUTIONS)
+  ...EVOLUTIONS.map((ev) => ({ ...pair(ev.base, ev.partner, ev.name, ev.desc, `evo:${ev.id}`, (s) => !!s.evo[ev.id]), evo: true })),
 ];
 
 export const COMBO_BY_ID = Object.fromEntries(COMBOS.map((c) => [c.id, c]));
@@ -83,7 +86,15 @@ export function activeCombos(stacks, stats) {
 export function offerHints(id, stacks, save, board) {
   const out = [];
   const after = board ? computeStats(board, { ...stacks, [id]: (stacks[id] || 0) + 1 }) : null;
+  const before = board ? computeStats(board, stacks) : null;
   for (const c of COMBOS) {
+    // An evolution is hinted by the card that completes it (often the base item's last stack).
+    if (c.evo) {
+      if (!after || !c.when(after) || c.when(before)) continue;
+      const partner = id === c.a ? c.b : c.a;
+      out.push({ combo: c, partner: ITEM_BY_ID[partner], known: !!(save.combos && save.combos[c.id]), evo: true });
+      continue;
+    }
     const members = c.c ? [c.a, c.b, c.c] : [c.a, c.b];
     if (!members.includes(id) || held(stacks, id)) continue;
     const others = members.filter((m) => m !== id);

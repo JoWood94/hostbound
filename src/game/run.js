@@ -15,7 +15,7 @@ import { intensity, generateCourse, generateCombat } from './generator.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H, warmObstacleArt } from './obstacles.js';
 import { pickups, spawnPickup, dropCoins, updatePickups, clearPickups } from './pickups.js';
-import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from './items.js';
+import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio, activeEvolutions } from './items.js';
 import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
@@ -126,7 +126,13 @@ export function acquire(run, id, silent = false) {
     if (!run.save.modesUsed) run.save.modesUsed = [];
     if (!run.save.modesUsed.includes(id)) run.save.modesUsed.push(id);
   }
-  if (it.cat === 'active') {
+  if (it.cat === 'active' && run.active && run.active.id === id) {
+    // OVERCLOCK: the same active again charges 25% faster
+    run.stacks[id] = 2;
+    run.active.max = Math.max(1, Math.round(run.active.max * 0.75));
+    run.active.charge = Math.min(run.active.charge, run.active.max);
+    if (!silent) toast(run, `${it.name} OVERCLOCK`, `Charges in ${run.active.max} kills`, PAL.orange, 2.6);
+  } else if (it.cat === 'active') {
     if (run.active) delete run.stacks[run.active.id];
     run.active = { id, charge: 0, max: it.active.charge, told: false };
     run.stacks[id] = 1;
@@ -151,8 +157,20 @@ export function acquire(run, id, silent = false) {
 
   // Combos: first time ever = discovery (named, explained, remembered forever).
   if (!run.save.combos) run.save.combos = {};
+  // Evolutions: announced loudly, remembered like combos (key evo:<id>).
+  for (const ev of activeEvolutions(run.stacks)) {
+    if (run.synergies.has(`evo:${ev.id}`)) continue;
+    run.synergies.add(`evo:${ev.id}`);
+    const first = !run.save.combos[`evo:${ev.id}`];
+    run.save.combos[`evo:${ev.id}`] = true;
+    writeSave(run.save);
+    toast(run, `EVOLUTION: ${ev.name}`, first ? ev.desc : `${ITEM_BY_ID[ev.base].name} evolved`, PAL.acid, 4);
+    sfx.synergy(); sfx.unlock();
+    run.flashT = 0.4;
+    shake(4, 0.2);
+  }
   for (const c of activeCombos(run.stacks, run.stats)) {
-    if (run.synergies.has(c.id)) continue;
+    if (c.evo || run.synergies.has(c.id)) continue;
     run.synergies.add(c.id);
     if (!run.save.combos[c.id]) {
       run.save.combos[c.id] = true;
@@ -664,8 +682,15 @@ function itemEffects(run, dt) {
     if (p.blueHearts < base) { run.skinT = (run.skinT || 0) + dt; if (run.skinT >= 45) { run.skinT = 0; p.blueHearts++; toast(run, 'SECOND SKIN', '', PAL.blue, 1.4); } }
     else run.skinT = 0;
   }
-  // UNDERTOW: phasing pulls every cell (and hearts with 2 stacks)
-  if (st.undertow && p.phaseT > 0) for (const pk of pickups) if (pk.kind === 'coin' || (st.undertow > 1 && (pk.kind === 'heart' || pk.kind === 'blue'))) pk.fly = true;
+  // UNDERTOW: phasing pulls cells within 1 lane (2 with two stacks);
+  // MAELSTROM (UNDERTOW 2 + MAGNET 2): everything on screen, hearts too
+  if (st.undertow && p.phaseT > 0) {
+    const reach = st.evo.maelstrom ? 9 : st.undertow > 1 ? 2 : 1;
+    for (const pk of pickups) {
+      if (Math.abs(pk.x - p.x) > (reach + 0.5) * LANE_W) continue;
+      if (pk.kind === 'coin' || (st.evo.maelstrom && (pk.kind === 'heart' || pk.kind === 'blue'))) pk.fly = true;
+    }
+  }
   // MIRROR FIELD, EVENT HORIZON timers
   if (run.mirrorT > 0) run.mirrorT -= dt;
   if (run.horizonT > 0) run.horizonT -= dt;
@@ -712,7 +737,7 @@ function openPick(run, kind) {
 }
 
 export function onCrit(run) {
-  if (run.stats.critCoins && run.rng.chance(0.3)) addCoins(run, 1);
+  if (run.stats.critCoins && run.rng.chance(run.stats.critCoinsP)) addCoins(run, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -893,7 +918,12 @@ export function updateRun(run, input, dt) {
       let eaten = false;
       for (const o of orbs) {
         const dx = eb.x[i] - o.x, dy = eb.y[i] - o.y;
-        if (dx * dx + dy * dy < (run.horizonT > 0 ? 400 : 100)) { eaten = true; burst(o.x, o.y, PAL.blue, 4, 80, 0.2, 1.5); break; }
+        if (dx * dx + dy * dy < (run.horizonT > 0 ? 400 : 100)) {
+          eaten = true; burst(o.x, o.y, PAL.blue, 4, 80, 0.2, 1.5);
+          // CORONA: the caught shot is thrown back as yours
+          if (st.evo.corona) spawn(playerBullets, o.x, o.y, 0, -520, 3.5, currentDamage(p, st) * 1.5, 0, 1);
+          break;
+        }
       }
       if (eaten) { kill(eb, i); i--; continue; }
     }
@@ -1015,9 +1045,20 @@ export function updateRun(run, input, dt) {
     run.rs.kills++;
     if (p.jumpT > 0) run.rs.airKills = (run.rs.airKills || 0) + 1;
     if (e.poisoned) run.rs.toxinKills++;
+    // TOXIN 3: a poisoned death infects the nearest neighbour; PANDEMIC: everything near, stacking
+    if (e.poisoned && st.toxinSpread) {
+      const near = enemies.filter((o) => !o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < (st.toxinSpread > 1 ? 130 : 110))
+        .sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y)).slice(0, st.toxinSpread);
+      const dose = Math.max(st.toxin, e.poison || 0);
+      for (const o of near) {
+        o.poison = Math.min(12, st.toxinSpread > 1 ? (o.poison || 0) + Math.max(1, dose * 0.5) : Math.max(o.poison || 0, dose));
+        o.poisonT = 3; o.poisoned = true;
+        burst(o.x, o.y, PAL.acid, 5, 70, 0.3, 1.5);
+      }
+    }
     if (st.hasBeam) run.rs.laserKills = (run.rs.laserKills || 0) + 1;
     if (st.chain) {
-      const radius = (34 + 10 * st.chain) * (st.domino ? 1.5 : 1);
+      const radius = (34 + 10 * st.chain) * (st.domino || 1);
       const dmg = currentDamage(p, st) * 1.2 * st.chain;
       addRing(e.x, e.y, radius);
       for (const o of enemies) if (!o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < radius + o.r) damageEnemy(o, dmg);
