@@ -65,18 +65,22 @@ function startRun(daily = false) {
 
 // ?from=5000 (testing): start the run at that distance with a build like one
 // you would have there: one level pick per ~600 m and one boss loot per boss
-// passed, rolled from the real pools. Bosses already passed are counted, so
-// the next boss and its speed are the right ones.
+// passed, rolled from the real pools, times FROM_BOOST (default 2: a strong
+// run, so the test is about the patterns, not about a weak build; &boost=1
+// for an average one). Bosses already passed are counted, so the next boss
+// and its speed are the right ones.
 const START_FROM = Math.max(0, Number(new URLSearchParams(location.search).get('from')) || 0);
+const FROM_BOOST = Math.max(1, Number(new URLSearchParams(location.search).get('boost')) || 2);
 function warpTo(r, metres) {
   const bossesPassed = Math.floor(metres / EVENT_EVERY);
   const levels = Math.floor(metres / 600);
+  const picks = Math.round(levels * FROM_BOOST), loots = Math.round(bossesPassed * FROM_BOOST);
   const unlocked = unlockedItems(save);
-  for (let i = 0; i < levels; i++) {
+  for (let i = 0; i < picks; i++) {
     const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'level' })[0];
     if (it) acquire(r, it.id, true);
   }
-  for (let i = 0; i < bossesPassed; i++) {
+  for (let i = 0; i < loots; i++) {
     const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'boss' })[0];
     if (it) acquire(r, it.id, true);
   }
