@@ -105,140 +105,16 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Logo: Carrion-style living mass. "Host" glows like bioluminescent tissue,
-// "BOUND" is flesh, and the symbiote's own tentacles (cut from its sprite sheet)
-// hang from it and reach out of the sides, rimmed in neon.
+// Logo: generated neon sign (art/source/logo_hostbound.jpg, imported with
+// import-glow.py). Breathes a little and flickers now and then, like the tubes.
 // ---------------------------------------------------------------------------
-const LOGO_C = document.createElement('canvas');
-const LOGO_X = LOGO_C.getContext('2d');
-const BLOCK_W = 290, BLOCK_H = 80;            // flesh block canvas, logical px
-const BLOCK_Y = 170;                         // centre of the BLOCK letters
-let blockXs = [-96, -48, 0, 48, 96];            // letter centres, measured each frame
-let blockWs = [40, 40, 40, 40, 40];
-// Tentacles in the symbiote sheet: idle row, below the body.
-const TENT = { row: 0, x: 26, y: 84, w: 76, h: 40 };
-// Veins inside the letters: polylines in block coordinates (centre = 0,0).
-const VEINS = [
-  [[-80, -14], [-58, -4], [-40, -12], [-14, 2], [8, -8], [30, 6], [58, -6], [84, 4]],
-  [[-74, 10], [-50, 14], [-30, 6], [-6, 16], [20, 10], [44, 16], [70, 8]],
-  [[-20, -20], [-16, -6], [-24, 8], [-18, 20]],
-  [[40, -20], [46, -8], [38, 4], [44, 18]],
-];
-
-// One tentacle cluster from the sheet, its root at (x, y), growing along `rot`
-// (0 = down). Frames animate it exactly like the symbiote in game.
-function tentacles(x, y, w, frame, rot, rim) {
-  const s = MENU_SYM;
-  const h = (w * TENT.h) / TENT.w;
-  ctx.save();
-  ctx.translate(x, y); ctx.rotate(rot);
-  ctx.shadowColor = rim; ctx.shadowBlur = 9;
-  const src = [s.img, (frame % 8) * s.cell + TENT.x, TENT.row * s.cellH + TENT.y, TENT.w, TENT.h, -w / 2, 0, w, h];
-  ctx.drawImage(...src);
-  // The sheet's flesh is dark for the game; lift it so it reads on the menu.
-  ctx.shadowBlur = 0; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45;
-  ctx.drawImage(...src);
-  ctx.restore();
-}
-function drawBlock(t) {
-  const k = ctx.getTransform().a || 1;      // device pixels per logical pixel
-  if (LOGO_C.width !== Math.round(BLOCK_W * k)) { LOGO_C.width = Math.round(BLOCK_W * k); LOGO_C.height = Math.round(BLOCK_H * k); }
-  const c = LOGO_X;
-  c.setTransform(k, 0, 0, k, 0, 0);
-  c.clearRect(0, 0, BLOCK_W, BLOCK_H);
-  c.translate(BLOCK_W / 2, BLOCK_H / 2);
-  c.font = '54px "Russo One", Impact, sans-serif';
-  c.textAlign = 'center'; c.textBaseline = 'middle';
-  // Letters breathe: each one swells a little, out of step with the others.
-  const word = 'BOUND';
-  blockWs = [...word].map((ch) => c.measureText(ch).width);
-  const total = blockWs.reduce((a, b) => a + b, 0) + 6 * (word.length - 1);
-  blockXs = [];
-  let x = -total / 2;
-  for (let i = 0; i < word.length; i++) { blockXs.push(x + blockWs[i] / 2); x += blockWs[i] + 6; }
-  const flesh = c.createLinearGradient(0, -22, 0, 24);
-  flesh.addColorStop(0, '#ffb8a8'); flesh.addColorStop(0.35, '#e8455e');
-  flesh.addColorStop(0.8, '#b0204a'); flesh.addColorStop(1, '#7a0c32');
-  c.fillStyle = flesh;
-  for (let i = 0; i < word.length; i++) {
-    const sw = 1 + Math.sin(t * 1.6 + i * 1.7) * 0.025;
-    c.save(); c.translate(blockXs[i], Math.sin(t * 1.1 + i) * 1.2); c.scale(sw, 2 - sw);
-    c.fillText(word[i], 0, 0);
-    c.restore();
-  }
-  // Inside the flesh only: veins and a slow pulse of light.
-  c.globalCompositeOperation = 'source-atop';
-  c.strokeStyle = 'rgba(60,0,24,0.7)'; c.lineWidth = 1.4; c.lineJoin = 'round';
-  for (const v of VEINS) {
-    c.beginPath();
-    v.forEach(([vx, vy], i) => {
-      const wy = vy + Math.sin(t * 0.9 + vx * 0.05) * 1.5;
-      i ? c.lineTo(vx, wy) : c.moveTo(vx, wy);
-    });
-    c.stroke();
-  }
-  const py = -30 + ((t * 18) % 70);
-  const pulse = c.createLinearGradient(0, py - 14, 0, py + 14);
-  pulse.addColorStop(0, 'rgba(255,200,190,0)'); pulse.addColorStop(0.5, 'rgba(255,200,190,0.35)'); pulse.addColorStop(1, 'rgba(255,200,190,0)');
-  c.fillStyle = pulse; c.fillRect(-BLOCK_W / 2, py - 14, BLOCK_W, 28);
-  c.globalCompositeOperation = 'source-over';
-  c.setTransform(1, 0, 0, 1, 0, 0);
-}
-
+const LOGO = sheet('logo', 1024, 504);
 function drawLogo(t) {
-  // Cosmic current instead of a horizon: two slow interfering waves.
-  ctx.save();
-  for (const [col, amp, fr, sp, a] of [[PAL.cyan, 3, 0.045, 1.2, 0.55], [PAL.violet, 4.5, 0.03, -0.8, 0.4]]) {
-    ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = 1.5;
-    ctx.shadowColor = col; ctx.shadowBlur = 8;
-    ctx.beginPath();
-    for (let x = 0; x <= W; x += 6) {
-      const y = BLOCK_Y - 16 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
-      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.stroke();
+  const flick = Math.random() < 0.02 ? 0.55 : 1;
+  const breathe = 0.92 + Math.sin(t * 1.3) * 0.08;
+  if (!drawCell(LOGO, 0, 0, W / 2, 146, 336, { alpha: flick * breathe })) {
+    text('HOSTBOUND', W / 2, 160, { color: PAL.cyan, size: 32, align: 'center' });
   }
-  ctx.restore();
-  drawBlock(t);
-  // The symbiote's tentacles, behind the letters: hanging from each one and
-  // reaching out of both sides. Each cluster runs its own frame.
-  if (MENU_SYM.ready) {
-    const f = Math.floor(t * 8);
-    const cx = W / 2;
-    tentacles(cx + blockXs[0] - blockWs[0] / 2 - 2, BLOCK_Y + 2, 64, f + 3, Math.PI / 2 + Math.sin(t) * 0.08, PAL.magenta);
-    tentacles(cx + blockXs[blockXs.length - 1] + blockWs[blockWs.length - 1] / 2 + 2, BLOCK_Y + 2, 64, f + 6, -Math.PI / 2 - Math.sin(t * 1.2) * 0.08, PAL.magenta);
-    for (let i = 0; i < blockXs.length; i++) {
-      tentacles(cx + blockXs[i], BLOCK_Y + 10, Math.max(44, blockWs[i] * 1.25), f + i * 2, Math.sin(t * 0.9 + i) * 0.06, i % 2 ? PAL.cyan : PAL.magenta);
-    }
-  }
-  ctx.save();
-  ctx.shadowColor = 'rgba(255,40,80,0.55)'; ctx.shadowBlur = 14;
-  ctx.drawImage(LOGO_C, W / 2 - BLOCK_W / 2, BLOCK_Y - BLOCK_H / 2, BLOCK_W, BLOCK_H);
-  ctx.restore();
-  // Host: organic, uneven letters glowing like bioluminescent tissue,
-  // each drifting on the current, the glow breathing.
-  const glow = 0.75 + Math.sin(t * 1.3) * 0.25;
-  ctx.save();
-  ctx.translate(W / 2, BLOCK_Y - 54);
-  ctx.font = '54px Eater, "Russo One", cursive';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  const word = 'Host';
-  let x = -ctx.measureText(word).width / 2;
-  for (let i = 0; i < word.length; i++) {
-    const ch = word[i];
-    const y = Math.sin(t * 1.4 - i * 0.8) * 2.5;
-    const r = Math.sin(t * 0.9 + i * 1.3) * 0.04;
-    const cw = ctx.measureText(ch).width;
-    ctx.save(); ctx.translate(x + cw / 2, y); ctx.rotate(r);
-    ctx.shadowColor = PAL.mint; ctx.shadowBlur = 22 * glow;
-    ctx.globalAlpha = 0.9; ctx.fillStyle = '#1fd8a0'; ctx.fillText(ch, -cw / 2, 0);
-    ctx.shadowBlur = 5; ctx.shadowColor = '#d8fff0';
-    ctx.globalAlpha = 0.5 + 0.45 * glow; ctx.fillStyle = '#c8ffe8'; ctx.fillText(ch, -cw / 2, 0);
-    ctx.restore();
-    x += cw;
-  }
-  ctx.restore();
-  // tagline
   text('RUN · SHOOT · MUTATE', W / 2, 229, { color: PAL.mint, size: 9, align: 'center', alpha: 0.8 });
 }
 
