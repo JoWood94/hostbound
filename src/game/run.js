@@ -1105,7 +1105,8 @@ export function updateRun(run, input, dt) {
       }
     }
     if (st.hasBeam) run.rs.laserKills = (run.rs.laserKills || 0) + 1;
-    if (st.pair === 'hatchery' && e.beamed) hatch(e.x, e.y, 2, currentDamage(p, st) * 0.7, st);   // HATCHERY
+    if (st.pairOn.hatchery && e.beamed) hatch(e.x, e.y, 2, currentDamage(p, st) * 0.7, st);   // HATCHERY
+    if (st.trioOn.incubator && e.slowT > 0) hatch(e.x, e.y, 1, currentDamage(p, st) * 0.6, st);   // INCUBATOR
     if (st.chain) {
       const radius = (34 + 10 * st.chain) * (st.domino || 1);
       const dmg = currentDamage(p, st) * 1.2 * st.chain;
@@ -1129,7 +1130,7 @@ export function updateRun(run, input, dt) {
       const flags = (st.hasRocket || st.grenade ? F_EXPLODE : 0) | (st.sporeBurst ? F_TOXIC : 0);
       for (let k = 0; k < n; k++) {
         const t = targets.length ? targets[k % targets.length] : null;
-        if (t && st.hasBeam) {                        // REFRACTION: instant
+        if (t && st.carrier === 'beam') {             // REFRACTION: instant
           flashLine(e.x, e.y, t.x, t.y);
           damageEnemy(t, dmg);
           if (st.sporeBurst || st.toxin) { t.poison = Math.max(t.poison, (st.toxin || 1) * (st.sporeBurst ? 2 : 1)); t.poisonT = 3; t.poisoned = true; }

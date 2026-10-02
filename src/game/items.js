@@ -486,6 +486,33 @@ export const CARRIER_PAIRS = [
   { id: 'depthcharge', a: 'stinger', b: 'mortar', kind: 'A', alt: ['sting', 'mortar'], name: 'DEPTH CHARGE', desc: 'Stingers and shells take turns; a shell sets off the stingers it lands on.' },
 ];
 const PRIORITY = ['beam', 'rail', 'mortar', 'sting', 'glaive', 'rocket', 'brood', 'mine'];
+
+// Trios (v1.2): transformations. A carrier trio replaces the pairs between
+// its members (it sets the weapon and switches on the pair behaviours it is
+// built from); the first listed that is held wins. Trait trios add on top.
+export const TRIOS = [
+  { id: 'supernova', req: ['laser', 'railgun', 'rockets'], carrier: 'beam', name: 'SUPERNOVA',
+    desc: 'The beam charges, then releases a nova down its path: everything it touches explodes.' },
+  { id: 'powergrid', req: ['laser', 'railgun', 'sporemine'], carrier: 'rail', with: 'mine', on: ['tripwire', 'fuseline'], name: 'POWER GRID',
+    desc: 'Mines are wired into a grid; a rail on one sets off every mine wired to it.' },
+  { id: 'targetlock', req: ['railgun', 'stinger', 'mortar'], alt: ['rail', 'mortar'], on: ['harpoon', 'depthcharge'], name: 'TARGET LOCK',
+    desc: 'Rails mark and harpoon their target; shells hunt the marked and set its stingers off.' },
+  { id: 'nest', req: ['brood', 'stinger', 'sporemine'], carrier: 'mine', on: ['queen'], name: 'NEST',
+    desc: 'Mines become nests that hatch stinging larvae before they burst.' },
+  { id: 'chakram', req: ['laser', 'glaive', 'sine'], carrier: 'glaive', on: ['tether'], name: 'CHAKRAM',
+    desc: 'The tethered glaive hangs at the enemy line, sweeping three lanes.' },
+  { id: 'barrage', req: ['rockets', 'mortar', 'scatter'], carrier: 'mortar', name: 'BARRAGE',
+    desc: 'A rolling barrage: shells fall lane after lane across all five.' },
+  { id: 'triad', req: ['railgun', 'glaive', 'stinger'], alt: ['sting', 'glaive', 'rail'], on: ['reaper'], name: 'TRIAD',
+    desc: 'Stinger, glaive, rail in turn; the rail that closes each cycle hits x1.25.' },
+  // trait trios (on top of whatever you fire)
+  { id: 'sawblade', req: ['glaive', 'ricochet', 'pierce'], trait: true, when: (s) => s.carrier === 'glaive' || (s.alt || []).includes('glaive'), name: 'SAWBLADE',
+    desc: 'The glaive bounces between the top edge and the enemy line three times before it comes back.' },
+  { id: 'executioner', req: ['stinger', 'overkill', 'cull'], trait: true, name: 'EXECUTIONER',
+    desc: 'A stinger that kills plants what was left over as a new stinger.' },
+  { id: 'incubator', req: ['brood', 'paralytic', 'toxin'], trait: true, name: 'INCUBATOR',
+    desc: 'A numbed enemy that dies hatches a larva.' },
+];
 const evoReady = (ev, stacks) => (stacks[ev.base] || 0) >= maxOf(ITEM_BY_ID[ev.base], stacks)
   && (stacks[ev.partner] || 0) >= (ev.partnerMin || 1);
 export function activeEvolutions(stacks) { return EVOLUTIONS.filter((ev) => ITEM_BY_ID[ev.base] && evoReady(ev, stacks)); }
@@ -539,7 +566,7 @@ export function computeStats(board, stacks) {
     : s.hasGlaive ? 'glaive' : s.hasRocket ? 'rocket' : s.hasBrood ? 'brood' : s.hasMine ? 'mine' : 'bolt';
   // The designed pair of the two highest-priority carriers held (if any)
   // reshapes the weapon. Further carriers follow the priority.
-  s.pair = null; s.alt = null; s.duo = null;
+  s.pair = null; s.alt = null; s.duo = null; s.pairOn = {}; s.trioOn = {}; s.trio = null;
   const heldC = Object.keys(CARRIER_OF).filter((id) => stacks[id] > 0)
     .sort((a, b) => PRIORITY.indexOf(CARRIER_OF[a]) - PRIORITY.indexOf(CARRIER_OF[b]));
   for (let i = 0; i < heldC.length && !s.pair; i++) for (let j = i + 1; j < heldC.length && !s.pair; j++) {
@@ -549,7 +576,17 @@ export function computeStats(board, stacks) {
     if (pr.kind === 'A') { s.alt = pr.alt; s.carrier = pr.alt[0]; }
     else s.carrier = pr.carrier;
     if (pr.kind === 'I') s.duo = pr.with;
+    s.pairOn[pr.id] = true;
   }
+  const holds = (t) => t.req.every((id) => stacks[id] > 0);
+  const ct = TRIOS.find((t) => !t.trait && holds(t));
+  if (ct) {
+    s.trio = ct.id; s.trioOn[ct.id] = true;
+    s.pair = null; s.pairOn = {}; s.duo = ct.with || null; s.alt = ct.alt || null;
+    s.carrier = ct.alt ? ct.alt[0] : ct.carrier;
+    for (const id of ct.on || []) s.pairOn[id] = true;
+  }
+  for (const t of TRIOS) if (t.trait && holds(t) && (!t.when || t.when(s))) s.trioOn[t.id] = true;
   s.shotSpeed = Math.max(0.5, Math.min(2.5, s.shotSpeed));
   s.bulletSpeed = 520 * s.shotSpeed;
   // Derived from SPEED and LUCK, so every source of them counts.
@@ -646,9 +683,11 @@ export function effectiveDps(s) {
   perShot *= 1 + s.crit * (s.critMul - 1);
   const CARRIER_DPS = { bolt: 1, beam: 1.15, rail: 1.05, rocket: 1, glaive: 1.1, mine: 1, brood: 0.95, sting: 1.05, mortar: 1 };
   let m = CARRIER_DPS[s.carrier] ?? 1;
-  if (s.alt) m = (CARRIER_DPS[s.alt[0]] + CARRIER_DPS[s.alt[1]]) / 2;
+  if (s.alt) m = s.alt.reduce((a, c) => a + CARRIER_DPS[c], 0) / s.alt.length;
   if (s.duo) m = 0.6 * (m + (CARRIER_DPS[s.duo] ?? 1));
   else if (s.pair && !s.alt && !CARRIER_PAIRS.find((q) => q.id === s.pair).legacy) m *= 1.12;   // a fusion: at most +15% over its best half
+  if (s.trio) m *= 1.25;                                                   // a trio: at most +20% over its best pair
+  if (s.trioOn.sawblade || s.trioOn.executioner || s.trioOn.incubator) m *= 1.1;
   if (s.carrier === 'rail') m *= s.shotSpeed * (s.modeLv.railgun > 1 ? 1.15 : 1);   // shot speed = rail charge rate
   if (s.carrier === 'beam' && s.modeLv.laser > 1) m *= 1.12;
   if (s.hasScatter && s.modeLv.scatter > 1) m *= 1.15;   // ramp-up, at a typical hold

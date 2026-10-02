@@ -4,7 +4,7 @@
 // them up later, Isaac-style but without needing a wiki:
 //   - not discovered: an offered item only says it RESONATES with something you hold
 //   - discovered (held both once): the name and effect are shown from then on
-import { SYNERGIES, ITEM_BY_ID, computeStats, EVOLUTIONS, CARRIER_PAIRS } from './items.js';
+import { SYNERGIES, ITEM_BY_ID, computeStats, EVOLUTIONS, CARRIER_PAIRS, TRIOS } from './items.js';
 
 // `when(stats)`: the combo only exists if its effect is real for the current
 // shot carrier (e.g. rockets only spiral if rockets are what you fire).
@@ -18,10 +18,10 @@ export const COMBOS = [
   ...SYNERGIES.map((s) => pair(s.req[0], s.req[1], s.name, s.desc, s.id)),
 
   // Shot modifiers composing through the shot engine
-  pair('laser', 'scatter', 'PRISM FAN', 'The beam splits into a fan of beams.'),
-  pair('laser', 'sine', 'SERPENT BEAM', 'The beam snakes across your lane and its neighbours.'),
-  pair('laser', 'railgun', 'PULSE LANCE', 'The beam fires in heavy charged pulses.'),
-  pair('laser', 'rockets', 'SCORCHER', 'Where the beam lands, things explode.'),
+  pair('laser', 'scatter', 'PRISM FAN', 'The beam splits into a fan of beams.', undefined, carrierIs('beam')),
+  pair('laser', 'sine', 'SERPENT BEAM', 'The beam snakes across your lane and its neighbours.', undefined, carrierIs('beam')),
+  pair('laser', 'railgun', 'PULSE LANCE', 'The beam fires in heavy charged pulses.', undefined, carrierIs('beam')),
+  pair('laser', 'rockets', 'SCORCHER', 'Where the beam lands, things explode.', undefined, carrierIs('beam')),
   pair('railgun', 'scatter', 'TRIDENT', 'Rails strike in a cone.', undefined, carrierIs('rail')),
   pair('railgun', 'sine', 'ZIGZAG RAIL', 'Rails zigzag through three lanes.', undefined, carrierIs('rail')),
   pair('railgun', 'rockets', 'DETONATOR', 'Everything a rail touches explodes.', undefined, carrierIs('rail')),
@@ -30,10 +30,10 @@ export const COMBOS = [
   pair('scatter', 'sine', 'FIREFLIES', 'Pellets weave as they spread.', undefined, carrierIs('bolt')),
 
   // Modifiers that change how a shot modifier behaves
-  pair('laser', 'split', 'SIDE BEAMS', 'Extra beams bend into the next lanes.'),
-  pair('laser', 'homing', 'BENDING BEAM', 'With nothing ahead, the beam bends to a target next door.'),
-  pair('laser', 'pierce', 'BORE BEAM', 'The beam drills through more enemies.'),
-  pair('laser', 'echo', 'SURGE', 'The beam surges every few moments.'),
+  pair('laser', 'split', 'SIDE BEAMS', 'Extra beams bend into the next lanes.', undefined, carrierIs('beam')),
+  pair('laser', 'homing', 'BENDING BEAM', 'With nothing ahead, the beam bends to a target next door.', undefined, carrierIs('beam')),
+  pair('laser', 'pierce', 'BORE BEAM', 'The beam drills through more enemies.', undefined, carrierIs('beam')),
+  pair('laser', 'echo', 'SURGE', 'The beam surges every few moments.', undefined, carrierIs('beam')),
   pair('railgun', 'homing', 'AUTO-AIM', 'Rails snap to a target in the next lane.', undefined, carrierIs('rail')),
   pair('railgun', 'pierce', 'OVERPENETRATION', 'Rails already pierce: they hit harder instead.', undefined, carrierIs('rail')),
   pair('railgun', 'split', 'TRIPLE RAIL', 'Rails also strike the side lanes.', undefined, carrierIs('rail')),
@@ -45,10 +45,10 @@ export const COMBOS = [
   pair('fission', 'split', 'CASCADE', 'Fission fragments split once more.'),
   pair('fission', 'rockets', 'MIRV', 'Every fission fragment explodes.'),
   pair('fission', 'homing', 'HYDRA', 'Fission fragments hunt from their new lanes.'),
-  pair('fission', 'laser', 'FORK', 'The beam forks at its first two targets.'),
+  pair('fission', 'laser', 'FORK', 'The beam forks at its first two targets.', undefined, carrierIs('beam')),
   pair('shrapnel', 'chain', 'GRENADE', 'Shrapnel shards explode.'),
   pair('shrapnel', 'toxin', 'SPORE BURST', 'Shrapnel shards poison twice as hard.'),
-  pair('shrapnel', 'laser', 'REFRACTION', 'Shrapnel turns into instant beams that strike the nearest enemies.'),
+  pair('shrapnel', 'laser', 'REFRACTION', 'Shrapnel turns into instant beams that strike the nearest enemies.', undefined, carrierIs('beam')),
   pair('brand', 'crit', 'EXECUTION', 'Crits on branded enemies hit x5; the brand jumps on.'),
   pair('brand', 'arc', 'CONDUIT', 'Arcs reach branded enemies first, one more jump.'),
   pair('brand', 'homing', 'BLOODHOUND', 'Seekers reach branded enemies two lanes away.'),
@@ -59,7 +59,7 @@ export const COMBOS = [
   pair('ghostround', 'mirror', 'SPECTRE', 'Reflected shots are ghost shots.'),
   pair('ghostround', 'blink', 'WRAITH', 'Longer phase; ghost shots slow what they hit.'),
   pair('afterglow', 'sine', 'RIBBON', 'Trails last twice as long: an acid net.'),
-  pair('afterglow', 'laser', 'SCAR', 'Changing lane leaves the beam burning for 1 s.'),
+  pair('afterglow', 'laser', 'SCAR', 'Changing lane leaves the beam burning for 1 s.', undefined, carrierIs('beam')),
   pair('premonition', 'adrenaline', 'SIXTH SENSE', 'On your last heart, lanes light two ticks early.'),
   pair('cellwall', 'greed', 'HIVE MIND', 'A blue heart every 15 cells.'),
   pair('carapace', 'plating', 'EXOSKELETON', 'The shell holds two hits per section.'),
@@ -72,6 +72,8 @@ export const COMBOS = [
   // v1.2 carrier pairs (items.js CARRIER_PAIRS): real only when the pair is
   // the one shaping the weapon (the two highest-priority carriers held)
   ...CARRIER_PAIRS.filter((q) => !q.legacy).map((q) => pair(q.a, q.b, q.name, q.desc, `pair:${q.id}`, (s) => s.pair === q.id)),
+  // v1.2 trios (items.js TRIOS)
+  ...TRIOS.map((t) => ({ ...trio(t.req[0], t.req[1], t.req[2], t.name, t.desc), id: `trio:${t.id}`, when: (s) => !!s.trioOn[t.id] })),
 
   // v1.2 evolutions: base item at its max stack + partner (items.js EVOLUTIONS)
   ...EVOLUTIONS.map((ev) => ({ ...pair(ev.base, ev.partner, ev.name, ev.desc, `evo:${ev.id}`, (s) => !!s.evo[ev.id]), evo: true })),
