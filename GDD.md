@@ -193,6 +193,28 @@ Gli ostacoli sono pre-renderizzati: 12 fotogrammi di animazione in loop per tipo
 ### Item v1.1
 32 item nuovi (76 in tutto), 24 combo e un trio, descritti in `DESIGN_V1.1.md` parte B. In breve: modificatori di colpo che valgono per tutti e quattro i tipi di colpo (FISSION, SHRAPNEL (le schegge inseguono i nemici più vicini e portano metà della vita del nemico ucciso, così la catena funziona a qualunque potenza; con il LASER diventano raggi istantanei: REFRACTION), BRAND, CHARGE, SKYSHOT, GHOSTROUND, AFTERGLOW, TWIN LINK), statistiche con un prezzo (DENSE CORE, ADRENAL GLAND, HOLLOW BONES, KERATIN, SYNAPSE, FOCUS LENS, MOMENTUM, MITOSIS), power-up (PREMONITION, CARAPACE, SPORE CLOUD, CELL WALL, SECOND SKIN, UNDERTOW, SYMBIONT EGG), attivi (BLACK HOLE, MIRROR FIELD, OVERCHARGE, WARP, MOLT) e rischio (LEAD WEIGHTS, FEVER, DOUBLE OR NOTHING, PARASITE). Item in conflitto si escludono dal mazzo (`conflicts`). Ogni scelta di livello contiene almeno un item già posseduto e ancora impilabile. Il trio FISSION + SHRAPNEL + CHAIN REACTION si chiama CHAIN FISSION (MELTDOWN era già LASER + TOXIN). Unica eccezione alla regola del seeker ±1 corsia: BLOODHOUND (BRAND + SEEKER) arriva a ±2 verso i nemici marchiati.
 
+### Item v1.2
+Descritti in `DESIGN_V1.2.md` (in cima le deviazioni dal piano). In breve:
+- **Carrier nuovi** (mode, dal loot dei boss): BONE GLAIVE, SPORE MINE, BROOD, STINGER, SEED MORTAR. Ognuno arriva alla linea nemica: niente armi a corto raggio, perché i nemici si fermano in alto. Priorità del carrier: beam > rail > mortar > stinger > glaive > rocket > brood > mine > bolt.
+- **Mode x2**: ogni modificatore di colpo si può prendere una seconda volta e dà un piccolo extra, mai una seconda arma.
+- **Coppie di carrier** (`CARRIER_PAIRS` in items.js): i due carrier di priorità più alta formano una coppia progettata, di tre tipi:
+  - fusione: un carrier rimodellato dall'altro;
+  - alternanza: salve a turno;
+  - insieme: due carrier al 60%.
+
+  Le coppie non progettate seguono la priorità.
+- **Trii** (`TRIOS`): un trio di carrier sostituisce le sue coppie (SUPERNOVA, POWER GRID, TARGET LOCK, NEST, CHAKRAM, BARRAGE, TRIAD). I trii di tratti si aggiungono sopra (SAWBLADE, EXECUTIONER, INCUBATOR).
+- **Tratti nuovi**: RICOCHET, CONVERGENCE, SLINGSHOT, PARALYTIC, OVERKILL, HUSK, CULL, METABOLISM, HEARTBEAT, BLOODRUSH.
+  - PARALYTIC allunga solo i tempi del nemico: gli avvisi diventano più lunghi, mai più corti, e le onde basse passano comunque dal registro dei salti.
+- **Stack con forma**: lo stack massimo di un item di comportamento aggiunge una forma nuova.
+  - **SEEKER x2 arriva a ±2 corsie**, ma solo quando a ±1 non c'è niente (nuova regola del seeker, voluta).
+  - UNDERTOW attira entro ±1/±2 corsie, senza cuori.
+- **Sinergie con livello**: il livello è il minimo degli stack dei due item, massimo 2. Il livello 2 vale circa +60% del livello 1.
+- **Evoluzioni**: item al massimo + partner = evoluzione immediata, annunciata e registrata nel codex. Sono 11: BONE LANCE, PANDEMIC, SWARMLORD, THUNDERCLAP, STORMCALLER, CORONA, ARMADA, WEB, MAELSTROM, PINBALL, HYPERMETABOLISM.
+- **OVERCLOCK**: lo stesso attivo ripreso da un boss si carica il 25% più in fretta.
+- **KICKFLIP**: la pulizia della corsia all'atterraggio si ricarica in 4 s (barra ciano sotto la tavola). Prima si poteva tenere pulita una corsia saltando di continuo.
+- **Bilanciamento**: misurato con `__game.bench(ids, opts)`, il danno su bersagli fissi in 10 s.
+
 ## 8. Livelli (al posto del market)
 
 - La valuta sono le **cellule** (verdi, membrana e nucleo). Sono **esperienza**: riempiono la barra acida in cima allo schermo.
@@ -341,7 +363,7 @@ Fatto (v0.5):
 Fatto (v0.6) — bilanciamento:
 - Tutte le curve in `src/game/balance.js`; report numerico con `node scripts/balance.mjs`.
 - Item ridimensionati: SLUG +50% danno (era +100%), RAPID +25%, side shot SPLITTER a 50%,
-  SEEKER curva solo verso la corsia vicina (2 con stack), HEADSHOT 10%, FRAG 40%, ARC 35%.
+  SEEKER curva verso la corsia vicina (x2: anche a due corsie, se più vicino non c'è niente), HEADSHOT 10%, FRAG 40%, ARC 35%.
 - Vita nemici = base × (1 + 0.25·d) × √potenza del giocatore. Boss = 110 × (1 + 0.5·n) × √potenza.
   Risultato: un drone muore sempre in ~0.35 s, un boss in ~15 s; la pressione sale con
   più nemici, élite (dai ~1000 m, fino al 50%), squadre di 2, ritmo fino a +70%.
@@ -367,7 +389,7 @@ Fatto (v0.8):
 - Pista: texture per distretto con pannelli, giunture, guide, binari metallici,
   muri con finestre e insegne; luci da tunnel e scie di velocità.
   Rail del primo distretto viola: il magenta resta riservato ai proiettili nemici.
-- SEEKER: ogni proiettile insegue solo la corsia da cui parte e le due adiacenti;
+- SEEKER: ogni proiettile insegue solo la corsia da cui parte e le due adiacenti (v1.2: con SEEKER x2 anche a due corsie, se più vicino non c'è niente);
   lo stack rende la curva più stretta, non allarga il raggio.
 
 Fatto (v0.9):

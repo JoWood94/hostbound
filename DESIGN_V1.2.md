@@ -1,6 +1,28 @@
 # NEON OVERDRIFT v1.2 — item: carrier, tratti, stack, sinergie, evoluzioni
 
-Piano concordato in chat (2026-10-02). Ancora da implementare: il bilanciamento si rifinisce provando il feel sul telefono.
+Piano concordato in chat (2026-10-02), **implementato** (fasi 1-6). Il bilanciamento si rifinisce provando il feel sul telefono.
+
+**Deviazioni dal piano** (misurate con `__game.bench`):
+- **Tratti e item**:
+  - DOWNBEAT diventa **BLOODRUSH**: uccisioni a meno di 1 s l'una dall'altra danno fino a +40% di cadenza. Il ritmo resta di gameplay, non musicale.
+  - I colpi di RICOCHET fanno il 45% dopo il rimbalzo (con PIERCER raddoppiavano il danno). A 2 stack deviano solo verso una corsia che ha un nemico.
+  - KICKFLIP: la pulizia all'atterraggio si ricarica in 4 s (segnalazione dell'utente: saltando di continuo la corsia restava pulita).
+- **Stack e mode x2**:
+  - LASER x2: +20% di ramp-up invece di +30%.
+  - SCATTER x2: pellet +15% e portata più lunga, invece di +1 pellet (un numero pari di pellet lascia scoperto il centro).
+  - FRAG x2: sulla corsia vicina il 25% invece del 40%.
+- **Evoluzioni**:
+  - THUNDERCLAP: i tre echo minori inseguono i nemici vicini (salendo dritti non colpivano nulla), al 18% ciascuno.
+  - BONE LANCE: +15% per nemico attraversato.
+  - ARMADA su beam e rail: un raggio per drone al 35%.
+- **Fusioni** ricalibrate entro +15% sul migliore dei due carrier: TETHER, CAUTERIZE, HARPOON, KAMA, SEEDER, REAPER (x1,1), EGG CLUTCH, QUEEN, WASP NEST.
+- **Trii**:
+  - TRIAD è una rotazione a 3 carrier.
+  - BARRAGE ignora la penalità di cadenza di SCATTER.
+  - POWER GRID spara entrambi i carrier al 70%.
+  - CHAKRAM e SAWBLADE colpiscono molte più volte, quindi ogni taglio fa meno danno (75% e 55%).
+- **Sblocchi**: gli item nuovi sono disponibili da subito (`unlock: null`), così si possono provare. Gli achievement di sblocco sono da decidere.
+- **Sprite**: i carrier nuovi sono disegnati in vettoriale finché non arriva il foglio sprite (ART_PROMPTS.md §4b, icone §6c).
 
 ## 0. Vincoli
 - **Portata**: i nemici si fermano a holdY 110-160 px, la nave è a H*0.78, quindi stanno a 350-500 px. Ogni carrier deve raggiungere la linea nemica su tutti i formati (stessa regola della correzione di SCATTER, d457cb7). Niente armi a corto raggio: TENDRIL e BILE JET sono scartati.

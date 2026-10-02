@@ -15,15 +15,16 @@ Lavoriamo su **NEON OVERDRIFT**, il mio gioco web mobile (portrait, una mano) in
 - Sempre almeno **2 corsie libere** (eccezione voluta: la stretta del Wall).
 - Colori: **arancio = salta**, **magenta = schiva**, **ciano = phase**, **verde acido = colpi del giocatore**.
 - Due file da saltare ad almeno 3 battute (0,65 s); ostacoli da phase ad almeno 8 battute (2,3 s per i boss); file di ostacoli dei boss ad almeno 0,65 s; spazzate dei boss ad almeno 0,3 s per corsia.
-- Le hitbox seguono il disegno. Il seeker raggiunge solo ±1 corsia (unica eccezione: BLOODHOUND).
+- Le hitbox seguono il disegno. Il seeker raggiunge ±1 corsia; con SEEKER x2 anche ±2, ma solo se più vicino non c'è niente (eccezione anche BLOODHOUND).
+- Ogni arma deve raggiungere la linea nemica (i nemici si fermano in alto): niente armi a corto raggio.
 - Le sinergie compongono davvero, come in Isaac; scoperta: suggerimento vago prima, spiegazione esplicita dopo.
 - Il ritmo è di **gameplay**, non musicale: tutto funziona con l'audio spento, niente effetti da rhythm game. La musica segue l'orologio del gioco solo come abbellimento.
 
-**Architettura chiave:** `src/core/tempo.js` (orologio a tick), `src/game/enemies.js` (metronomo, avvisi), `src/game/run.js` (direttore delle sezioni, livelli, item a runtime), `src/game/generator.js` (sezioni procedurali per intensità `1 + metri/700`, senza tetto), `src/game/sections.js` (sezioni scritte a mano, usate soprattutto all'inizio), `src/game/fairness.js` (attraversabilità), `src/game/boss.js` (10 boss in due cerchi + MK2), `src/game/items.js` / `combos.js` (76 item, combo), `src/game/weapon.js` (motore di sparo componibile per bolt/rocket/rail/beam).
+**Architettura chiave:** `src/core/tempo.js` (orologio a tick), `src/game/enemies.js` (metronomo, avvisi), `src/game/run.js` (direttore delle sezioni, livelli, item a runtime), `src/game/generator.js` (sezioni procedurali per intensità `1 + metri/700`, senza tetto), `src/game/sections.js` (sezioni scritte a mano, usate soprattutto all'inizio), `src/game/fairness.js` (attraversabilità), `src/game/boss.js` (10 boss in due cerchi + MK2), `src/game/items.js` / `combos.js` (item, combo, coppie e trii di carrier, evoluzioni; v1.2 in `DESIGN_V1.2.md`), `src/game/weapon.js` (motore di sparo componibile per bolt/rocket/rail/beam).
 
 **Come lavoriamo:**
 - Prima di una modifica grossa fammi domande se c'è una scelta che spetta a me (uso le domande a scelta multipla).
-- **Verifica sempre misurando**, non a occhio: `node scripts/verify-sections.mjs` (equità delle sezioni), `node scripts/balance.mjs` (curva vita/potenza), e nel browser `http://localhost:5173/neon-overdrift/?debug&mute` con `__game` (`tick`, `draw`, `hit`, `spawn`, `obstacle`, `boss(def, index)`, `bot(setup, secondi, {log})` = giocatore di test che dice se qualcosa è impossibile). Nei test usa sempre `&mute` (niente audio).
+- **Verifica sempre misurando**, non a occhio: `node scripts/verify-sections.mjs` (equità delle sezioni), `node scripts/balance.mjs` (curva vita/potenza), e nel browser `http://localhost:5173/neon-overdrift/?debug&mute` con `__game` (`tick`, `draw`, `hit`, `spawn`, `obstacle`, `boss(def, index)`, `bot(setup, secondi, {log})` = giocatore di test che dice se qualcosa è impossibile, `bench(ids, opts)` = danno di una build su bersagli fissi). Nei test usa sempre `&mute` (niente audio).
 - `?from=<metri>` fa partire una partita più avanti con una build plausibile: è il modo in cui provo la difficoltà sul telefono.
 - Sul telefono provo dal server di sviluppo in rete locale (`npm run dev` già esposto; dammi `http://<ip-del-mac>:5173/neon-overdrift/`).
 - **Committa in locale quando vuoi, ma fai `git push` (che pubblica il sito) solo quando dico "pubblica".** Tagga le versioni con semver quando te lo chiedo.

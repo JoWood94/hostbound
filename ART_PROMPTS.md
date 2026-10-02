@@ -340,6 +340,21 @@ a glitching corrupted egg with cyan and magenta split (mystery item),
 a small pink tumor (bonus). Bioluminescent. Flat pure black background.
 ```
 
+**Colpi v1.2 — corpi dei carrier nuovi** (512×64, 8 colonne × 1 riga, celle 64×64)
+Oggi sono disegnati in vettoriale (`drawBody` in `bullets.js`). Stessa regola: tutto verde acido.
+```
+Match the attached player projectile sheet exactly (same acid green #c6ff1a bio-plasma,
+pale hot core #f4ffd8, wet organic look). A sprite sheet of 8 player projectiles,
+512x64 pixels, 8 columns of 64x64 cells, one sprite centred per cell, pointing UP,
+pixel art, flat pure black #000000 background, no grid lines, no text.
+1 a three-bladed spinning disc of sharpened bone with glowing acid edges (glaive),
+2 the same glaive blurred mid-spin, 3 a round spore pod with a soft pulsing glow, closed
+(mine), 4 the same pod swollen and about to burst, cracks of light, 5 a small curled
+larva with tiny mandibles, latching (brood), 6 a barbed bone stinger embedded, its tail
+glowing (stinger), 7 a heavy seed shell with a short glowing trail (mortar), 8 a
+translucent husk shell, half-moon shaped (husk shield).
+```
+
 ---
 
 ## 5. Sfondi in parallasse e correnti
@@ -485,6 +500,24 @@ Row 4: 1 a feverish red-hot organ, 2 a coin-like cell split in half, 3 a parasit
 crackling heart, 7 a tear in space, 8 a shed husk.
 Colour accents: weapons acid green #c6ff1a, defence cyan #19f0ff, economy dirty yellow
 #ffd23f, risk blood red #ff1f4b, actives toxic orange #ff6a00.
+```
+
+## 6c. Icone degli item v1.2 — terzo foglio
+
+Stesso stile del primo foglio. 512×128, 8 colonne × 2 righe, celle 64×64.
+```
+Match the attached item icon sheet exactly: same grotesque bioluminescent alien organs,
+same dark outline, same category colour accents. A sprite sheet of item icons, 512x128
+pixels, 8 columns x 2 rows of 64x64 cells, one icon centred per cell, flat pure black
+#000000 background, no grid lines, no text, no numbers.
+Row 1 (fire modes, hot magenta #ff2bd6 accents): 1 a bone glaive disc, 2 a spore pod mine,
+3 a cluster of larvae, 4 a barbed stinger, 5 a seed mortar shell; then weapon traits
+(acid green #c6ff1a): 6 a shot bouncing off a wall, 7 three shots meeting in one point,
+8 a slingshot made of sinew.
+Row 2 (acid green unless noted): 1 a numbing venom gland, 2 a shot passing through one
+body into the next, 3 an empty husk shell (defence cyan #19f0ff), 4 a reaper hook,
+5 a burning metabolism organ, 6 a beating heart with shock rings, 7 a rush of blood
+drops, 8 blank.
 ```
 
 ## 7. Come esportare e consegnarmeli
