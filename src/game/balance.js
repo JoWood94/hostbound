@@ -32,15 +32,15 @@ export const bossSpeed = (index) => Math.min(2.2, 1 + 0.12 * index);
 export const timeMul = (d) => runBpm(d) / BASE_BPM;
 
 // Elites: tougher, faster, one extra volley, more cells. Start around 1000 m.
-export const eliteChance = (d, h = 1) => Math.max(0, Math.min(0.7, (d - 2.5) * 0.06)) * (0.6 + 0.4 * h);
+export const eliteChance = (d, h = 1) => Math.max(0, Math.min(0.7, (d - 1.5) * 0.07)) * (0.6 + 0.4 * h);
 // Extra volleys per enemy: the cheapest real danger (same pattern, once more).
-export const extraVolleys = (t) => (t >= 3 ? 1 : 0) + (t >= 6 ? 1 : 0);
+export const extraVolleys = (t) => (t >= 2 ? 1 : 0) + (t >= 4 ? 1 : 0) + (t >= 7 ? 1 : 0);
 // Beats of calm between sections, and how early the next section may start
 // (volleys left on the current enemies).
-export const breathBeats = (t) => (t <= 2 ? 2 : t <= 5 ? 1 : 0);
-export const overlapVolleys = (t) => (t >= 7 ? 3 : t >= 4 ? 2 : 1);
-// Chance a combat section gets reinforcements (from tier 2, lightly).
-export const reinforceChance = (t, h) => (t < 2 ? 0 : Math.min(1, 0.2 * (t - 1) + 0.3 * h));
+export const breathBeats = (t) => (t <= 1 ? 2 : t <= 3 ? 1 : 0);
+export const overlapVolleys = (t) => (t >= 6 ? 3 : t >= 3 ? 2 : 1);
+// Chance a combat section gets reinforcements (from tier 1).
+export const reinforceChance = (t, h) => (t < 1 ? 0 : Math.min(1, 0.2 * t + 0.3 * h));
 
 // Economy
 export const COIN_LINE = 4;

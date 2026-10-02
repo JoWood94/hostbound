@@ -180,6 +180,8 @@ export function airRaid(p, stats) {
   }
 }
 export function addRing(x, y, r) { rings.push({ x, y, r, t: 0.25 }); }
+// A short acid flash between two points (REFRACTION shards).
+export function flashLine(x1, y1, x2, y2) { rails.push({ pts: [x1, y1, x2, y2], t: 0.15, w: 0.35 }); }
 
 // ===========================================================================
 // SHOT ENGINE
@@ -377,7 +379,10 @@ function fireProjectiles(p, stats) {
       tagLane(bi, p.lane);
       playerBullets.flags[bi] = flags;
       playerBullets.ox[bi] = flags & F_WAVE ? p.x + side : y;
-      playerBullets.aux[bi] = stats.hasScatter ? idx * Math.PI : (k / strands) * Math.PI * 2;
+      // SINE phase advances every volley: the weave is a function of distance
+      // travelled, so with a fixed phase every shot crossed a given height at
+      // the same offset and an enemy holding there was never hit.
+      playerBullets.aux[bi] = (stats.hasScatter ? idx * Math.PI : (k / strands) * Math.PI * 2) + p.shotCount * 0.9;
       if (flags & F_RANGE) playerBullets.aux[bi] = y;   // pellets remember where they started
     }
   });
@@ -492,6 +497,14 @@ export function updateModeBullets(stats, dt) {
   const pb = playerBullets;
   for (let i = 0; i < pb.n; i++) {
     const f = pb.flags[i];
+    // SHRAPNEL shards chase the enemy they were aimed at (it may be moving).
+    if (pb.lane[i] === -2) {
+      const t = enemies.find((o) => o.id === pb.aux[i] && !o.dead);
+      if (t) {
+        const dx = t.x - pb.x[i], dy = t.y - pb.y[i], d = Math.hypot(dx, dy) || 1;
+        pb.vx[i] = (dx / d) * 560; pb.vy[i] = (dy / d) * 560;
+      }
+    }
     // SCATTER range: measured on the real distance to the enemy line (the
     // screen height follows the phone), so it always reaches enemies holding
     // position; SHOT SPEED only stretches it (slow builds like SLUG still reach).

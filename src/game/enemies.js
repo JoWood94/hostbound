@@ -177,6 +177,7 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
     r: T.r,
     // Boss minions: fragile, one volley, sit lower so they are easy to reach.
     hp: minion ? 2 : enemyHp(T.hp, difficulty, power, elite),
+    maxHp: minion ? 2 : enemyHp(T.hp, difficulty, power, elite),
     elite,
     minion,
     holdY: minion ? 210 : T.holdY,
@@ -217,8 +218,10 @@ const TELE_TICKS = 4;
 let teleBonus = 0;
 export function setTeleBonus(n) { teleBonus = n; }
 export const teleBonusNow = () => teleBonus;
-// 8 ticks; one tick less from the 10th district (220 BPM: 1.5 s total). Never lower.
-const travelTicks = (d) => (d >= 25 ? 7 : 8);
+// Shots get there faster as the run goes: 7 ticks, 6 from district 3, 5 from
+// district 6. Warning + travel: 2.2 s at the start, 1.6 s at district 3,
+// 1.2 s at district 6 (230 BPM: 1.17 s, the floor).
+const travelTicks = (d) => (d >= 15 ? 5 : d >= 7.5 ? 6 : 7);
 const JUMP_GAP = 0.65;    // s between two low waves in a row: one jump (0.45) + reaction
 let clock = 0;            // in ticks
 let simT = 0;             // seconds, for the danger glow

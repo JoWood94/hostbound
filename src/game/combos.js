@@ -48,6 +48,7 @@ export const COMBOS = [
   pair('fission', 'laser', 'FORK', 'The beam forks at its first two targets.'),
   pair('shrapnel', 'chain', 'GRENADE', 'Shrapnel shards explode.'),
   pair('shrapnel', 'toxin', 'SPORE BURST', 'Shrapnel shards poison twice as hard.'),
+  pair('shrapnel', 'laser', 'REFRACTION', 'Shrapnel turns into instant beams that strike the nearest enemies.'),
   pair('brand', 'crit', 'EXECUTION', 'Crits on branded enemies hit x5; the brand jumps on.'),
   pair('brand', 'arc', 'CONDUIT', 'Arcs reach branded enemies first, one more jump.'),
   pair('brand', 'homing', 'BLOODHOUND', 'Seekers reach branded enemies two lanes away.'),

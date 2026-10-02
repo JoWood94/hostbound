@@ -144,8 +144,14 @@ Bomb (pulisce schermo), Time Slow 3 s, Overdrive (sparo x3 per 5 s), Heal.
 - Alcuni item **escludono** altri (Laser esclude Big Shot).
 - Max stack per item (es. Split max 4).
 
+### Ritmo d'inizio e rampa (v1.1.1)
+Tempo da 150 BPM, +12 per distretto fino a 230. Viaggio dei colpi nemici 7 tick, 6 dal distretto 3, 5 dal 6: da "corsia accesa" a "colpo" 2,2 s all'inizio, 1,6 s al distretto 3, 1,2 s dal 6. Raffiche extra ai distretti 2, 4 e 7; rinforzi dal distretto 1 (due dal 4); respiro tra sezioni nullo dal distretto 4; élite dal distretto 1. Misurato (raffiche/min, giocatore fermo): 36 · 41 · 43 · 51 · 88 (T4) · 77 (T6) · 90 (T8).
+
+### Prestazioni
+Gli ostacoli sono pre-renderizzati: 12 fotogrammi di animazione in loop per tipo e variante, preparati all'avvio della partita (~40 ms una volta sola) e stampati con `drawImage`. Prima ogni ostacolo ricalcolava fili, sfumature e `shadowBlur` a ogni frame: una scena con 25 ostacoli e un velo costava 74 ms per frame, ora 7.
+
 ### Item v1.1
-32 item nuovi (76 in tutto), 24 combo e un trio, descritti in `DESIGN_V1.1.md` parte B. In breve: modificatori di colpo che valgono per tutti e quattro i tipi di colpo (FISSION, SHRAPNEL, BRAND, CHARGE, SKYSHOT, GHOSTROUND, AFTERGLOW, TWIN LINK), statistiche con un prezzo (DENSE CORE, ADRENAL GLAND, HOLLOW BONES, KERATIN, SYNAPSE, FOCUS LENS, MOMENTUM, MITOSIS), power-up (PREMONITION, CARAPACE, SPORE CLOUD, CELL WALL, SECOND SKIN, UNDERTOW, SYMBIONT EGG), attivi (BLACK HOLE, MIRROR FIELD, OVERCHARGE, WARP, MOLT) e rischio (LEAD WEIGHTS, FEVER, DOUBLE OR NOTHING, PARASITE). Item in conflitto si escludono dal mazzo (`conflicts`). Ogni scelta di livello contiene almeno un item già posseduto e ancora impilabile. Il trio FISSION + SHRAPNEL + CHAIN REACTION si chiama CHAIN FISSION (MELTDOWN era già LASER + TOXIN). Unica eccezione alla regola del seeker ±1 corsia: BLOODHOUND (BRAND + SEEKER) arriva a ±2 verso i nemici marchiati.
+32 item nuovi (76 in tutto), 24 combo e un trio, descritti in `DESIGN_V1.1.md` parte B. In breve: modificatori di colpo che valgono per tutti e quattro i tipi di colpo (FISSION, SHRAPNEL (le schegge inseguono i nemici più vicini e portano metà della vita del nemico ucciso, così la catena funziona a qualunque potenza; con il LASER diventano raggi istantanei: REFRACTION), BRAND, CHARGE, SKYSHOT, GHOSTROUND, AFTERGLOW, TWIN LINK), statistiche con un prezzo (DENSE CORE, ADRENAL GLAND, HOLLOW BONES, KERATIN, SYNAPSE, FOCUS LENS, MOMENTUM, MITOSIS), power-up (PREMONITION, CARAPACE, SPORE CLOUD, CELL WALL, SECOND SKIN, UNDERTOW, SYMBIONT EGG), attivi (BLACK HOLE, MIRROR FIELD, OVERCHARGE, WARP, MOLT) e rischio (LEAD WEIGHTS, FEVER, DOUBLE OR NOTHING, PARASITE). Item in conflitto si escludono dal mazzo (`conflicts`). Ogni scelta di livello contiene almeno un item già posseduto e ancora impilabile. Il trio FISSION + SHRAPNEL + CHAIN REACTION si chiama CHAIN FISSION (MELTDOWN era già LASER + TOXIN). Unica eccezione alla regola del seeker ±1 corsia: BLOODHOUND (BRAND + SEEKER) arriva a ±2 verso i nemici marchiati.
 
 ## 8. Livelli (al posto del market)
 

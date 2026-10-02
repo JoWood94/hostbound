@@ -487,7 +487,7 @@ export function effectiveDps(s) {
   if (s.skyshot) m *= 1 + 0.12 * s.skyshot;              // only in the air: a small share
   if (s.charge) m *= 1.12;
   let dps = s.fireRate * perShot * m + s.toxin;
-  if (s.shrapnel) dps += dmg * 0.6 * (3 + 2 * (s.shrapnel - 1)) * 0.3;   // ~0.3 kills per second
+  if (s.shrapnel) dps += dmg * 1.2 * (3 + 2 * (s.shrapnel - 1)) * 0.3;   // ~0.3 kills/s, shards carry enemy HP too
   return dps;
 }
 export function powerRatio(s) { return Math.max(1, effectiveDps(s) / BASE_DPS); }

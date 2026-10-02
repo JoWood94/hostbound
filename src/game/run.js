@@ -6,20 +6,20 @@ import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
-import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_WAVE, F_TOXIC } from './bullets.js';
+import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_TOXIC } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus } from './enemies.js';
 import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
 import { survivable, rowsOf } from './fairness.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
-import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H } from './obstacles.js';
+import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H, warmObstacleArt } from './obstacles.js';
 import { pickups, spawnPickup, dropCoins, updatePickups, clearPickups } from './pickups.js';
 import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from './items.js';
 import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
-import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid } from './weapon.js';
+import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic, syncMusic } from '../audio/music.js';
@@ -81,6 +81,7 @@ export function createRun(save, opts = {}) {
   clearPool(enemyBullets);
   clearEnemies();
   clearObstacles();
+  warmObstacleArt();
   clearPickups();
   clearWeaponFx();
 
@@ -360,17 +361,17 @@ function startSection(run, d) {
   const T = B.tier(run.distance), h = B.heat(run.distance);
   let events = def.events.map((ev) => (mirror ? mirrorEvent(ev) : { ...ev }));
   if (run.lastKind === 'course' && T >= 4) events = tightenCourse(run, events);
-  // Reinforcements: from tier 3 a combat section may get one more narrow enemy
-  // (two from tier 6), in a lane two away from every enemy of the section.
+  // Reinforcements: from tier 1 a combat section may get one more narrow enemy
+  // (two from tier 4), in a lane two away from every enemy of the section.
   // safeToEnter still guards them when they arrive.
   if (run.lastKind === 'combat' && h > 0 && run.rng.chance(B.reinforceChance(T, h))) {
     const taken = events.filter((x) => x.kind === 'enemy').map((x) => x.lane);
-    const n = T >= 6 ? 2 : 1;
+    const n = T >= 4 ? 2 : 1;
     for (let k = 0; k < n; k++) {
       const free = [0, 1, 2, 3, 4].filter((l) => taken.every((t) => Math.abs(t - l) >= 2));
       if (!free.length) break;
       const lane = run.rng.pick(free);
-      const type = T >= 5 ? run.rng.pick(REINFORCEMENTS) : 'drone';
+      const type = T >= 3 ? run.rng.pick(REINFORCEMENTS) : 'drone';
       events.push({ beat: k * 4, kind: 'enemy', type, lane, reinforcement: true });
       taken.push(lane);
     }
@@ -926,19 +927,35 @@ export function updateRun(run, input, dt) {
       for (const o of enemies) if (!o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < radius + o.r) damageEnemy(o, dmg);
       sfx.explode();
     }
-    // SHRAPNEL: the kill bursts into acid shards flying up its lane and the next
-    // ones. They carry the shot traits: rockets explode (GRENADE with CHAIN
-    // too), sine weaves, toxin poisons twice (SPORE BURST). Capped per kill.
+    // SHRAPNEL: the kill bursts into acid shards, each aimed at one of the
+    // nearest living enemies (they hold at about the same height, so shards
+    // flying straight up would hit nothing). Leftovers fan out upward. Shards
+    // carry the shot traits: rockets explode (GRENADE with CHAIN too), toxin
+    // poisons twice (SPORE BURST). With the LASER they are instant beams
+    // (REFRACTION). Capped per kill.
     if (st.shrapnel) {
       const n = Math.min(24, 3 + 2 * (st.shrapnel - 1));
-      const dmg = currentDamage(p, st) * 0.6 * (1 + 0.5 * (st.shrapnel - 1));
-      const lane = Math.max(0, Math.min(LANES - 1, Math.round((e.x - laneX(0)) / LANE_W)));
-      let flags = (st.hasRocket || st.grenade ? F_EXPLODE : 0) | (st.hasSine ? F_WAVE : 0) | (st.sporeBurst ? F_TOXIC : 0);
+      // part of the dead enemy's toughness rides on every shard, so shrapnel
+      // stays meaningful against the HP of any tier and any build
+      const dmg = (currentDamage(p, st) * 0.6 + 0.5 * (e.maxHp || 0)) * (1 + 0.5 * (st.shrapnel - 1));
+      const targets = enemies.filter((o) => !o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < 300)
+        .sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y));
+      const flags = (st.hasRocket || st.grenade ? F_EXPLODE : 0) | (st.sporeBurst ? F_TOXIC : 0);
       for (let k = 0; k < n; k++) {
-        const l = Math.max(0, Math.min(LANES - 1, lane + ((k % 3) - 1)));
-        const bi = spawn(playerBullets, e.x + (Math.random() - 0.5) * 8, e.y - 4 - Math.floor(k / 3) * 10, (laneX(l) - e.x) / 0.3, -460, 2.4, dmg, 0, st.pierce);
+        const t = targets.length ? targets[k % targets.length] : null;
+        if (t && st.hasBeam) {                        // REFRACTION: instant
+          flashLine(e.x, e.y, t.x, t.y);
+          damageEnemy(t, dmg);
+          if (st.sporeBurst || st.toxin) { t.poison = Math.max(t.poison, (st.toxin || 1) * (st.sporeBurst ? 2 : 1)); t.poisonT = 3; t.poisoned = true; }
+          continue;
+        }
+        let vx, vy;
+        if (t) { const d = Math.hypot(t.x - e.x, t.y - e.y) || 1; vx = (t.x - e.x) / d * 560; vy = (t.y - e.y) / d * 560; }
+        else { const a = -Math.PI / 2 + (k / Math.max(1, n - 1) - 0.5) * 1.6; vx = Math.cos(a) * 520; vy = Math.sin(a) * 520; }
+        const bi = spawn(playerBullets, e.x, e.y, vx, vy, 2.4, dmg, 0, st.pierce);
         if (bi < 0) break;
-        playerBullets.lane[bi] = l; playerBullets.flags[bi] = flags; playerBullets.ox[bi] = e.x;
+        // lane -2 = a shard chasing enemy `aux` (weapon.js updateModeBullets)
+        playerBullets.lane[bi] = t ? -2 : -1; playerBullets.aux[bi] = t ? t.id : 0; playerBullets.flags[bi] = flags; playerBullets.lastHit[bi] = e.id;
       }
     }
     if (st.leech) {
