@@ -19,6 +19,12 @@ const flashes = [];   // big soft flashes: mine/shell bursts, novas, cauterize, 
 const novas = [];     // SUPERNOVA columns { pts, t }
 let cautFx = null;    // CAUTERIZE progress on the held target { e, k }
 const flash = (x, y, r, c = SHOT, t = 0.3) => flashes.push({ x, y, r, t, max: t, c });
+// Animated pixel explosions (fx_player.png): row 0 spore burst (8 frames),
+// row 1 nova flash (4) and stinger pop (3).
+const FXP = sheet('fx_player', 96);
+const POPS = { burst: [0, 0, 8, 0.42], nova: [1, 0, 4, 0.28], sting: [1, 4, 3, 0.2] };
+const pops = [];
+const pop = (x, y, kind, size) => { if (pops.length < 60) pops.push({ x, y, kind, size, t: 0 }); };
 
 // Per-shot modifiers that depend on the player's state this instant.
 //   CHARGE / OVERCHARGE: x1.8 damage, double size (SIEGE rails x2.5 + stun)
@@ -356,6 +362,7 @@ function blast(x, y, dmg, stats, skip) {
   const radius = (24 + 8 * stats.frag + (stats.smartRockets ? 10 : 0)) * (stats.modeLv.rockets > 1 ? 1.25 : 1);
   rings.push({ x, y, r: radius, t: 0.25 });
   flash(x, y, radius * 0.55, '#ffd27a', 0.2);
+  pop(x, y, 'burst', radius * 2);
   burst(x, y, '#ffd27a', 8, 200, 0.3, 2.2);
   sfx.explode();
   for (const o of enemies) if (o !== skip && !o.dead && overlaps(o, x, y, radius)) damageEnemy(o, dmg * 0.45);
@@ -667,6 +674,7 @@ function burstAt(x, y, radius, dmg, stats, hit, flags) {
   rings.push({ x, y, r: radius, t: 0.25 });
   rings.push({ x, y, r: radius * 0.6, t: 0.2 });
   flash(x, y, radius, SHOT, 0.3);
+  pop(x, y, 'burst', radius * 2.4);
   burst(x, y, SHOT, 18, 220, 0.4, 2.5);
   burst(x, y, '#f4ffd8', 6, 120, 0.25, 2);
   shake(2, 0.08);
@@ -786,6 +794,7 @@ export function updateBioShots(p, stats, dt, hit) {
         if (pb.ox[i] <= 0) { kill(pb, i); i--; continue; }
       } else if (pb.ox[i] <= 0) {
         rings.push({ x: e.x, y: e.y, r: 18, t: 0.2 });
+        pop(e.x, e.y, 'sting', 40);
         burst(e.x, e.y, '#ffd27a', 8, 140, 0.25, 2);
         sfx.explode();
         if (stats.trioOn.executioner) e.overkilled = true;     // its leftover becomes a stinger instead
@@ -955,7 +964,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
     if (novaFire && spec === specs[0] && hit) {
       const all = hitsAlong(pts, width * 1.6, 99).hits;
       const nd = (dps / 0.7) * novaEvery * 0.85;
-      for (const { e } of all) { onHit(e, nd, stats, hit, true); blast(e.x, e.y, nd * 0.5, stats, e); flash(e.x, e.y, 30, '#ffffff', 0.35); }
+      for (const { e } of all) { onHit(e, nd, stats, hit, true); blast(e.x, e.y, nd * 0.5, stats, e); flash(e.x, e.y, 30, '#ffffff', 0.35); pop(e.x, e.y, 'nova', 70); }
       novas.push({ pts, t: 0.4 });
       flash(p.x, PLAYER_Y - 26, 34, '#ffffff', 0.3);
       sfx.rail(); shake(6, 0.2);
@@ -1312,6 +1321,7 @@ export function updateWeaponFx(dt) {
   for (let i = 0; i < arcs.length; i++) { arcs[i].t -= dt; if (arcs[i].t <= 0) { arcs.splice(i, 1); i--; } }
   for (let i = 0; i < rings.length; i++) { rings[i].t -= dt; if (rings[i].t <= 0) { rings.splice(i, 1); i--; } }
   for (let i = 0; i < flashes.length; i++) { flashes[i].t -= dt; if (flashes[i].t <= 0) { flashes.splice(i, 1); i--; } }
+  for (let i = 0; i < pops.length; i++) { pops[i].t += dt; if (pops[i].t >= POPS[pops[i].kind][3]) { pops.splice(i, 1); i--; } }
   for (let i = 0; i < novas.length; i++) { novas[i].t -= dt; if (novas[i].t <= 0) { novas.splice(i, 1); i--; } }
   if (cautFx && cautFx.e.dead) cautFx = null;
 }
@@ -1387,6 +1397,10 @@ export function drawWeaponFx() {
   if (trails.length) drawTrails();
   const t = performance.now() / 1000;
   for (const f of flashes) drawGlowDot(f.x, f.y, f.c, f.r * (1.2 - 0.4 * (f.t / f.max)), 0.5 * (f.t / f.max));
+  if (FXP.ready) for (const q of pops) {
+    const [row, col, n, dur] = POPS[q.kind];
+    drawCell(FXP, row, col + Math.min(n - 1, Math.floor((q.t / dur) * n)), q.x, q.y, q.size);
+  }
   for (const nv of novas) {
     const a = nv.t / 0.4;
     poly(nv.pts, SHOT, 40 * a + 6, 0.35 * a);
@@ -1431,7 +1445,8 @@ export function drawWeaponFx() {
     line(a.x1, a.y1, mx, my, PAL.cyan, 2, a.t / 0.15);
     line(mx, my, a.x2, a.y2, PAL.cyan, 2, a.t / 0.15);
   }
-  for (const r of rings) ring(r.x, r.y, r.r * (1 - r.t * 2), PAL.orange, 2, r.t / 0.25);
+  // your blast rings are pale green: orange belongs to threats (jump)
+  for (const r of rings) ring(r.x, r.y, r.r * (1 - r.t * 2), '#e6ff8a', 2, r.t / 0.25);
 }
 
-export function clearWeaponFx() { flashes.length = 0; novas.length = 0; cautFx = null; arcs.length = 0; rings.length = 0; wingmen.length = 0; beams.length = 0; rails.length = 0; trails.length = 0; }
+export function clearWeaponFx() { pops.length = 0; flashes.length = 0; novas.length = 0; cautFx = null; arcs.length = 0; rings.length = 0; wingmen.length = 0; beams.length = 0; rails.length = 0; trails.length = 0; }

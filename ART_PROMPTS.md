@@ -373,6 +373,11 @@ smaller toward the tail, a pale head with two curved pincer mandibles, tiny legs
 
 ## 4c. Rifacimento colpi e effetti (v1.3) — sostituisce i fogli dei colpi sopra
 
+> **Fatto a mano in pixel art** (2026-10-02). I fogli di colpi, corpi dei carrier, varianti per tratto,
+> effetti sui nemici ed esplosioni sono generati da `scripts/pixel-shots.py` (`python3 scripts/pixel-shots.py`
+> rigenera tutto in `public/sprites/`): `shots_player`, `shots_bio`, `shots_trait`, `fx_status`, `fx_player`.
+> I prompt qui sotto restano solo come alternativa con un generatore di immagini.
+
 **Perché la prima versione non andava** (troppo cartoon e non pixel art):
 - avevo chiesto occhi, cuori, ali, stelle e "cute-gross", che diventano icone da cartone;
 - c'erano 32 celle per foglio;

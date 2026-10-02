@@ -973,6 +973,67 @@ def s_husk_crack():
     return c
 
 
+
+# ---------------------------------------------------------------------------
+# player explosions, animated (public/sprites/fx_player.png): no blood, no fire
+# ---------------------------------------------------------------------------
+def spore_burst(f):
+    """Frame f of 8: a pale core swells, bursts into droplets and a ring of
+    spores, then thins into drifting specks."""
+    c = Cell()
+    t = f / 7
+    core = [3, 5.5, 6.5, 4.5, 2.5, 1.2, 0, 0][f]
+    if core:
+        blob(c, 16, 16, core, ramp=[A, L, C, C, C] if f < 3 else GREENS, hot=False)
+    if f >= 2:
+        ring_r = 4 + t * 12
+        for k in range(16):
+            a = k / 16 * math.pi * 2 + f * 0.1
+            x, y = 16 + math.cos(a) * ring_r, 16 + math.sin(a) * ring_r
+            if f < 6 or k % 2 == 0:
+                size = 1.6 - t if f < 5 else 0.5
+                if size > 0.55:
+                    blob(c, x, y, size, ramp=[M, A, L, L, C], hot=False)
+                else:
+                    c.put(round(x), round(y), A if f < 6 else M, int(255 * (1.2 - t)))
+    if f >= 1 and f <= 5:                                     # spray
+        for k in range(8):
+            a = k / 8 * math.pi * 2 + 0.4
+            r = 3 + t * 9
+            line(c, 16 + math.cos(a) * r, 16 + math.sin(a) * r, 16 + math.cos(a) * (r + 2), 16 + math.sin(a) * (r + 2), L)
+    if f < 6:
+        outline(c)
+    glow(c, steps=(int(50 * (1 - t)) + 10,))
+    return c
+
+
+def nova_flash(f):
+    c = Cell()
+    r = [5, 10, 13, 14][f]
+    def px(x, y, d, a):
+        if f < 2 and d <= r:
+            c.put(x, y, C if d < r * 0.7 else L)
+        elif f >= 2 and r - 2.5 <= d <= r:
+            c.put(x, y, L if f == 2 else A, 255 if f == 2 else 170)
+    polar(c, px)
+    glow(c, col=L, steps=(70, 30) if f < 2 else (40,))
+    return c
+
+
+def sting_pop(f):
+    c = Cell()
+    r = [3, 6, 9][f]
+    if f < 2:
+        blob(c, 16, 16, 3.2 - f, ramp=[B3, HOT, C, C, C], hot=False)
+    for k in range(7):
+        a = k / 7 * math.pi * 2 + 0.3
+        line(c, 16 + math.cos(a) * r, 16 + math.sin(a) * r, 16 + math.cos(a) * (r + 2.5), 16 + math.sin(a) * (r + 2.5), B3 if k % 2 else B2)
+    if f < 2:
+        outline(c)
+    glow(c, col=HOT, steps=(50,) if f < 2 else (25,))
+    return c
+
+
 SHEETS = {
     'shots_player': [
         [spit, slug, pellet, rocket, larva, echo, needle, charged],
@@ -985,6 +1046,10 @@ SHEETS = {
     'fx_status': [
         [s_poison, s_poison_b, s_brand, s_numb, s_frozen, s_slowed, s_reticle, s_charge],
         [s_infested, s_stung, s_melt, s_shatter, s_husk_crack, egg_burst, empty, empty],
+    ],
+    'fx_player': [
+        [lambda f=f: spore_burst(f) for f in range(8)],
+        [lambda f=f: nova_flash(f) for f in range(4)] + [lambda f=f: sting_pop(f) for f in range(3)] + [empty],
     ],
     'shots_bio': [
         [glaive, glaive_b, mine, mine_swollen, seed_shell, seed_split, husk, egg_burst],
