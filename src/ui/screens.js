@@ -5,7 +5,7 @@ import { ctx, W, H, UI_OFFSET } from '../core/canvas.js';
 // Screens are laid out for a 640-tall canvas and centred with UI_OFFSET.
 const LH = 640;
 import { PAL } from '../render/palette.js';
-import { text, line, strokePoly, ring } from '../render/draw.js';
+import { text, line, strokePoly, ring, FONT_BODY } from '../render/draw.js';
 import { button, area, wrap } from '../core/ui.js';
 import { ITEMS, ITEM_BY_ID, RARITY, CAT_COLOR, SYNERGIES, STAT_DEFS, statDelta } from '../game/items.js';
 import { BOARDS } from '../game/boards.js';
@@ -27,17 +27,54 @@ function dim(a = 0.78) {
   ctx.fillRect(0, -UI_OFFSET, W, H);   // screens are drawn shifted by UI_OFFSET: cover the whole canvas
 }
 
-function itemCard(id, x, y, w, h, it, { run = null, selected = false } = {}) {
+// Wrap by measured width (the body font is not monospaced).
+function wrapPx(str, maxW, size) {
+  ctx.font = `normal ${Math.round(size * 1.08)}px ${FONT_BODY}`;
+  const lines = [];
+  let cur = '';
+  for (const w of str.split(' ')) {
+    const next = cur ? `${cur} ${w}` : w;
+    if (cur && ctx.measureText(next).width > maxW) { lines.push(cur); cur = w; }
+    else cur = next;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// Card text sizes: `fs` is the description size, the rest scale with it.
+function cardLayout(it, w, run, fs, compact = false) {
+  const hints = run ? offerHints(it.id, run.stacks, run.save, run.board) : [];
+  const tw = w - 78;
+  const desc = wrapPx(it.desc, tw, fs);
+  let hint = [];
+  let known = null;
+  if (hints.length) {
+    const evo = hints.find((h) => h.evo);
+    known = evo ? (evo.known ? evo : null) : hints.find((h) => h.known);
+    const msg = evo
+      ? (known ? `⟡ EVOLVES: ${known.combo.name}: ${known.combo.desc}` : `⟡ EVOLVES WITH ${evo.partner.name}`)
+      : known
+        ? `⟡ ${known.combo.name}: ${known.combo.desc}`
+        : `⟡ RESONATES WITH ${hints.map((h) => h.partner.name).slice(0, 2).join(' + ')}`;
+    hint = wrapPx(msg, tw, fs - 1);
+  }
+  const lh = Math.round(fs * 1.35), hlh = Math.round((fs - 1) * 1.3);
+  const hd = compact ? 44 : 56;
+  const body = hd + desc.length * lh + (hint.length ? 4 + hint.length * hlh : 0);
+  return { hints, desc, hint, known, fs, lh, hlh, hd, compact, h: Math.max(compact ? 64 : 76, body + 10) };
+}
+
+function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
+  const { hints, desc, hint, known, fs, lh, hlh, hd, compact, h } = L;
+  const ic = compact ? 34 : 44, ny = compact ? 16 : 20, my = compact ? 33 : 40;
   area(id, x, y, w, h);
   const rc = RARITY[it.rarity].color;
   const cc = CAT_COLOR[it.cat];
-  const hints = run ? offerHints(it.id, run.stacks, run.save, run.board) : [];
   ctx.fillStyle = selected ? 'rgba(40,6,32,0.98)' : 'rgba(20,2,15,0.95)';
   ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = selected ? PAL.white : rc;
   ctx.lineWidth = selected ? 3 : 2;
   ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-  if (selected) text('TAP AGAIN TO TAKE IT', x + w - 10, y + h - 9, { color: PAL.acid, size: 8, align: 'right', alpha: 0.6 + Math.sin(performance.now() / 120) * 0.4 });
   // A resonating item gets a pulsing magenta inner frame.
   if (hints.length) {
     ctx.strokeStyle = PAL.magenta;
@@ -47,34 +84,24 @@ function itemCard(id, x, y, w, h, it, { run = null, selected = false } = {}) {
   }
   // icon
   ctx.strokeStyle = cc;
-  ctx.strokeRect(x + 10, y + 10, 40, 40);
-  text(it.code, x + 30, y + 30, { color: cc, size: 12, align: 'center' });
-  text(it.name, x + 60, y + 18, { color: rc, size: 14 });
-  text(`${RARITY[it.rarity].name} · ${it.cat === 'mode' ? 'SHOT' : it.cat.toUpperCase()}`, x + 60, y + 34, { color: PAL.mute, size: 8 });
+  ctx.strokeRect(x + 10, y + 10, ic, ic);
+  text(it.code, x + 10 + ic / 2, y + 10 + ic / 2, { color: cc, size: compact ? 11 : 13, align: 'center' });
+  text(it.name, x + 64, y + ny, { color: rc, size: compact ? 15 : 17 });
+  text(`${RARITY[it.rarity].name} · ${it.cat === 'mode' ? 'SHOT' : it.cat.toUpperCase()}`, x + 64, y + my, { color: PAL.mute, size: 10 });
   // Stat arrows, computed by actually applying the item to this build.
   if (run) {
     let sx = x + w - 10;
     for (const d of statDelta(run.board, run.stacks, it.id).reverse()) {
       const label = `${d.label}${d.dir > 0 ? '▲' : '▼'}`;
-      text(label, sx, y + 34, { color: d.dir > 0 ? PAL.acid : PAL.red, size: 8, align: 'right' });
-      sx -= label.length * 5.4 + 6;
+      text(label, sx, y + my, { color: d.dir > 0 ? PAL.acid : PAL.red, size: 10, align: 'right' });
+      sx -= ctx.measureText(label).width + 8;
     }
   }
-  const lines = wrap(it.desc, Math.floor((w - 70) / 5.6));
-  const maxLines = hints.length ? 2 : 3;
-  lines.slice(0, maxLines).forEach((l, i) => text(l, x + 60, y + 50 + i * 12, { color: PAL.white, size: 9, weight: 'normal', alpha: 0.9 }));
+  const ty = y + hd + 2 + lh / 2;
+  desc.forEach((l, i) => text(l, x + 64, ty + i * lh, { color: PAL.white, size: fs, weight: 'normal', alpha: 0.92 }));
   // Combo hint: vague until discovered, explicit afterwards.
-  if (hints.length) {
-    const evo = hints.find((h) => h.evo);
-    const known = evo ? (evo.known ? evo : null) : hints.find((h) => h.known);
-    const msg = evo
-      ? (known ? `⟡ EVOLVES: ${known.combo.name}: ${known.combo.desc}` : `⟡ EVOLVES WITH ${evo.partner.name}`)
-      : known
-        ? `⟡ ${known.combo.name}: ${known.combo.desc}`
-        : `⟡ RESONATES WITH ${hints.map((h) => h.partner.name).slice(0, 2).join(' + ')}`;
-    const ml = wrap(msg, Math.floor((w - 70) / 4.9));
-    ml.slice(0, 2).forEach((l, i) => text(l, x + 60, y + h - 22 + i * 10, { color: PAL.magenta, size: 8, alpha: known ? 1 : 0.75 + Math.sin(performance.now() / 180) * 0.25 }));
-  }
+  const hy = ty + desc.length * lh + 4 + (hlh - lh) / 2;
+  hint.forEach((l, i) => text(l, x + 64, hy + i * hlh, { color: PAL.magenta, size: fs - 1, alpha: known ? 1 : 0.75 + Math.sin(performance.now() / 180) * 0.25 }));
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +240,7 @@ export function drawArchive(save, tab, selected, page = 0) {
       ctx.lineWidth = selected === it.id ? 2.5 : 1.5;
       ctx.strokeRect(cx, cy, cw, ch);
       text(known ? it.code : '???', cx + cw / 2, cy + 10, { color: known ? CAT_COLOR[it.cat] : PAL.dim, size: 11, align: 'center' });
-      text(known ? it.name : 'LOCKED', cx + cw / 2, cy + 23, { color: known ? PAL.white : PAL.dim, size: 7, align: 'center', alpha: seen ? 1 : 0.6 });
+      text(known ? it.name : 'LOCKED', cx + cw / 2, cy + 23, { color: known ? PAL.white : PAL.dim, size: 9, align: 'center', alpha: seen ? 1 : 0.6, maxW: cw - 6 });
     });
     const it = ITEM_BY_ID[selected];
     const py = 54 + Math.ceil(ITEMS.length / cols) * (ch + 4) + 6;
@@ -262,23 +289,33 @@ export function drawArchive(save, tab, selected, page = 0) {
 export function drawPick(run) {
   dim(0.82);
   const lvl = run.pickKind === 'level';
-  text(lvl ? `LEVEL ${run.level}` : 'BOSS DOWN', W / 2, 62, { color: lvl ? PAL.acid : PAL.magenta, size: 22, align: 'center', font: 'display' });
-  text(lvl ? 'THE MASS MUTATES · CHOOSE ONE' : 'CHOOSE ONE UPGRADE', W / 2, 88, { color: PAL.white, size: 11, align: 'center' });
+  text(lvl ? `LEVEL ${run.level}` : 'BOSS DOWN', W / 2, 56, { color: lvl ? PAL.acid : PAL.magenta, size: 22, align: 'center', font: 'display' });
+  text(lvl ? 'THE MASS MUTATES · CHOOSE ONE' : 'CHOOSE ONE UPGRADE', W / 2, 82, { color: PAL.white, size: 11, align: 'center' });
   const n = run.pickChoices.length;
-  const h = n > 3 ? 88 : 108, step = h + (n > 3 ? 8 : 12);
+  // Cards size to their text; shrink the type only if they would not fit.
+  const top = 110, bottom = LH + UI_OFFSET - 56, cw = W - 28;
+  let gap = 10, Ls;
+  for (const [fs, compact] of [[12, false], [11, false], [11, true], [10, true]]) {
+    Ls = run.pickChoices.map((it) => cardLayout(it, cw, run, fs, compact));
+    gap = n > 3 ? 8 : 12;
+    if (Ls.reduce((a, L) => a + L.h, 0) + gap * (n - 1) <= bottom - top) break;
+  }
   // Cards slide in while input is locked (main.js MODAL_LOCK): the wait reads
   // as an animation, not as an unresponsive screen.
   const t = run.modalT || 0;
+  let cy = top;
   run.pickChoices.forEach((it, i) => {
     const k = Math.min(1, Math.max(0, (t - i * 0.05) / 0.3));
     const off = (1 - k) * (1 - k) * 70;
     ctx.save(); ctx.globalAlpha = k;
-    itemCard(`pick:${i}`, 20, 108 + i * step + off, W - 40, h, it, { run, selected: run.pickSel === i });
+    itemCard(`pick:${i}`, 14, cy + off, cw, it, Ls[i], { run, selected: run.pickSel === i });
     ctx.restore();
+    cy += Ls[i].h + gap;
   });
-  if (t > 0.45 && run.pickSel < 0) text('TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 8, align: 'center' });
+  if (run.pickSel >= 0) text('TAP AGAIN TO TAKE IT', W / 2, 100, { color: PAL.acid, size: 11, align: 'center', alpha: 0.6 + Math.sin(performance.now() / 120) * 0.4 });
+  else if (t > 0.45) text('TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 10, align: 'center' });
   const full = run.player.hearts >= run.stats.maxHearts;
-  button('skip', 80, 108 + n * step + 6, W - 160, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
+  button('skip', 80, cy - gap + 10, W - 160, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
 }
 
 export function drawPause(run) {

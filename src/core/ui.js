@@ -59,7 +59,7 @@ export function button(id, x, y, w, h, label, { color = PAL.cyan, size = 14, fil
   const kana = kanaFor(label);
   const ty = sub ? y + h / 2 - 7 : y + h / 2 + 1;
   text(label, x + w / 2, ty, { color: c, size, align: 'center', font: 'display', alpha: flicker });
-  if (sub) text(sub, x + w / 2, y + h / 2 + 9, { color: disabled ? PAL.dim : PAL.white, size: 8, align: 'center' });
+  if (sub) text(sub, x + w / 2, y + h / 2 + 9, { color: disabled ? PAL.dim : PAL.white, size: 10, align: 'center' });
   if (kana && h >= 30) text(kana, x + w - k - 5, y + 8, { color: c, size: 8, align: 'right', alpha: 0.75 * flicker });
 }
 

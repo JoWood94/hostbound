@@ -85,12 +85,13 @@ export function ring(x, y, r, color, width = 2, alpha = 1) {
 // block letters) for display text. Pass { font: 'display' } for headings.
 export const FONT_BODY = '"DotGothic16", "Courier New", monospace';
 export const FONT_DISPLAY = '"Russo One", Impact, sans-serif';
-export function text(str, x, y, { color = '#fff', size = 12, align = 'left', alpha = 1, weight = 'normal', font = 'body' } = {}) {
+export function text(str, x, y, { color = '#fff', size = 12, align = 'left', alpha = 1, weight = 'normal', font = 'body', maxW = undefined } = {}) {
   if (alpha !== 1) ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
-  ctx.font = font === 'display' ? `${size}px ${FONT_DISPLAY}` : `${weight} ${Math.round(size * 1.08)}px ${FONT_BODY}`;
+  // Body text never goes below 9: smaller is unreadable on a phone.
+  ctx.font = font === 'display' ? `${size}px ${FONT_DISPLAY}` : `${weight} ${Math.round(Math.max(9, size) * 1.08)}px ${FONT_BODY}`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
-  ctx.fillText(str, x, y);
+  ctx.fillText(str, x, y, maxW);
   if (alpha !== 1) ctx.globalAlpha = 1;
 }

@@ -106,7 +106,7 @@ export function drawHud(run) {
     const n = run.stacks[id];
     const label = n > 1 ? `${it.code}${n}` : it.code;
     text(label, ix, H - 26 - SAFE_BOTTOM, { color: CAT_COLOR[it.cat], size: 8, alpha: 0.75 });
-    ix += label.length * 5.2 + 6;
+    ix += ctx.measureText(label).width + 7;
     if (ix > W - 30) break;
   }
 
