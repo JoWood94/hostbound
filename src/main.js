@@ -17,9 +17,9 @@ import { line as drawLine, drawGlowDot } from './render/draw.js';
 import { PLAYER_Y } from './game/player.js';
 import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
-import { ITEM_BY_ID } from './game/items.js';
-import { unlockedBoards } from './game/achievements.js';
-import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick } from './game/run.js';
+import { ITEM_BY_ID, rollItems } from './game/items.js';
+import { unlockedBoards, unlockedItems } from './game/achievements.js';
+import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, EVENT_EVERY } from './game/run.js';
 import { drawHud } from './ui/hud.js';
 import { drawMenu, drawArchive, drawPick, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
@@ -57,8 +57,40 @@ function startRun(daily = false) {
   if (!daily) save.board = BOARDS[boardIdx].id;
   writeSave(save);
   run = createRun(save, { daily });
+  if (START_FROM && !daily) warpTo(run, START_FROM);
   screen = 'run';
   sfx.select();
+}
+
+// ?from=5000 (testing): start the run at that distance with a build like one
+// you would have there: one level pick per ~600 m and one boss loot per boss
+// passed, rolled from the real pools. Bosses already passed are counted, so
+// the next boss and its speed are the right ones.
+const START_FROM = Math.max(0, Number(new URLSearchParams(location.search).get('from')) || 0);
+function warpTo(r, metres) {
+  const bossesPassed = Math.floor(metres / EVENT_EVERY);
+  const levels = Math.floor(metres / 600);
+  const unlocked = unlockedItems(save);
+  for (let i = 0; i < levels; i++) {
+    const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'level' })[0];
+    if (it) acquire(r, it.id, true);
+  }
+  for (let i = 0; i < bossesPassed; i++) {
+    const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'boss' })[0];
+    if (it) acquire(r, it.id, true);
+  }
+  r.distance = metres;
+  r.level = 1 + levels;
+  r.bossIndex = bossesPassed;
+  r.eventIndex = bossesPassed;
+  r.nextEvent = (bossesPassed + 1) * EVENT_EVERY;
+  r.player.hearts = r.stats.maxHearts;
+  r.toasts = [];
+  toastBuild(r);
+}
+function toastBuild(r) {
+  const names = Object.keys(r.stacks).map((id) => ITEM_BY_ID[id].code + (r.stacks[id] > 1 ? r.stacks[id] : '')).join(' ');
+  r.toasts.push({ text: `WARP ${Math.floor(r.distance)}m`, sub: names.slice(0, 60), color: PAL.cyan, t: 4, dur: 4 });
 }
 
 async function shareRun(r) {
