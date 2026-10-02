@@ -337,7 +337,10 @@ export function updateModeBullets(stats, dt) {
   const pb = playerBullets;
   for (let i = 0; i < pb.n; i++) {
     const f = pb.flags[i];
-    const reach = 440 * stats.shotSpeed;
+    // SCATTER range: measured on the real distance to the enemy line (the
+    // screen height follows the phone), so it always reaches enemies holding
+    // position; SHOT SPEED only stretches it (slow builds like SLUG still reach).
+    const reach = (PLAYER_Y - 60) * Math.max(0.95, Math.min(1.3, 0.75 + 0.25 * stats.shotSpeed));
     if (f & F_RANGE && pb.aux[i] - pb.y[i] > reach && !(f & F_WAVE)) { kill(pb, i); i--; continue; }
     if (f & F_ROCKET) {
       const sp = Math.hypot(pb.vx[i], pb.vy[i]);
