@@ -329,15 +329,17 @@ function buildEvents(b, parts) {
   const ev = [];
   for (const p of parts) {
     if (p.kind === 'volley') for (let i = 0; i < p.shots; i++) ev.push({ t: i * 0.14, part: p, lanes: p.lanes });
-    else if (p.kind === 'sweep') p.lanes.forEach((l, i) => { const t = i * onTicks(p.gap, b); ev.push({ t, part: p, lanes: [l] }); ev.push({ t: t + 0.07, part: p, lanes: [l] }); });
+    else if (p.kind === 'sweep') p.lanes.forEach((l, i) => { const t = i * sweepGap(p.gap, b); ev.push({ t, part: p, lanes: [l] }); ev.push({ t: t + 0.07, part: p, lanes: [l] }); });
     else if (p.kind === 'low' && !p.tele) ev.push({ t: 0, part: p, lanes: p.lanes });
     else if (p.kind === 'beam') for (let t = 0; t < p.dur; t += 0.045) ev.push({ t, part: p, lanes: p.lanes });
     else if (p.kind === 'summon') ev.push({ t: 0, part: p, lanes: p.lanes });
-    else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * onTicks(p.gap, b) + t, part: p, lanes: [l] }); });
+    else if (p.kind === 'beamsweep') p.lanes.forEach((l, i) => { for (let t = 0; t < p.dur; t += 0.045) ev.push({ t: i * sweepGap(p.gap, b) + t, part: p, lanes: [l] }); });
     else if (p.kind === 'obs') {
-      // wires need a whole jump between them, like low waves
-      const hasT = p.rows.some((r) => r.includes('T'));
-      const beat = Math.max(onTicks(p.beat, b, 2), hasT ? Math.ceil(JUMP_GAP / tickNow()) * tickNow() : 0);
+      // Obstacles scroll at the (slowed) boss track speed, ~180 px/s, so rows
+      // must be spaced in TIME, not beats: a barrier fills ~42 px of track and
+      // a lane change needs room. 0.65 s between rows (~120 px), on the tick
+      // grid; that also covers a whole jump for wires.
+      const beat = Math.max(onTicks(p.beat, b, 2), Math.ceil(OBS_GAP / tickNow()) * tickNow());
       p.rows.forEach((r, i) => ev.push({ t: i * beat, part: OBS_ROW, lanes: [], row: r }));
     }
     else if (p.kind === 'rows') {
@@ -360,6 +362,11 @@ function buildEvents(b, parts) {
 const rowSpeed = (b) => 270 + (b.speed - 1) * 90;
 
 const PHASE_GAP = 2.3;   // s between two phase obstacles (phase cooldown 2 s)
+const OBS_GAP = 0.65;    // s between two obstacle rows fired by a boss
+// A sweep is dodged by stepping into the lane it has just hit: consecutive
+// lanes must be at least a hop (0.11 s) plus reaction apart, at any tempo.
+const SWEEP_MIN = 0.3;
+const sweepGap = (sec, b) => Math.max(onTicks(sec, b), Math.ceil(SWEEP_MIN / tickNow()) * tickNow());
 function fireEvent(b, e, difficulty) {
   const p = e.part;
   const y = b.y + b.hh;

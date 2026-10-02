@@ -158,6 +158,12 @@ La difficoltà segue un'**intensità** continua e senza tetto, `I = 1 + metri/70
 - **ECLIPSE** — veli e squarci da attraversare col phase, raffiche in mezzo; gli ostacoli da phase sono sempre ad almeno 2,3 s (misurato: minimo 2,38 s).
 Tutti hanno pattern MK2 propri. Verificate tutte le 121 sequenze a righe dei 10 boss (nessuna impossibile). Le hitbox seguono il disegno: dalle corsie esterne i boss larghi si colpiscono poco, perché lì non c'è corpo.
 
+### Equità dei boss (verificata da bot)
+Le file di ostacoli dei boss sono distanziate in **secondi** (almeno 0,65 s, ~120 px alla velocità rallentata del boss): distanziate in battute, al tempo alto finivano a 50 px e SPINE diventava impossibile. Le spazzate (sweep, beam sweep) hanno almeno 0,3 s tra una corsia e l'altra: con un tick (0,14 s a 6000 m) non c'era il tempo di entrare nella corsia già colpita. Un **bot di test** (`src/debug/bot.js`, `__game.bot(setup, secondi, { log })`) gioca come un giocatore attento: tutti e 10 i boss, normali, MK2 e MK3, passati senza danni; un giocatore fermo prende 13–17 colpi in 35 s. Sezioni generate a 3000–12000 m: 2–4 colpi in 2 minuti.
+
+### Controlli
+Nel gioco il tap scatta dopo 45 ms di dito fermo, senza aspettare il rilascio (era tutto il ritardo del tap). Lo swipe scatta a 14 px (prima 22) e legge tutti i campioni del movimento tra un frame e l'altro. Un trascinamento laterale dopo un tap anticipato non conta come secondo comando. Menu e schermate di scelta restano a tap sul rilascio (protezione dalle scelte accidentali).
+
 ### Prestazioni
 Gli ostacoli sono pre-renderizzati: 12 fotogrammi di animazione in loop per tipo e variante, preparati all'avvio della partita (~40 ms una volta sola) e stampati con `drawImage`. Prima ogni ostacolo ricalcolava fili, sfumature e `shadowBlur` a ogni frame: una scena con 25 ostacoli e un velo costava 74 ms per frame, ora 7.
 

@@ -6,9 +6,19 @@
 //   pause       : Esc / P / window blur
 import { canvas, toLogical } from './canvas.js';
 
-const SWIPE_MIN = 22;      // logical px
+const SWIPE_MIN = 14;      // logical px: a swipe fires as soon as the finger has clearly moved
 const SWIPE_MAX_MS = 320;
 let tapSlop = 8;           // max movement for a tap; screens with choices raise it
+// In play a tap fires EARLY: once the finger has rested EARLY_MS without
+// moving, instead of waiting for it to lift (that wait was the whole tap
+// latency, 80-120 ms on a phone). Menus and choice screens keep tap-on-release.
+const EARLY_MS = 45;
+const EARLY_SLOP = 5;
+let earlyTaps = true;
+let tapped = false;          // this gesture already fired its early tap
+let lastX = 0, lastY = 0;
+let earlyTimer = 0;
+export function setEarlyTap(on) { earlyTaps = on; }
 
 const state = { left: false, right: false, jump: false, phase: false, tap: false, tapX: -1, tapY: -1, pause: false, down: false, any: false };
 
@@ -28,7 +38,16 @@ function onDown(e) {
   startT = performance.now();
   swiped = false;
   consumed = false;
+  tapped = false;
+  lastX = p.x; lastY = p.y;
   state.down = true;
+  clearTimeout(earlyTimer);
+  if (earlyTaps) earlyTimer = setTimeout(() => {
+    if (pointerId === null || swiped || consumed || tapped) return;
+    if (Math.hypot(lastX - startX, lastY - startY) > EARLY_SLOP) return;
+    tapped = true;
+    state.tap = true; state.tapX = startX; state.tapY = startY;
+  }, EARLY_MS);
 }
 
 function detectSwipe(p) {
@@ -37,6 +56,9 @@ function detectSwipe(p) {
   const dy = p.y - startY;
   const adx = Math.abs(dx), ady = Math.abs(dy);
   if (adx < SWIPE_MIN && ady < SWIPE_MIN) return;
+  // after an early tap (which already moved a lane) a sideways drag is the
+  // same gesture, not a second command
+  if (tapped && adx > ady) { swiped = true; return; }
   swiped = true;
   if (adx > ady) { if (dx < 0) state.left = true; else state.right = true; }
   else { if (dy < 0) state.jump = true; else state.phase = true; }
@@ -44,7 +66,15 @@ function detectSwipe(p) {
 
 function onMove(e) {
   if (e.pointerId !== pointerId) return;
-  detectSwipe(toLogical(e.clientX, e.clientY));
+  // every sample the device took since the last event, not just the latest:
+  // the swipe fires on the first one past the threshold
+  const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of samples.length ? samples : [e]) {
+    const p = toLogical(ev.clientX, ev.clientY);
+    lastX = p.x; lastY = p.y;
+    detectSwipe(p);
+    if (swiped) break;
+  }
 }
 
 function onUp(e) {
@@ -52,7 +82,8 @@ function onUp(e) {
   const p = toLogical(e.clientX, e.clientY);
   detectSwipe(p);
   const moved = Math.hypot(p.x - startX, p.y - startY);
-  if (!consumed && !swiped && moved < tapSlop) { state.tap = true; state.tapX = p.x; state.tapY = p.y; }
+  if (!consumed && !swiped && !tapped && moved < tapSlop) { state.tap = true; state.tapX = p.x; state.tapY = p.y; }
+  clearTimeout(earlyTimer);
   state.any = true;
   pointerId = null;
   state.down = false;

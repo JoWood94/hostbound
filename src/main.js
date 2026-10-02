@@ -1,6 +1,6 @@
 import { ctx, W, H, UI_OFFSET } from './core/canvas.js';
 import { startLoop } from './core/loop.js';
-import { pollInput, discardGesture, setTapSlop } from './core/input.js';
+import { pollInput, discardGesture, setTapSlop, setEarlyTap } from './core/input.js';
 import { loadSave, writeSave } from './core/save.js';
 import { beginUi, endUi, hitTest, setUiOffset } from './core/ui.js';
 import { applyPost } from './render/post.js';
@@ -15,6 +15,7 @@ import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.
 import { drawWeaponFx, drawWingmen } from './game/weapon.js';
 import { line as drawLine, drawGlowDot } from './render/draw.js';
 import { PLAYER_Y } from './game/player.js';
+import { runBot } from './debug/bot.js';
 import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
 import { ITEM_BY_ID, rollItems } from './game/items.js';
@@ -166,6 +167,7 @@ function update(dt) {
   if (run.mode !== lastMode) {
     if (run.mode !== 'play') { discardGesture(); modalT = 0; run.pickSel = -1; }
     setTapSlop(run.mode === 'play' ? 8 : 14);
+    setEarlyTap(run.mode === 'play');
     lastMode = run.mode;
   }
   modalT += dt;
@@ -286,6 +288,10 @@ if (new URLSearchParams(location.search).has('debug')) {
     spawn: (type, lane, elite = false) => spawnEnemy(type, lane, 1, { chance: () => Math.random() < 0.5 }, { elite }),
     get enemies() { return enemies; },
     get obstacles() { return obstacles; },
+    get enemyBullets() { return enemyBullets; },
+    playerY: PLAYER_Y,
+    // Test player: __game.bot((run) => { run.distance = 6000; }, 60, { log: true })
+    bot: (setup, seconds, opts) => runBot(window.__game, setup, seconds, opts),
     get pickups() { return pickups; },
     obstacle: (type, lane, y = 200) => spawnObstacle(type, lane, y),
     boss: (def, index = 0) => { run.boss = makeBoss(index, def, 1); run.nextEvent = 1e9; },
