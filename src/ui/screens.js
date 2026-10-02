@@ -107,8 +107,8 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 // ---------------------------------------------------------------------------
 // Logo: Japanese neon sign. HOST in a cyan tube, BOUND in a pink tube (Train One
 // draws its letters as double tubes), the katakana reading underneath, a faint
-// RGB split and scanlines, slightly italic, underlined by a crackling plasma
-// bolt. Each word flickers on its own now and then, like
+// RGB split and scanlines, slightly italic, underlined by flowing plasma
+// strands from edge to edge. Each word flickers on its own now and then, like
 // real signage. Baked once per word when the font has loaded.
 // ---------------------------------------------------------------------------
 const LOGO_FONT = '"Train One", "Russo One", sans-serif';
@@ -162,44 +162,35 @@ function bakeLogo(k) {
   return { words, kana: kc, k, x0: xs[0], x1: xs[1] + ws[1] };
 }
 
-// Irregular plasma underline: a crackling cyan bolt with a magenta one
-// twisting around it and short magenta branches, re-struck ~15 times a second.
-let plasmaSeed = 0, plasmaT = -1;
-function plasmaUnderline(x0, x1, y, t) {
-  const tick = Math.floor(t * 15);
-  if (tick !== plasmaT) { plasmaT = tick; plasmaSeed = Math.random() * 1000; }
-  let sd = plasmaSeed;
-  const rnd = () => { sd = (sd * 9301 + 49297) % 233280; return sd / 233280; };
-  const bolt = (amp, jit, phase) => {
-    const pts = [];
-    for (let x = x0; x <= x1; x += 5) {
-      const u = (x - x0) / (x1 - x0);
-      const env = Math.sin(Math.PI * Math.min(1, u * 1.15)) * 0.7 + 0.3;     // thinner at the ends
-      const yy = y + (Math.sin(x * 0.09 + t * 2.2 + phase) * amp + Math.sin(x * 0.23 - t * 3.1 + phase) * amp * 0.5 + (rnd() - 0.5) * jit) * env;
-      pts.push([x - u * 6, yy]);     // leans with the italic
-    }
-    return pts;
-  };
-  const stroke = (pts, col, w, blur, a) => {
-    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.shadowColor = col; ctx.shadowBlur = blur; ctx.globalAlpha = a;
-    ctx.beginPath(); pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py))); ctx.stroke();
-  };
+// Plasma underline across the whole screen: smooth strands that twist around
+// each other and swell and thin as they flow, like the plasma of the borders.
+function plasmaUnderline(y, t) {
+  // strand: colour, amplitude, wavelengths, speed, phase, base width, glow
+  const strands = [
+    ['#19f0ff', 3.2, 0.035, 0.11, 1.3, 0, 2.6, 12],
+    ['#19f0ff', 2.4, 0.05, 0.08, -1.0, 2.1, 1.4, 8],
+    ['#e020c0', 3.8, 0.042, 0.13, 1.7, 4.2, 1.6, 10],
+    ['#a64dff', 2.0, 0.06, 0.1, -1.5, 1.0, 1.0, 6],
+  ];
   ctx.save();
-  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  const main = bolt(2.2, 3, 0);
-  stroke(main, PAL.cyan, 3.2, 14, 0.55);
-  stroke(main, '#d8ffff', 1.2, 4, 0.95);
-  const vein = bolt(3.2, 4.5, 2.4);
-  stroke(vein, '#e020c0', 1.4, 10, 0.85);
-  // short branches forking off the main bolt
-  for (let i = 0; i < 5; i++) {
-    const [bx, by] = main[Math.floor(rnd() * main.length)];
-    const dir = rnd() < 0.5 ? -1 : 1;
-    const br = [[bx, by]];
-    let cx = bx, cy = by;
-    for (let j = 0; j < 3; j++) { cx += 3 + rnd() * 5; cy += dir * (1.5 + rnd() * 3); br.push([cx, cy]); }
-    stroke(br, rnd() < 0.6 ? '#ff2bd6' : PAL.cyan, 1, 6, 0.7);
+  ctx.lineCap = 'round';
+  for (const [col, amp, f1, f2, sp, ph, bw, blur] of strands) {
+    const yAt = (x) => y + Math.sin(x * f1 + t * sp + ph) * amp + Math.sin(x * f2 - t * sp * 0.6 + ph * 1.7) * amp * 0.45;
+    const wAt = (x) => bw * (0.55 + 0.45 * Math.sin(x * 0.027 - t * 1.1 + ph * 2.3)) * (0.8 + 0.2 * Math.sin(x * 0.11 + t * 2 + ph));
+    ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = blur; ctx.globalAlpha = 0.85;
+    for (let x = -4; x < W + 4; x += 4) {
+      ctx.lineWidth = Math.max(0.4, wAt(x));
+      ctx.beginPath(); ctx.moveTo(x, yAt(x)); ctx.lineTo(x + 4, yAt(x + 4)); ctx.stroke();
+    }
   }
+  // hot core along the main strand
+  ctx.strokeStyle = '#e8ffff'; ctx.shadowBlur = 3; ctx.globalAlpha = 0.8; ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  for (let x = -4; x <= W + 4; x += 4) {
+    const yy = y + Math.sin(x * 0.035 + t * 1.3) * 3.2 + Math.sin(x * 0.11 - t * 0.78) * 1.44;
+    x > -4 ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy);
+  }
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -212,7 +203,7 @@ function drawLogo(t) {
     logoBake.final = fontReady;
   }
   const ox = W / 2 - LOGO_W / 2, oy = CY - LOGO_CY;
-  plasmaUnderline(ox + logoBake.x0 - 10, ox + logoBake.x1 + 4, CY + 21, t);
+  plasmaUnderline(CY + 21, t);
   // Flicker: now and then a word stutters off for a few frames.
   for (let i = 0; i < 2; i++) {
     if (logoFlick[i] > 0) logoFlick[i]--;
@@ -228,12 +219,12 @@ function drawLogo(t) {
   ctx.globalAlpha = 0.9; ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 8;
   ctx.drawImage(logoBake.kana, ox, oy, LOGO_W, LOGO_H);
   ctx.restore();
-  // Tagline: angular racing type with a VHS look (RGB split, a tracking band,
+  // Tagline: the logo's neon type with a VHS look (RGB split, a tracking band,
   // and now and then a torn slice shifted sideways).
   ctx.save();
   ctx.translate(W / 2, 214);
   ctx.rotate(-0.05);
-  ctx.font = '16px "Racing Sans One", Impact, sans-serif';
+  ctx.font = `17px ${LOGO_FONT}`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const tag = 'RUN · SHOOT · MUTATE';
   const jit = Math.random() < 0.06 ? (Math.random() - 0.5) * 3 : 0;
@@ -257,9 +248,9 @@ function drawLogo(t) {
   }
   // scanlines and a slow bright tracking band
   ctx.fillStyle = 'rgba(10,0,8,0.35)';
-  for (let y = -9; y < 10; y += 2) ctx.fillRect(-90, y, 180, 1);
+  for (let y = -9; y < 10; y += 2) ctx.fillRect(-W / 2, y, W, 1);
   const by = -10 + ((t * 9) % 20);
-  ctx.fillStyle = 'rgba(200,255,255,0.12)'; ctx.fillRect(-90, by, 180, 2);
+  ctx.fillStyle = 'rgba(200,255,255,0.12)'; ctx.fillRect(-W / 2, by, W, 2);
   ctx.restore();
 }
 
