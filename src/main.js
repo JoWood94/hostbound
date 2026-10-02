@@ -19,7 +19,7 @@ import { runBot } from './debug/bot.js';
 import { runBench } from './debug/bench.js';
 import { PAL } from './render/palette.js';
 import { BOARDS } from './game/boards.js';
-import { ITEM_BY_ID, rollItems } from './game/items.js';
+import { ITEMS, ITEM_BY_ID, rollItems, TRIOS, CARRIER_PAIRS } from './game/items.js';
 import { unlockedBoards, unlockedItems } from './game/achievements.js';
 import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, EVENT_EVERY, drawHusks } from './game/run.js';
 import { drawHud } from './ui/hud.js';
@@ -57,7 +57,9 @@ function startRun(daily = false) {
   if (!daily) save.board = BOARDS[boardIdx].id;
   writeSave(save);
   run = createRun(save, { daily });
+  if (!daily) for (const id of START_ITEMS) acquire(run, id, true);
   if (START_FROM && !daily) warpTo(run, START_FROM);
+  else if (START_ITEMS.length && !daily) { run.toasts = []; toastBuild(run); }
   screen = 'run';
   sfx.select();
 }
@@ -70,17 +72,22 @@ function startRun(daily = false) {
 // and its speed are the right ones.
 const START_FROM = Math.max(0, Number(new URLSearchParams(location.search).get('from')) || 0);
 const FROM_BOOST = Math.max(1, Number(new URLSearchParams(location.search).get('boost')) || 2);
+// &items=laser,glaive,glaive (testing): start with these items (repeat an id to
+// stack it). With it the warp rolls no shot modifiers, so the carrier pair or
+// trio you asked for is the one you play.
+const START_ITEMS = (new URLSearchParams(location.search).get('items') || '').split(',').map((x) => x.trim()).filter((id) => ITEM_BY_ID[id]);
+const NO_MODES = START_ITEMS.length ? ITEMS.filter((it) => it.cat === 'mode').map((it) => it.id) : [];
 function warpTo(r, metres) {
   const bossesPassed = Math.floor(metres / EVENT_EVERY);
   const levels = Math.floor(metres / 600);
   const picks = Math.round(levels * FROM_BOOST), loots = Math.round(bossesPassed * FROM_BOOST);
   const unlocked = unlockedItems(save);
   for (let i = 0; i < picks; i++) {
-    const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'level' })[0];
+    const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'level', exclude: NO_MODES })[0];
     if (it) acquire(r, it.id, true);
   }
   for (let i = 0; i < loots; i++) {
-    const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'boss' })[0];
+    const it = rollItems(r.rng, unlocked, r.stacks, 1, r.stats.luck, { source: 'boss', exclude: NO_MODES })[0];
     if (it) acquire(r, it.id, true);
   }
   r.distance = metres;
@@ -95,6 +102,8 @@ function warpTo(r, metres) {
 function toastBuild(r) {
   const names = Object.keys(r.stacks).map((id) => ITEM_BY_ID[id].code + (r.stacks[id] > 1 ? r.stacks[id] : '')).join(' ');
   r.toasts.push({ text: `WARP ${Math.floor(r.distance)}m`, sub: names.slice(0, 60), color: PAL.cyan, t: 4, dur: 4 });
+  const fused = [...TRIOS.filter((t) => r.stats.trioOn[t.id]), ...CARRIER_PAIRS.filter((q) => q.id === r.stats.pair && !q.legacy)];
+  for (const f of fused) r.toasts.push({ text: f.name, sub: f.desc.slice(0, 60), color: PAL.magenta, t: 5, dur: 5 });
 }
 
 async function shareRun(r) {
