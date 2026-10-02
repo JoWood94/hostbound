@@ -1106,7 +1106,7 @@ export function updateRun(run, input, dt) {
     }
     if (st.hasBeam) run.rs.laserKills = (run.rs.laserKills || 0) + 1;
     if (st.pairOn.hatchery && e.beamed) hatch(e.x, e.y, 2, currentDamage(p, st) * 0.7, st);   // HATCHERY
-    if (st.trioOn.incubator && e.slowT > 0) hatch(e.x, e.y, 1, currentDamage(p, st) * 0.6, st);   // INCUBATOR
+    if (st.trioOn.incubator && e.slowT > 0) hatch(e.x, e.y, 2, currentDamage(p, st) * 0.6, st);   // INCUBATOR
     if (st.chain) {
       const radius = (34 + 10 * st.chain) * (st.domino || 1);
       const dmg = currentDamage(p, st) * 1.2 * st.chain;

@@ -340,19 +340,35 @@ a glitching corrupted egg with cyan and magenta split (mystery item),
 a small pink tumor (bonus). Bioluminescent. Flat pure black background.
 ```
 
-**Colpi v1.2 — corpi dei carrier nuovi** (512×64, 8 colonne × 1 riga, celle 64×64)
-Oggi sono disegnati in vettoriale (`drawBody` in `bullets.js`). Stessa regola: tutto verde acido.
+**Colpi v1.2 — corpi dei carrier nuovi** (512×128, 8 colonne × 2 righe, celle 64×64)
+Oggi sono disegnati in vettoriale (`drawBody` in `bullets.js`). Stessa regola: tutto ciò che
+spari è verde acido. Larve e pungiglioni sono piccoli in gioco (circa 12-16 px): servono
+sagome semplici e forti, leggibili anche rimpicciolite.
 ```
-Match the attached player projectile sheet exactly (same acid green #c6ff1a bio-plasma,
-pale hot core #f4ffd8, wet organic look). A sprite sheet of 8 player projectiles,
-512x64 pixels, 8 columns of 64x64 cells, one sprite centred per cell, pointing UP,
-pixel art, flat pure black #000000 background, no grid lines, no text.
+Match the attached player projectile sheet exactly (same dirty acid green #c6ff1a
+bio-plasma, pale hot core #f4ffd8, 1 px near-black outline #07040a, wet organic look).
+A sprite sheet of 16 player projectiles, 512x128 pixels, 8 columns x 2 rows of 64x64
+cells, one sprite centred per cell, pointing UP, pixel art, flat pure black #000000
+background, no grid lines, no text. Strong simple silhouettes that still read at 16 px.
+Row 1:
 1 a three-bladed spinning disc of sharpened bone with glowing acid edges (glaive),
-2 the same glaive blurred mid-spin, 3 a round spore pod with a soft pulsing glow, closed
-(mine), 4 the same pod swollen and about to burst, cracks of light, 5 a small curled
-larva with tiny mandibles, latching (brood), 6 a barbed bone stinger embedded, its tail
-glowing (stinger), 7 a heavy seed shell with a short glowing trail (mortar), 8 a
-translucent husk shell, half-moon shaped (husk shield).
+2 the same glaive blurred mid-spin,
+3 a round spore pod with a soft pulsing glow, closed (mine),
+4 the same pod swollen and about to burst, cracks of light,
+5 a seed mortar shell, heavy and ribbed, with a short glowing trail,
+6 the same shell splitting open into three smaller seeds,
+7 a translucent husk shell, half-moon shaped (shield),
+8 an egg sac bursting open with green slime (hatching).
+Row 2:
+1 a cute-gross alien larva seen from above, head up: 4 plump glowing segments getting
+smaller toward the tail, a pale head with two curved pincer mandibles, tiny legs,
+2 the same larva with its body curved to one side (crawl frame),
+3 the same larva curled into a C, mandibles biting down (latched, eating),
+4 a barbed bone stinger in flight, tip up, a thin glowing tail,
+5 the same stinger stuck tip down, its tail glowing hot,
+6 the stuck stinger swelling orange #ffd27a, about to burst,
+7 a small orange-white burst of the stinger exploding,
+8 blank.
 ```
 
 ---

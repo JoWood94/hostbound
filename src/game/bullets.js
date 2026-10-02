@@ -151,13 +151,38 @@ function drawBody(p, i, sh, r, rot, art) {
     ring(x, y, r + 1, C, 1.5, 0.9);
     drawGlowDot(x, y, '#f4ffd8', r * 0.45);
   } else if (sh === SH_LARVA) {
-    if (!(art && shot(S_LARVA, x, y, r, (p.flags[i] & F_LATCH ? t * 6 : rot) - Math.PI / 2))) {
-      drawGlowDot(x, y, C, r + 1.5, 0.55); drawGlowDot(x, y, '#ffffff', r * 0.5);
+    // a segmented grub: head first while it hunts, curled and chewing once latched
+    const latched = p.flags[i] & F_LATCH;
+    const ang = latched ? t * 3 + i : rot - Math.PI / 2;
+    const seg = 4, len = 3.2;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+    for (let k = seg - 1; k >= 0; k--) {
+      const wig = Math.sin(t * 16 + k * 1.3 + i) * (latched ? 2.2 : 1.4);
+      const sx = latched ? Math.cos(k * 0.9) * 4 : -k * len, sy = latched ? Math.sin(k * 0.9) * 4 : wig;
+      const rr = 2.6 - k * 0.35;
+      ctx.fillStyle = '#07040a'; ctx.beginPath(); ctx.arc(sx, sy, rr + 1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = k === 0 ? '#f4ffd8' : C; ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.fill();
     }
+    // mandibles
+    ctx.strokeStyle = C; ctx.lineWidth = 1.2;
+    const bite = Math.sin(t * (latched ? 30 : 12) + i) * 0.5;
+    const hx = latched ? 4 : 0, hy = 0;
+    ctx.beginPath(); ctx.moveTo(hx + 2, hy - 1); ctx.lineTo(hx + 5, hy - 2.5 - bite); ctx.moveTo(hx + 2, hy + 1); ctx.lineTo(hx + 5, hy + 2.5 + bite); ctx.stroke();
+    ctx.restore();
+    if (latched) drawGlowDot(x, y, C, 7, 0.25 + 0.15 * Math.sin(t * 20 + i));
   } else if (sh === SH_STING) {
     const latched = p.flags[i] & F_LATCH;
-    if (latched) drawGlowDot(x, y, '#ffd27a', r + 2 + Math.sin(t * 30) * 1.5, 0.6);
-    if (!(art && shot(S_NEEDLE, x, y, r, latched ? Math.PI : rot))) drawGlowDot(x, y, C, r, 0.9);
+    if (latched) {
+      // stuck in its host, barb up; the fuse ring tightens and turns orange
+      const left = Math.max(0, Math.min(1, p.ox[i]));
+      const hot = 1 - left;
+      ring(x, y, 8 + 12 * left, hot > 0.6 ? '#ffd27a' : C, 2.2, 0.6 + 0.4 * hot);
+      drawGlowDot(x, y, '#ffd27a', 4 + 7 * hot + Math.sin(t * 40) * 2 * hot, 0.4 + 0.5 * hot);
+      needle(x, y + 9, -Math.PI / 2, 16, C);
+    } else {
+      drawGlowDot(x, y, C, r + 2.5, 0.4);
+      needle(x, y, rot - Math.PI / 2, 15, C);
+    }
   } else if (sh === SH_LOB) {
     // in flight it rises toward the camera (bigger) and falls onto its target row
     const k = Math.max(0, Math.min(1, (p.ox[i] - y) / Math.max(1, p.ox[i] - p.aux[i])));
@@ -165,6 +190,16 @@ function drawBody(p, i, sh, r, rot, art) {
     drawGlowDot(x, y + 10 * Math.sin(Math.PI * k), '#000000', r * 0.8, 0.25);   // shadow
     if (!(art && shot(S_GLOB, x, y, r * lift, rot))) drawGlowDot(x, y, C, r * lift, 0.9);
   }
+}
+
+// A barbed bone needle pointing along `ang` (0 = right), tip at x, y.
+function needle(x, y, ang, len, C) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+  ctx.strokeStyle = '#07040a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-len, 0); ctx.stroke();
+  ctx.strokeStyle = C; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-len, 0); ctx.stroke();
+  ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(-6, -3); ctx.moveTo(-3, 0); ctx.lineTo(-6, 3); ctx.stroke();
+  ctx.fillStyle = '#f4ffd8'; ctx.beginPath(); ctx.arc(0, 0, 1.4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 // layer 'low' is drawn under the player (so you visibly jump over it),

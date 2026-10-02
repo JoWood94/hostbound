@@ -14,6 +14,10 @@ import { sfx } from '../audio/audio.js';
 // Short-lived visual effects owned by the weapon (lightning arcs, frag rings).
 const arcs = [];
 const rings = [];
+const flashes = [];   // big soft flashes: mine/shell bursts, novas, cauterize, hatching { x, y, r, t, max, c }
+const novas = [];     // SUPERNOVA columns { pts, t }
+let cautFx = null;    // CAUTERIZE progress on the held target { e, k }
+const flash = (x, y, r, c = SHOT, t = 0.3) => flashes.push({ x, y, r, t, max: t, c });
 
 // Per-shot modifiers that depend on the player's state this instant.
 //   CHARGE / OVERCHARGE: x1.8 damage, double size (SIEGE rails x2.5 + stun)
@@ -349,6 +353,8 @@ function hitsAlong(pts, halfW, limit) {
 function blast(x, y, dmg, stats, skip) {
   const radius = (24 + 8 * stats.frag + (stats.smartRockets ? 10 : 0)) * (stats.modeLv.rockets > 1 ? 1.25 : 1);
   rings.push({ x, y, r: radius, t: 0.25 });
+  flash(x, y, radius * 0.8, '#ffd27a', 0.22);
+  burst(x, y, '#ffd27a', 10, 200, 0.35, 2.5);
   sfx.explode();
   for (const o of enemies) if (o !== skip && !o.dead && overlaps(o, x, y, radius)) damageEnemy(o, dmg * 0.45);
 }
@@ -367,7 +373,7 @@ function rateOf(c, stats, rateMul) {
   return rate;
 }
 function fireAs(c, p, stats, hit, beat = false) {
-  if (c === 'rail') fireRail(p, stats, hit, beat ? 0.4 : stats.trioOn.triad ? 1.25 : 0);   // TRIAD: the rail closes the cycle
+  if (c === 'rail') fireRail(p, stats, hit, beat ? 0.4 : stats.trioOn.triad ? 1.5 : 0);   // TRIAD: the rail closes the cycle
   else if (BIO.has(c)) fireBio(p, stats, beat, c);
   else fireProjectiles(p, stats, beat, c);
 }
@@ -579,9 +585,8 @@ function fireBio(p, stats, beat = false, c = stats.carrier) {
       for (let k = 0; k < LANES; k++) shells.push({ lane: dir > 0 ? k : LANES - 1 - k, mul: 0.3, delay: k * 0.09 });
     } else if (locked) shells.push({ lane: laneOf(locked), mul: 1.3, target: locked });
     else for (const sp of specs) {
-      const l = laneOfSpec(sp);
-      if (stats.pairOn.carpet) { for (const o of [-1, 0, 1]) if (l + o >= 0 && l + o < LANES) shells.push({ lane: l + o, mul: sp.mul * 0.6, fromX: sp.fromX }); }
-      else shells.push({ lane: l, mul: sp.mul, fromX: sp.fromX });
+      // CARPET: one shell that splits in three halfway (updateBioShots)
+      shells.push({ lane: laneOfSpec(sp), mul: sp.mul * (stats.pairOn.carpet ? 1.8 : 1), fromX: sp.fromX, split: stats.pairOn.carpet });
     }
     for (const sp of shells) {
       const lane = sp.lane;
@@ -595,15 +600,21 @@ function fireBio(p, stats, beat = false, c = stats.carrier) {
       playerBullets.ox[bi] = y;
       playerBullets.aux[bi] = ty;
       playerBullets.flags[bi] = traits;
+      if (sp.split) playerBullets.kind[bi] |= SPLIT;
     }
     sfx.shoot();
   }
 }
+const SPLIT = 32;   // kind bit: a CARPET shell that splits in three halfway
 
 // Larvae from a point (HATCHERY, WASP NEST, EGG CLUTCH): each finds an enemy
 // within two lanes, the least crowded first.
 export function hatch(x, y, n, each, stats) {
   if (countShape(SH_LARVA) > 30) return;
+  // an egg sac pops: a pale flash, a green splash
+  flash(x, y, 16, '#f4ffd8', 0.25);
+  burst(x, y, SHOT, 8, 120, 0.3, 2);
+  rings.push({ x, y, r: 14, t: 0.2 });
   const lane = Math.max(0, Math.min(LANES - 1, Math.round((x - laneX(0)) / LANE_W)));
   const crowd = (e) => countShape(SH_LARVA, (i) => playerBullets.aux[i] === e.id);
   for (let k = 0; k < n; k++) {
@@ -627,7 +638,10 @@ function fuseMines(pts, stats, hit) {
   const pb = playerBullets;
   const hitPath = (i) => { for (let k = 0; k < pts.length; k += 2) if (Math.abs(pts[k] - pb.x[i]) < 14 && Math.abs(pts[k + 1] - pb.y[i]) < 14) return true; return false; };
   const go = [];
-  for (let i = 0; i < pb.n; i++) if (pb.shape[i] === SH_MINE && hitPath(i)) go.push(i);
+  // POWER GRID: a rail only sets off a mine already wired into a grid, so
+  // lone mines stay and the grid can grow
+  const wired = (i) => { for (let j = 0; j < pb.n; j++) if (j !== i && pb.shape[j] === SH_MINE && pb.vy[j] === 0 && Math.abs(pb.x[j] - pb.x[i]) < LANE_W * 1.5 && Math.abs(pb.x[j] - pb.x[i]) > LANE_W * 0.5 && Math.abs(pb.y[j] - pb.y[i]) < 70) return true; return false; };
+  for (let i = 0; i < pb.n; i++) if (pb.shape[i] === SH_MINE && hitPath(i) && (!stats.trioOn.powergrid || (pb.vy[i] === 0 && wired(i)))) go.push(i);
   if (stats.trioOn.powergrid) {
     for (let q = 0; q < go.length; q++) for (let j = 0; j < pb.n; j++) {
       if (pb.shape[j] !== SH_MINE || go.includes(j) || pb.vy[j] !== 0) continue;
@@ -649,7 +663,11 @@ const stingFuse = (stats) => (stats.modeLv.stinger > 1 ? 0.8 : 1);
 // primary hit (crits, frag, arcs), the rest of the area a plain one.
 function burstAt(x, y, radius, dmg, stats, hit, flags) {
   rings.push({ x, y, r: radius, t: 0.25 });
-  burst(x, y, SHOT, 10, 160, 0.3, 2);
+  rings.push({ x, y, r: radius * 0.6, t: 0.2 });
+  flash(x, y, radius, SHOT, 0.3);
+  burst(x, y, SHOT, 18, 220, 0.4, 2.5);
+  burst(x, y, '#f4ffd8', 6, 120, 0.25, 2);
+  shake(2, 0.08);
   sfx.explode();
   const inside = enemies.filter((e) => !e.dead && overlaps(e, x, y, radius))
     .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
@@ -670,7 +688,7 @@ export function updateBioShots(p, stats, dt, hit) {
     if (sh === SH_MINE && pb.aux[i] === -9) {
       // CLAYMORE: a launched mine bursts on the first enemy it meets
       const e = enemies.find((o) => !o.dead && overlaps(o, pb.x[i], pb.y[i], 8));
-      if (e || pb.y[i] < 20) { burstAt(pb.x[i], pb.y[i], LANE_W * 0.6, pb.dmg[i], stats, hit, pb.flags[i] | F_EXPLODE); kill(pb, i); i--; }
+      if (e || pb.y[i] < 20) { burstAt(pb.x[i], pb.y[i], LANE_W * 0.7, pb.dmg[i] * 1.3, stats, hit, pb.flags[i]); kill(pb, i); i--; }
       continue;
     }
     if (sh === SH_GLAIVE && pb.kind[i] & HOLD) {
@@ -724,7 +742,7 @@ export function updateBioShots(p, stats, dt, hit) {
           if (pb.aux[i] < 2) continue;
         }
         const near = enemies.some((e) => !e.dead && Math.abs(e.x - pb.x[i]) < LANE_W * 0.55 && Math.abs(e.y - pb.y[i]) < 70);
-        if (!near && stats.pairOn.claymore && enemies.some((e) => !e.dead && e.y < pb.y[i] && Math.abs(e.x - pb.x[i]) < LANE_W * 0.5)) {
+        if (stats.pairOn.claymore && enemies.some((e) => !e.dead && e.y < pb.y[i] && Math.abs(e.x - pb.x[i]) < LANE_W * 0.5)) {
           pb.aux[i] = -9; pb.vy[i] = -520; sfx.shoot(); continue;           // CLAYMORE: launch
         }
         if (near || pb.aux[i] >= 2) {
@@ -734,6 +752,21 @@ export function updateBioShots(p, stats, dt, hit) {
         }
       }
     } else if (sh === SH_LOB) {
+      // CARPET: halfway up, the shell bursts open into three shells for three lanes
+      if (pb.kind[i] & SPLIT && (pb.ox[i] - pb.y[i]) / Math.max(1, pb.ox[i] - pb.aux[i]) >= 0.45) {
+        const lane = Math.max(0, Math.min(LANES - 1, Math.round((pb.x[i] + pb.vx[i] * 0.2 - laneX(0)) / LANE_W)));
+        const tLeft = Math.max(0.1, (pb.y[i] - pb.aux[i]) / -pb.vy[i]);
+        flash(pb.x[i], pb.y[i], 18, '#ffd27a', 0.25);
+        burst(pb.x[i], pb.y[i], '#ffd27a', 8, 140, 0.25, 2);
+        for (const o of [-1, 0, 1]) {
+          const l = lane + o;
+          if (l < 0 || l >= LANES) continue;
+          const bi = bodyAt(spawn(playerBullets, pb.x[i], pb.y[i], (laneX(l) - pb.x[i]) / tLeft, pb.vy[i], pb.r[i] * 0.8, pb.dmg[i] / 3, 0, 0), SH_LOB, -1);
+          if (bi < 0) continue;
+          playerBullets.ox[bi] = pb.ox[i]; playerBullets.aux[bi] = pb.aux[i]; playerBullets.flags[bi] = pb.flags[i];
+        }
+        kill(pb, i); i--; continue;
+      }
       if (pb.y[i] <= pb.aux[i]) {
         burstAt(pb.x[i], pb.aux[i], LANE_W * 0.55 * (stats.modeLv.mortar > 1 ? 1.2 : 1), pb.dmg[i], stats, hit, pb.flags[i]);
         kill(pb, i); i--; continue;
@@ -758,7 +791,7 @@ export function updateBioShots(p, stats, dt, hit) {
         if (stats.trioOn.executioner && e.dead) {
           const left = -e.hp / (e.brandMul || 1);
           const t = enemies.filter((o) => !o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) < 180).sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))[0];
-          if (t && left > 0.05) { arcs.push({ x1: e.x, y1: e.y, x2: t.x, y2: t.y, t: 0.15 }); plant(t, left, 0.5); }
+          if (t) { arcs.push({ x1: e.x, y1: e.y, x2: t.x, y2: t.y, t: 0.15 }); plant(t, Math.max(0, left) * 1.4 + pb.dmg[i] * 0.3, 0.35); flash(e.x, e.y, 18, '#ffd27a', 0.25); }
         }
         kill(pb, i); i--; continue;
       }
@@ -896,6 +929,10 @@ function updateBeam(p, stats, dt, rateMul, hit) {
     surge *= 0.7;
     widthMul *= 0.7 + 0.6 * Math.min(1, p.novaT / novaEvery);
     if (p.novaT >= novaEvery) { p.novaT = 0; novaFire = true; }
+    // the charge gathers at the maw: a swelling white core, sparks drawn in
+    const k = p.novaT / novaEvery;
+    flashes.push({ x: p.x, y: PLAYER_Y - 26, r: 4 + 12 * k, t: 0.02, max: 0.02, c: k > 0.85 ? '#ffffff' : SHOT });
+    if (Math.random() < k) burst(p.x + (Math.random() - 0.5) * 60, PLAYER_Y - 26 - Math.random() * 40, '#f4ffd8', 1, -80, 0.2, 1.5);
   }
   const dps = stats.fireRate * rateMul * currentDamage(p, stats) * 1.15 * surge;
   const tick = p.laserTick <= 0;
@@ -916,11 +953,12 @@ function updateBeam(p, stats, dt, rateMul, hit) {
     if (novaFire && spec === specs[0] && hit) {
       const all = hitsAlong(pts, width * 1.6, 99).hits;
       const nd = (dps / 0.7) * novaEvery * 0.85;
-      for (const { e } of all) { onHit(e, nd, stats, hit, true); blast(e.x, e.y, nd * 0.5, stats, e); }
-      rails.push({ pts, t: 0.2, w: 4 });
-      sfx.rail(); shake(4, 0.15);
+      for (const { e } of all) { onHit(e, nd, stats, hit, true); blast(e.x, e.y, nd * 0.5, stats, e); flash(e.x, e.y, 30, '#ffffff', 0.35); }
+      novas.push({ pts, t: 0.4 });
+      flash(p.x, PLAYER_Y - 26, 34, '#ffffff', 0.3);
+      sfx.rail(); shake(6, 0.2);
     }
-    beams.push({ pts: shown, w: width * (spec.mul < 1 ? 0.55 : 1), a: Math.min(1, spec.mul + 0.3) });
+    beams.push({ pts: shown, w: width * (spec.mul < 1 ? 0.55 : 1), a: Math.min(1, spec.mul + 0.3), white: nova ? p.novaT / novaEvery : 0 });
     // FISSION (FORK): the beam forks at its first targets into the side lanes.
     if (stats.fission) {
       for (const h of hits.slice(0, 2)) {
@@ -941,7 +979,8 @@ function updateBeam(p, stats, dt, rateMul, hit) {
       if (stats.pairOn.cauterize && spec === specs[0]) {
         const f = hits[0] && hits[0].e;
         if (f && f === p.cautE) p.cautT = (p.cautT || 0) + 0.1; else { p.cautE = f; p.cautT = 0; }
-        if (f && p.cautT >= 1) { p.cautT = 0; plant(f, currentDamage(p, stats) * 1.4, 0.15); }
+        if (f && p.cautT >= 1) { p.cautT = 0; plant(f, currentDamage(p, stats) * 1.4, 0.15); flash(f.x, f.y, 22, '#ffd27a', 0.3); }
+        cautFx = f ? { e: f, k: p.cautT } : null;
       }
       const last = hits[hits.length - 1];
       if (last) {
@@ -1217,7 +1256,7 @@ export function resolvePlayerHits(stats, run) {
         break;
       }
       const crit = onHit(e, pb.dmg[i], stats, run, true, pb.flags[i]);
-      if (sh === SH_GLAIVE && pb.vy[i] > 0 && stats.pairOn.reaper) popStings(e, 1.1);                  // REAPER
+      if (sh === SH_GLAIVE && pb.vy[i] > 0 && stats.pairOn.reaper) popStings(e, stats.trioOn.triad ? 1.3 : 1.1);   // REAPER
       if (stats.pairOn.waspnest && pb.flags[i] & F_ROCKET) hatch(pb.x[i], pb.y[i], 2, pb.dmg[i] * 0.16, stats);   // WASP NEST
       fission(pb, i, stats, e);
       if (pb.flags[i] & F_ECHO) thunderclap(pb, i, e);
@@ -1270,6 +1309,9 @@ export function updateWeaponFx(dt) {
   for (let i = 0; i < rails.length; i++) { rails[i].t -= dt; if (rails[i].t <= 0) { rails.splice(i, 1); i--; } }
   for (let i = 0; i < arcs.length; i++) { arcs[i].t -= dt; if (arcs[i].t <= 0) { arcs.splice(i, 1); i--; } }
   for (let i = 0; i < rings.length; i++) { rings[i].t -= dt; if (rings[i].t <= 0) { rings.splice(i, 1); i--; } }
+  for (let i = 0; i < flashes.length; i++) { flashes[i].t -= dt; if (flashes[i].t <= 0) { flashes.splice(i, 1); i--; } }
+  for (let i = 0; i < novas.length; i++) { novas[i].t -= dt; if (novas[i].t <= 0) { novas.splice(i, 1); i--; } }
+  if (cautFx && cautFx.e.dead) cautFx = null;
 }
 
 function poly(pts, color, width, alpha) {
@@ -1325,6 +1367,28 @@ function texturedBeam(pts, w, alpha, t) {
 export function drawWeaponFx() {
   if (trails.length) drawTrails();
   const t = performance.now() / 1000;
+  for (const f of flashes) drawGlowDot(f.x, f.y, f.c, f.r * (1.2 - 0.4 * (f.t / f.max)), 0.75 * (f.t / f.max));
+  for (const nv of novas) {
+    const a = nv.t / 0.4;
+    poly(nv.pts, SHOT, 40 * a + 6, 0.35 * a);
+    poly(nv.pts, '#ffffff', 14 * a + 2, 0.9 * a);
+  }
+  // TARGET LOCK: a reticle on the marked enemy
+  for (const e of enemies) {
+    if (e.dead || !(e.lockUntil > t)) continue;
+    const rr = (e.r || 14) + 8;
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(t * 2);
+    ctx.strokeStyle = SHOT; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+    for (let k = 0; k < 4; k++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(rr, -5); ctx.lineTo(rr, 0); ctx.lineTo(rr - 5, 0); ctx.stroke(); }
+    ctx.restore();
+  }
+  // CAUTERIZE: the charge filling on the held target
+  if (cautFx && !cautFx.e.dead && cautFx.k > 0.05) {
+    const e = cautFx.e, rr = (e.r || 14) + 6;
+    ctx.save(); ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(e.x, e.y, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, cautFx.k)); ctx.stroke(); ctx.restore();
+    drawGlowDot(e.x, e.y, '#ffd27a', 4 + 8 * cautFx.k, 0.3 + 0.4 * cautFx.k);
+  }
   for (const b of beams) {
     const flick = 0.85 + Math.random() * 0.15;
     poly(b.pts, SHOT, b.w * 2.2 * flick, 0.22 * b.a);
@@ -1332,6 +1396,7 @@ export function drawWeaponFx() {
       poly(b.pts, SHOT, b.w * flick, 0.6 * b.a);
       poly(b.pts, '#f4ffd8', Math.max(1, b.w * 0.35), 0.95 * b.a);
     }
+    if (b.white) poly(b.pts, '#ffffff', Math.max(1.5, b.w * 0.7 * b.white), 0.85 * b.white);   // SUPERNOVA charging
     drawGlowDot(b.pts[0], b.pts[1], SHOT, 4 + b.w * 0.4, 0.9 * b.a);
   }
   for (const r of rails) {
@@ -1349,4 +1414,4 @@ export function drawWeaponFx() {
   for (const r of rings) ring(r.x, r.y, r.r * (1 - r.t * 2), PAL.orange, 2, r.t / 0.25);
 }
 
-export function clearWeaponFx() { arcs.length = 0; rings.length = 0; wingmen.length = 0; beams.length = 0; rails.length = 0; trails.length = 0; }
+export function clearWeaponFx() { flashes.length = 0; novas.length = 0; cautFx = null; arcs.length = 0; rings.length = 0; wingmen.length = 0; beams.length = 0; rails.length = 0; trails.length = 0; }
