@@ -1,6 +1,6 @@
 import { ctx, W, H, UI_OFFSET } from './core/canvas.js';
 import { startLoop } from './core/loop.js';
-import { pollInput } from './core/input.js';
+import { pollInput, discardGesture, setTapSlop } from './core/input.js';
 import { loadSave, writeSave } from './core/save.js';
 import { beginUi, endUi, hitTest, setUiOffset } from './core/ui.js';
 import { applyPost } from './render/post.js';
@@ -38,14 +38,18 @@ let archiveTab = 'items';
 let archiveSel = null;
 let comboPage = 0;
 
-applySettings(save.settings);
+// ?mute: no music, no sound for this session only (automated tests); the
+// saved settings are left untouched.
+const MUTE = new URLSearchParams(location.search).has('mute');
+const audioSettings = () => (MUTE ? { ...save.settings, sfx: false, music: false } : save.settings);
+applySettings(audioSettings());
 setHaptics(save.settings.haptics);
 // Logo fonts (direction B). Offline the canvas falls back to system fonts.
 if (document.fonts) { document.fonts.load('64px Yellowtail').catch(() => {}); document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
 
 function ensureAudio() {
   unlockAudio();
-  applySettings(save.settings);
+  applySettings(audioSettings());
   startMusic();
 }
 
@@ -88,6 +92,9 @@ document.addEventListener('visibilitychange', () => {
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
+const MODAL_LOCK = 0.45;
+let lastMode = null;
+let modalT = 0;
 function update(dt) {
   const input = pollInput();
   if (input.any) ensureAudio();
@@ -103,8 +110,8 @@ function update(dt) {
     else if ((id === 'run' || id === 'enter' || input.jump) && unlocked) startRun();
     else if (id === 'daily') startRun(true);
     else if (id === 'archive') { screen = 'archive'; sfx.select(); }
-    else if (id === 'sfx') { save.settings.sfx = !save.settings.sfx; applySettings(save.settings); writeSave(save); sfx.select(); }
-    else if (id === 'music') { save.settings.music = !save.settings.music; applySettings(save.settings); writeSave(save); sfx.select(); }
+    else if (id === 'sfx') { save.settings.sfx = !save.settings.sfx; applySettings(audioSettings()); writeSave(save); sfx.select(); }
+    else if (id === 'music') { save.settings.music = !save.settings.music; applySettings(audioSettings()); writeSave(save); sfx.select(); }
     else if (id === 'haptics') { save.settings.haptics = !save.settings.haptics; setHaptics(save.settings.haptics); writeSave(save); buzz(30); sfx.select(); }
     return;
   }
@@ -121,15 +128,36 @@ function update(dt) {
   }
 
   // screen === 'run'
+  // Modal screens (pick, pause, dead): when one opens, drop the gesture in
+  // progress and ignore input for MODAL_LOCK s, so a swipe meant for the
+  // symbiote can never choose a card.
+  if (run.mode !== lastMode) {
+    if (run.mode !== 'play') { discardGesture(); modalT = 0; run.pickSel = -1; }
+    setTapSlop(run.mode === 'play' ? 8 : 14);
+    lastMode = run.mode;
+  }
+  modalT += dt;
+  run.modalT = modalT;
+  const locked = run.mode !== 'play' && modalT < MODAL_LOCK;
   switch (run.mode) {
     case 'play':
       updateRun(run, input, dt);
       break;
-    case 'pick':
-      if (id && id.startsWith('pick:')) pickItem(run, Number(id.slice(5)));
-      else if (id === 'skip') skipPick(run);
+    case 'pick': {
+      if (locked) break;
+      // Two taps: the first selects a card, the second (on the same card) takes it.
+      const n = run.pickChoices.length;
+      if (id && id.startsWith('pick:')) {
+        const i = Number(id.slice(5));
+        if (run.pickSel === i) pickItem(run, i);
+        else { run.pickSel = i; sfx.lane(); }
+      } else if (id === 'skip') skipPick(run);
+      else if (input.left || input.right) { run.pickSel = run.pickSel < 0 ? 0 : (run.pickSel + (input.right ? 1 : n - 1)) % n; sfx.lane(); }
+      else if (id === 'enter' && run.pickSel >= 0) pickItem(run, run.pickSel);
       break;
+    }
     case 'pause':
+      if (locked) break;
       if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; sfx.select(); }
       else if (id === 'quit') { run.player.dead = true; endRun(run); run.deadT = 0.8; }
       break;
@@ -243,6 +271,9 @@ if (new URLSearchParams(location.search).has('debug')) {
     },
     // Advance the simulation synchronously (background tabs pause rAF).
     tick: (frames = 1) => { for (let i = 0; i < frames; i++) update(1 / 60); },
+    // Draw one frame (registers the buttons), for tests while the tab is hidden.
+    draw: () => render(1),
+    hit: (x, y) => hitTest(x, y),
     offer: (ids) => { run.pickChoices = ids.map((id) => ITEM_BY_ID[id]); run.mode = 'pick'; },
     god: () => { run.player.hearts = 99; run.stats.maxHearts = 99; run.nextEvent = 1e9; run.sec = null; run.secCalmUntil = 1e12; },
   };

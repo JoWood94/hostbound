@@ -461,6 +461,18 @@ function addCoins(run, n) {
   }
 }
 
+const LEVEL_WAIT = 25;
+const calmBetweenSections = (run) => !run.sec && !run.boss && nothingIncoming();
+// No high shot reaching the player row within 0.7 s, no obstacle within ~1 s.
+function nothingIncoming() {
+  const eb = enemyBullets;
+  for (let i = 0; i < eb.n; i++) {
+    if (eb.y[i] > PLAYER_Y + 10) continue;
+    if ((PLAYER_Y - eb.y[i]) / Math.max(1, eb.vy[i]) < 0.7) return false;
+  }
+  return !obstacles.some((o) => !o.dead && o.y < PLAYER_Y + 20 && o.y > PLAYER_Y - 340);
+}
+
 function openPick(run, kind) {
   const n = 3 + (run.stats.extraChoices || 0);
   run.pickChoices = rollItems(run.rng, unlockedItems(run.save), run.stacks, n, run.stats.luck, { source: kind });
@@ -512,12 +524,17 @@ export function updateRun(run, input, dt) {
 
   if (run.pickDelay > 0) {
     run.pickDelay -= dt;
-    if (run.pickDelay <= 0) openPick(run, 'boss');
+    // the boss loot owns this frame: a queued level opens after it
+    if (run.pickDelay <= 0 && openPick(run, 'boss')) return;
   }
-  // Level-ups: open one pick per frame while any are queued (not during the
-  // boss warning, the boss loot, or a dying player).
-  if (run.levelUps > 0 && run.pickDelay <= 0 && run.warnT <= 0 && !p.dead) {
+  // Level-ups wait in a queue and open only at a calm moment, never in the
+  // middle of a dodge: between two sections (or after the boss loot). If the
+  // queue has waited LEVEL_WAIT s, the first moment with no shot about to land
+  // and no obstacle near is enough.
+  if (run.levelUps > 0) run.levelWaitT = (run.levelWaitT || 0) + dt;
+  if (run.levelUps > 0 && run.pickDelay <= 0 && run.warnT <= 0 && !p.dead && (calmBetweenSections(run) || (run.levelWaitT > LEVEL_WAIT && nothingIncoming()))) {
     run.levelUps--;
+    if (!run.levelUps) run.levelWaitT = 0;
     sfx.synergy();
     if (openPick(run, 'level')) return;
   }

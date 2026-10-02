@@ -16,9 +16,10 @@
 // `from` is the distance (m) where a section joins the pool; `to` retires the
 // intro sections once they would be trivial. Obstacle beats
 // are >= 8 so there is time to spawn them at the top of the screen.
-// Fairness: every row keeps a non-barrier lane, rows that follow each other
-// are at least 2 beats apart, and enemy lanes plus rows never close all five
-// lanes at the same moment.
+// Fairness (checked by scripts/verify-sections.mjs): every row keeps a
+// non-barrier lane, rows are at least 2 beats apart, two rows that both need a
+// jump on the path are at least 3 beats apart, phase obstacles (P, veils) at
+// least 8 beats apart, and enemy lanes plus rows never close all five lanes.
 
 const e = (beat, type, lane) => ({ beat, kind: 'enemy', type, lane });
 const r = (beat, row) => ({ beat, kind: 'row', row });
@@ -36,7 +37,7 @@ export const SECTIONS = [
   // --- brooder (700 m) ------------------------------------------------------
   { id: 'eggs', from: 700, events: [e(0, 'brooder', 2), e(6, 'drone', 0)] },
   { id: 'egg-gate', from: 700, events: [e(0, 'brooder', 1), r(12, 'BB.BB'), c(8, 2, 3)] },
-  { id: 'zipper', from: 800, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), r(12, 'TBTBT'), e(12, 'drone', 2)] },
+  { id: 'zipper', from: 800, events: [r(8, 'TBTBT'), r(11, 'BTBTB'), r(14, 'TBTBT'), e(14, 'drone', 2)] },
   // --- crusher (1000 m) -----------------------------------------------------
   { id: 'crusher', from: 1000, events: [e(0, 'crusher', 2), r(14, 'B...B')] },
   { id: 'veil-sweep', from: 1000, events: [e(0, 'sweeper', 1), v(12), c(14, 3)] },
@@ -47,7 +48,7 @@ export const SECTIONS = [
   { id: 'pincer', from: 1200, events: [e(0, 'sweeper', 0), e(0, 'sweeper', 4), r(12, '.TTT.')] },
   // --- hopper (1500 m) ------------------------------------------------------
   { id: 'hopper-drums', from: 1500, events: [e(0, 'hopper', 0), r(10, 'TTTTT'), r(14, 'TTTTT')] },
-  { id: 'hop-zip', from: 1500, events: [e(0, 'hopper', 4), r(12, 'TBTBT'), r(14, 'BTBTB')] },
+  { id: 'hop-zip', from: 1500, events: [e(0, 'hopper', 4), r(12, 'TBTBT'), r(15, 'BTBTB')] },
   // --- throb (1800 m) -------------------------------------------------------
   { id: 'heartbeat', from: 1800, events: [e(0, 'throb', 2), c(4, 0)] },
   { id: 'heart-walls', from: 1800, events: [e(0, 'throb', 2), r(12, 'B...B'), r(15, 'B...B')] },
@@ -69,8 +70,8 @@ export const SECTIONS = [
 // --- COURSES: obstacle-only sections, many lanes blocked, played in between
 // combat sections (the director alternates the two). Read the track, weave
 // through it. Rows at least 2 beats apart; the free lane moves at most one
-// lane per beat; phase obstacles (P rows, veils) at least 7 beats apart, so
-// the phase is always recharged (2 s) even at the top tempo. No course leaves
+// lane per beat; phase obstacles (P rows, veils) at least 8 beats apart, so
+// the phase is always recharged (2 s) even at the top tempo (220 BPM). No course leaves
 // the centre lane free all the way. Cells trace the line.
 export const COURSES = [
   { id: 'c-first-wire', to: 1500, from: 60, events: [c(2, 2, 3), r(8, '..T..'), r(12, '.TTT.')] },
@@ -82,20 +83,20 @@ export const COURSES = [
   { id: 'c-checker', from: 500, events: [r(8, 'B.B.B'), r(10, '.B.B.'), r(12, 'B.B.B'), r(14, '.B.B.'), c(5, 1, 3)] },
   { id: 'c-slalom', from: 500, events: [r(8, 'BB.BB'), r(10, 'B.BBB'), r(12, 'BB.BB'), r(14, 'BBB.B'), c(5, 2, 3)] },
   { id: 'c-tunnel', from: 800, events: [r(8, 'B.BBB'), r(10, 'BTBBB'), r(12, 'B.BBB'), r(14, 'BBT.B'), c(5, 1, 4)] },
-  { id: 'c-zipper', from: 800, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), r(12, 'TBTBT'), r(14, 'BTBTB')] },
+  { id: 'c-zipper', from: 800, events: [r(8, 'TBTBT'), r(11, 'BTBTB'), r(14, 'TBTBT'), r(17, 'BTBTB')] },
   { id: 'c-veil-gate', from: 1000, events: [r(8, 'BBB.B'), v(11), r(14, '.BBB.'), c(5, 3, 3)] },
   { id: 'c-drums', from: 1000, events: [r(8, 'TTTTT'), r(10, 'B.BBB'), r(12, 'TTTTT'), r(14, 'B.B.B'), r(16, 'TTTTT')] },
   // jump or phase: the outer lanes jump, the middle one phases
-  { id: 'c-rift-zip', from: 1200, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), r(12, 'TBPBT'), r(14, 'BTBTB')] },
+  { id: 'c-rift-zip', from: 1200, events: [r(8, 'TBTBT'), r(11, 'BTBTB'), r(14, 'TBPBT'), r(17, 'BTBTB')] },
   { id: 'c-snake', from: 1500, events: [r(8, '.BBBB'), r(10, 'B.BBB'), r(12, 'BB.BB'), r(14, 'BBB.B'), r(16, 'BBBB.'), c(5, 0, 3)] },
   { id: 'c-split', from: 1500, events: [r(8, 'BB.BB'), r(10, '.BBB.'), r(12, '.BTB.'), r(14, 'B.B.B'), c(5, 2, 3)] },
   // jump, dodge, phase: the three moves in one breath
-  { id: 'c-triad', from: 1500, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), r(13, 'BPBBB'), r(16, '.BBB.'), c(5, 1, 3)] },
-  { id: 'c-gauntlet', from: 2000, events: [r(8, 'TBTBT'), r(10, 'BTBTB'), v(13), r(16, 'BB.BB'), r(18, 'TTTTT')] },
-  { id: 'c-phase-run', from: 2000, events: [r(8, 'BBPBB'), r(10, 'BTTTB'), r(12, 'B.BBB'), r(15, 'BBBPB'), r(17, 'TTTTT')] },
-  { id: 'c-rift-snake', from: 2500, events: [r(8, 'B.BBB'), r(10, '.BBBB'), v(12), r(14, 'BB.BB'), r(16, 'BBB.B'), v(19), r(21, 'TTTTT')] },
-  { id: 'c-storm', from: 3000, events: [r(8, 'TBTBT'), r(10, 'BB.BB'), r(12, 'B.T.B'), v(14), r(16, '.BBB.'), r(18, 'BTTTB'), r(21, 'BBPBB')] },
-  { id: 'c-chaos', from: 3500, events: [r(8, 'PBTBP'), r(10, 'BTBTB'), r(12, 'TBTBT'), r(15, 'BBPBB'), r(17, '.TBT.')] },
+  { id: 'c-triad', from: 1500, events: [r(8, 'TBTBT'), r(11, 'BTBTB'), r(14, 'BPBBB'), r(17, '.BBB.'), c(5, 1, 3)] },
+  { id: 'c-gauntlet', from: 2000, events: [r(8, 'TBTBT'), r(11, 'BTBTB'), v(14), r(17, 'BB.BB'), r(20, 'TTTTT')] },
+  { id: 'c-phase-run', from: 2000, events: [r(8, 'BBPBB'), r(10, 'BTTTB'), r(12, 'B.BBB'), r(16, 'BBBPB'), r(19, 'TTTTT')] },
+  { id: 'c-rift-snake', from: 2500, events: [r(8, 'B.BBB'), r(10, '.BBBB'), v(12), r(14, 'BB.BB'), r(16, 'BBB.B'), v(20), r(23, 'TTTTT')] },
+  { id: 'c-storm', from: 3000, events: [r(8, 'TBTBT'), r(10, 'BB.BB'), r(12, 'B.T.B'), v(14), r(16, '.BBB.'), r(18, 'BTTTB'), r(22, 'BBPBB')] },
+  { id: 'c-chaos', from: 3500, events: [r(8, 'PBTBP'), r(11, 'BTBTB'), r(14, 'TBTBT'), r(17, 'BBPBB'), r(20, '.TBT.')] },
 ];
 
 // Mirror a section left/right.

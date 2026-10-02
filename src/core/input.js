@@ -8,7 +8,7 @@ import { canvas, toLogical } from './canvas.js';
 
 const SWIPE_MIN = 22;      // logical px
 const SWIPE_MAX_MS = 320;
-const TAP_MAX_MOVE = 8;
+let tapSlop = 8;           // max movement for a tap; screens with choices raise it
 
 const state = { left: false, right: false, jump: false, phase: false, tap: false, tapX: -1, tapY: -1, pause: false, down: false, any: false };
 
@@ -17,6 +17,7 @@ let startX = 0;
 let startY = 0;
 let startT = 0;
 let swiped = false;
+let consumed = false;      // the gesture in progress belongs to the previous screen
 
 function onDown(e) {
   if (pointerId !== null) return;
@@ -26,11 +27,12 @@ function onDown(e) {
   startX = p.x; startY = p.y;
   startT = performance.now();
   swiped = false;
+  consumed = false;
   state.down = true;
 }
 
 function detectSwipe(p) {
-  if (swiped || performance.now() - startT > SWIPE_MAX_MS) return;
+  if (consumed || swiped || performance.now() - startT > SWIPE_MAX_MS) return;
   const dx = p.x - startX;
   const dy = p.y - startY;
   const adx = Math.abs(dx), ady = Math.abs(dy);
@@ -50,7 +52,7 @@ function onUp(e) {
   const p = toLogical(e.clientX, e.clientY);
   detectSwipe(p);
   const moved = Math.hypot(p.x - startX, p.y - startY);
-  if (!swiped && moved < TAP_MAX_MOVE) { state.tap = true; state.tapX = p.x; state.tapY = p.y; }
+  if (!consumed && !swiped && moved < tapSlop) { state.tap = true; state.tapX = p.x; state.tapY = p.y; }
   state.any = true;
   pointerId = null;
   state.down = false;
@@ -79,6 +81,15 @@ window.addEventListener('keydown', (e) => {
 });
 // Losing focus only ever pauses; it must never toggle a paused game back on.
 window.addEventListener('blur', () => { state.blur = true; });
+
+// A modal screen just opened: the finger already on the glass was steering the
+// symbiote, so nothing it does until it lifts may count on the new screen.
+export function discardGesture() {
+  if (pointerId !== null) consumed = true;
+  state.left = state.right = state.jump = state.phase = state.tap = false;
+}
+// Choice screens use a larger tap tolerance, so a short swipe is never a tap.
+export function setTapSlop(px) { tapSlop = px; }
 
 // Read and reset one-shot intents. Call once per logic step.
 export function pollInput() {

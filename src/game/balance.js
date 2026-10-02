@@ -25,4 +25,6 @@ export const eliteChance = (d) => Math.max(0, Math.min(0.4, (d - 2.5) * 0.06));
 export const COIN_LINE = 4;
 // Levels: cells (the currency) are experience. Cells needed to go from
 // `level` to the next: quick early level-ups, then a steady climb.
-export const xpNeed = (level) => 10 + 8 * (level - 1);
+// Slightly quadratic so late runs (more cells, GREED, boss drops) still level
+// every 35-50 s rather than every 20.
+export const xpNeed = (level) => Math.round(10 + 7 * (level - 1) + 0.5 * (level - 1) ** 2);

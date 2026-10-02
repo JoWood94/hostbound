@@ -26,16 +26,17 @@ function dim(a = 0.78) {
   ctx.fillRect(0, -UI_OFFSET, W, H);   // screens are drawn shifted by UI_OFFSET: cover the whole canvas
 }
 
-function itemCard(id, x, y, w, h, it, { run = null } = {}) {
+function itemCard(id, x, y, w, h, it, { run = null, selected = false } = {}) {
   area(id, x, y, w, h);
   const rc = RARITY[it.rarity].color;
   const cc = CAT_COLOR[it.cat];
   const hints = run ? offerHints(it.id, run.stacks, run.save, run.board) : [];
-  ctx.fillStyle = 'rgba(20,2,15,0.95)';
+  ctx.fillStyle = selected ? 'rgba(40,6,32,0.98)' : 'rgba(20,2,15,0.95)';
   ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = rc;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = selected ? PAL.white : rc;
+  ctx.lineWidth = selected ? 3 : 2;
   ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  if (selected) text('TAP AGAIN TO TAKE IT', x + w - 10, y + h - 9, { color: PAL.acid, size: 8, align: 'right', alpha: 0.6 + Math.sin(performance.now() / 120) * 0.4 });
   // A resonating item gets a pulsing magenta inner frame.
   if (hints.length) {
     ctx.strokeStyle = PAL.magenta;
@@ -260,7 +261,17 @@ export function drawPick(run) {
   text(lvl ? 'THE MASS MUTATES · CHOOSE ONE' : 'CHOOSE ONE UPGRADE', W / 2, 88, { color: PAL.white, size: 11, align: 'center' });
   const n = run.pickChoices.length;
   const h = n > 3 ? 88 : 108, step = h + (n > 3 ? 8 : 12);
-  run.pickChoices.forEach((it, i) => itemCard(`pick:${i}`, 20, 108 + i * step, W - 40, h, it, { run }));
+  // Cards slide in while input is locked (main.js MODAL_LOCK): the wait reads
+  // as an animation, not as an unresponsive screen.
+  const t = run.modalT || 0;
+  run.pickChoices.forEach((it, i) => {
+    const k = Math.min(1, Math.max(0, (t - i * 0.05) / 0.3));
+    const off = (1 - k) * (1 - k) * 70;
+    ctx.save(); ctx.globalAlpha = k;
+    itemCard(`pick:${i}`, 20, 108 + i * step + off, W - 40, h, it, { run, selected: run.pickSel === i });
+    ctx.restore();
+  });
+  if (t > 0.45 && run.pickSel < 0) text('TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 8, align: 'center' });
   const full = run.player.hearts >= run.stats.maxHearts;
   button('skip', 80, 108 + n * step + 6, W - 160, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
 }

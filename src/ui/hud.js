@@ -30,6 +30,14 @@ export function drawHud(run) {
   ctx.fillStyle = PAL.acid;
   ctx.fillRect(bx, by, bw * Math.min(1, run.xp / need), 4);
   if (run.xp / need > 0.85) drawGlowDot(bx + bw * Math.min(1, run.xp / need), by + 2, PAL.acid, 5, 0.7);
+  // A level is queued (it opens at the next calm moment): the bar pulses.
+  if (run.levelUps > 0) {
+    ctx.globalAlpha = 0.35 + Math.sin(run.time * 10) * 0.35;
+    ctx.fillStyle = PAL.white;
+    ctx.fillRect(bx, by, bw, 4);
+    ctx.globalAlpha = 1;
+    text(`LEVEL UP ×${run.levelUps}`, W / 2, by + 34, { color: PAL.acid, size: 8, align: 'center', alpha: 0.8 });
+  }
 
   text(`${Math.floor(run.distance)}m`, W - 10, y, { color: PAL.cyan, size: 16, align: 'right' });
   text(`LV ${run.level}`, W - 10, y + 16, { color: PAL.acid, size: 12, align: 'right' });
