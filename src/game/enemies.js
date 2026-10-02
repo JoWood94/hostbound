@@ -15,7 +15,15 @@ import { sheet, drawCell } from '../render/images.js';
 // Generated Brood sheet: 8x7 cells of 128 px. Rows in TYPES order below;
 // columns 0-3 idle, 4-5 warning, 6-7 death.
 const BROOD = sheet('enemies_brood', 128);
-const BROOD_ROW = { drone: 0, sweeper: 1, crusher: 2, hopper: 3, kamikaze: 4, wall: 5, tank: 6 };
+const BROOD2 = sheet('enemies_brood2', 128);
+// type -> [sheet, row]. Second sheet: the rhythm teachers.
+const ART = {
+  drone: [BROOD, 0], sweeper: [BROOD, 1], crusher: [BROOD, 2], hopper: [BROOD, 3], kamikaze: [BROOD, 4], wall: [BROOD, 5], tank: [BROOD, 6],
+  brooder: [BROOD2, 0], stalker: [BROOD2, 1], throb: [BROOD2, 2], weaver: [BROOD2, 3],
+};
+// Idle frames per type (default columns 0-3). The stalker's 2-4 show its body
+// side-on without the eye, a different read: it hovers on its front pose.
+const IDLE = { stalker: [0] };
 const BROOD_SIZE = 64;
 // Death animations left behind by killed enemies.
 const corpses = [];
@@ -27,10 +35,12 @@ export function updateCorpses(dt, scroll) {
   }
 }
 export function drawCorpses() {
-  if (!BROOD.ready) return;
+  if (!BROOD.ready && !BROOD2.ready) return;
   for (const c of corpses) {
     const col = c.t < 0.14 ? 6 : 7;
-    drawCell(BROOD, BROOD_ROW[c.type], col, c.x, c.y, BROOD_SIZE * c.k, { alpha: c.t < 0.14 ? 1 : Math.max(0, 1 - (c.t - 0.14) / 0.36) });
+    const [sh, row] = ART[c.type];
+    if (!sh.ready) continue;
+    drawCell(sh, row, col, c.x, c.y, BROOD_SIZE * c.k, { alpha: c.t < 0.14 ? 1 : Math.max(0, 1 - (c.t - 0.14) / 0.36) });
   }
 }
 
@@ -364,7 +374,7 @@ export function damageEnemy(e, dmg) {
   burst(e.x, e.y, e.T.color, 3, 90, 0.25, 1.5);
   if (e.hp <= 0) {
     e.dead = true;
-    if (BROOD_ROW[e.type] !== undefined) corpses.push({ type: e.type, x: e.x, y: e.y, t: 0, k: e.minion ? 0.8 : 1 });
+    if (ART[e.type]) corpses.push({ type: e.type, x: e.x, y: e.y, t: 0, k: e.minion ? 0.8 : 1 });
     burst(e.x, e.y, e.T.color, 18, 180, 0.5, 2.5);
     burst(e.x, e.y, PAL.white, 6, 90, 0.3, 2);
     shake(3, 0.1);
@@ -500,13 +510,15 @@ export function drawEnemies(alpha) {
     const breathe = 1 + Math.sin(t * 3.2 + e.id) * 0.035;
 
     // Generated sprite sheet when available
-    if (BROOD.ready && BROOD_ROW[e.type] !== undefined) {
+    const art = ART[e.type];
+    if (art && art[0].ready) {
       const warn = e.state === 'telegraph' && teleProgress(e) > 0.35;
-      const col = warn ? 4 + (Math.floor(e.stateT * 12) % 2) : Math.floor(t * 6 + e.id) % 4;
+      const idle = IDLE[e.type];
+      const col = warn ? 4 + (Math.floor(e.stateT * 12) % 2) : idle ? idle[Math.floor(t * 6 + e.id) % idle.length] : Math.floor(t * 6 + e.id) % 4;
       if (e.type === 'kamikaze' && e.state === 'dive') {
         drawGlowDot(x, y - 18, PAL.amber, 4, 0.9);
       }
-      drawCell(BROOD, BROOD_ROW[e.type], col, x, y, BROOD_SIZE * breathe * (e.minion ? 0.8 : 1), { flash: e.hitFlash > 0 ? 0.7 : 0 });
+      drawCell(art[0], art[1], col, x, y, BROOD_SIZE * breathe * (e.minion ? 0.8 : 1), { flash: e.hitFlash > 0 ? 0.7 : 0 });
       if (e.muzzle > 0) { drawGlowDot(x, y + MOUTH, c, 7 * (e.muzzle / 0.12) + 2, 0.9); drawGlowDot(x, y + MOUTH, '#ffffff', 2.5, e.muzzle / 0.12); }
       if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
       continue;
