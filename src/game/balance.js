@@ -27,6 +27,11 @@ export const enemyHp = (base, d, power, elite = false) => Math.max(1, Math.round
 export const bossHp = (index, power) => Math.round(120 * (1 + 0.5 * index) * Math.pow(power, POWER_EXP) * (index >= 5 ? 1.25 : 1));
 // Bosses speed up more than regular enemies: they are the run's exams.
 export const bossSpeed = (index) => Math.min(2.2, 1 + 0.12 * index);
+// Boss LAYER: bosses grow with the district like sections do (intensity
+// 1 + m/700, no ceiling): 0 at the first boss, 1 at ~3000 m, 3 at ~5000 m,
+// 8 at ~10000 m. Each layer shortens rests; every two add rows and shots; from
+// 2 the volleys and beams come with low waves in the lanes they leave free.
+export const bossLayer = (d) => Math.max(0, Math.floor((d * 400 / 700 - 1.4) / 1.6));
 
 // Enemy timing follows the gameplay clock's tempo (core/tempo.js): one step per district.
 export const timeMul = (d) => runBpm(d) / BASE_BPM;

@@ -19,7 +19,7 @@ import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio } from '
 import { activeCombos } from './combos.js';
 import * as B from './balance.js';
 import { BOARD_BY_ID } from './boards.js';
-import { makeBoss, updateBoss, BOSSES } from './boss.js';
+import { makeBoss, updateBoss, bossTakesAdd, BOSSES } from './boss.js';
 import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine } from './weapon.js';
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
@@ -339,6 +339,24 @@ function pickSection(run) {
 
 // Narrow enemies that can reinforce a combat section at high tiers.
 const REINFORCEMENTS = ['drone', 'stalker', 'hopper'];
+
+// From district 4 the boss is not alone: light mobs join while it rests, in
+// lanes its next attack leaves free (bossTakesAdd keeps two lanes open), never
+// before row attacks (those wait until the mobs have fired). More of them, and
+// sooner, as the boss layer grows.
+function reinforceBoss(run, d, dt) {
+  const b = run.boss;
+  if (B.tier(run.distance) < 4 || b.dead || b.state !== 'rest') return;
+  run.addT = (run.addT ?? 2) - dt;
+  if (run.addT > 0) return;
+  const adds = enemies.filter((e) => e.type !== 'boss' && !e.minion && !e.dead && e.state !== 'leave').length;
+  if (adds >= Math.min(3, 1 + Math.floor((b.layer - 2) / 2))) return;
+  const type = B.tier(run.distance) >= 6 ? run.rng.pick(['drone', 'stalker']) : 'drone';
+  const lanes = [0, 1, 2, 3, 4].filter((l) => safeToEnter(type, l) && bossTakesAdd(b, threatLanes(type, l)));
+  if (!lanes.length) return;
+  spawnEnemy(type, run.rng.pick(lanes), d, run.rng, { power: powerRatio(run.stats), elite: run.rng.chance(B.eliteChance(d)) });
+  run.addT = Math.max(2.5, 6 - 0.4 * b.layer);
+}
 
 // Courses at tier 4+: rows come faster (2 beats -> 1.5 beats = 3 ticks) and
 // one more row joins at the end. Both changes are kept only if the course is
@@ -716,7 +734,7 @@ export function updateRun(run, input, dt) {
   }
   if (run.warnT > 0) {
     run.warnT -= dt;
-    if (run.warnT <= 0) { run.boss = makeBoss(run.bossIndex, run.bossOrder[run.bossIndex % run.bossOrder.length], powerRatio(run.stats)); run.bossHit = false; }
+    if (run.warnT <= 0) { run.boss = makeBoss(run.bossIndex, run.bossOrder[run.bossIndex % run.bossOrder.length], powerRatio(run.stats)); run.bossHit = false; run.addT = 2; }
   }
 
   if (!run.pending && !run.boss && run.pickDelay <= 0) {
@@ -782,7 +800,7 @@ export function updateRun(run, input, dt) {
   const dc = beatClock() - c0;
   if (dc > 0) syncMusic(beatClock(), dt / dc);
   updateCorpses(edt, run.speed);
-  if (run.boss) updateBoss(run.boss, edt, d, p.lane);
+  if (run.boss) { updateBoss(run.boss, edt, d, p.lane); reinforceBoss(run, d, edt); }
   updateObstacles(edt, run.speed);
   updateFx(dt, run.speed);
   updateWeaponFx(dt);

@@ -24,7 +24,7 @@ import { LANES, LANE_W, laneX } from './world.js';
 import { enemies, spawnEnemy, newId } from './enemies.js';
 import { obstacles, spawnObstacle, spawnVeil } from './obstacles.js';
 import { sfx } from '../audio/audio.js';
-import { bossHp, bossSpeed, timeMul } from './balance.js';
+import { bossHp, bossSpeed, bossLayer, timeMul } from './balance.js';
 
 const ALL = [0, 1, 2, 3, 4];
 // Below the status bar and the health bar (name + bar end ~66 px under SAFE_TOP).
@@ -83,7 +83,7 @@ export const BOSSES = [
     id: 'sentinel', name: 'SENTINEL', color: PAL.magenta,
     hit: [{ x: 0, y: 0, hw: 52, hh: 26 }, { x: -78, y: 0, hw: 26, hh: 13 }, { x: 78, y: 0, hw: 26, hh: 13 }],
     phases: [
-      [atk([v([0, 2, 4])]), R(MARCH(4), 0.6), atk([v([1, 3])])],
+      [atk([v([0, 2, 4])], 0.9, 0.6), R(MARCH(6), 0.55), atk([v([1, 3]), low([0, 4])]), atk([sw([0, 1, 2, 3, 4], 0.25)], 0.9)],
       [R(MARCH(6), 0.5), atk([sw([0, 1, 2, 3, 4])], 0.9), atk([v([0, 1, 3, 4], 4)], 0.8), atk([sw([4, 3, 2, 1, 0])], 0.9)],
       [R(MARCH(8), 0.42, 0.8, 0.5), atk([low(ALL)], 0.9, 0.4),
         R(['x.x.x', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.', 'LLLLL', '.x.x.'], 0.5), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
@@ -101,7 +101,7 @@ export const BOSSES = [
     hit: [{ x: -62, y: 0, r: 23 }, { x: 0, y: 0, r: 27 }, { x: 62, y: 0, r: 23 }],
     phases: [
       // Drones always land in the outer lanes, so corridors stay in lanes 1-3.
-      [atk([summon([0, 4])], 0.6, 1.4), R(corridor([1, 1, 2, 2, 1, 1], 2), 0.55), atk([v([1, 3])])],
+      [atk([summon([0, 4])], 0.6, 1.0), R(corridor(bounce(1, 1, 6, 1, 3)), 0.55), atk([v([1, 3]), low([2])]), atk([sw([1, 2, 3], 0.25)], 0.9)],
       [atk([summon([0, 4])], 0.6, 1.0), R(corridor(bounce(2, 1, 8, 1, 3)), 0.5), atk([v([2]), low([0, 1, 3, 4])], 0.9), atk([sw([1, 2, 3])])],
       [atk([summon([0, 4])], 0.6, 0.8), R(corridor(bounce(1, 1, 11, 1, 3)), 0.4, 0.8, 0.5), atk([low(ALL)], 0.9),
         atk([v([1, 3], 4)], 0.7), atk([sw([3, 2, 1], 0.18)], 0.9)],
@@ -154,7 +154,7 @@ export const BOSSES = [
     id: 'warden', name: 'WARDEN', color: PAL.orange,
     hit: [{ x: 0, y: 0, hw: 88, hh: 24 }],
     phases: [
-      [atk([beam([0, 1])], 1.0), R(['LLLLL', 'LLLLL', 'LLLLL'], 0.75), atk([beam([3, 4])], 1.0)],
+      [atk([beam([0, 1]), low([3, 4])], 1.0), R(['LLLLL', 'LxLxL', 'LLLLL', 'xLxLx'], 0.7), atk([beam([3, 4]), low([0, 1])], 1.0)],
       [atk([beam([2]), low([0, 1, 3, 4])], 1.0), R(['LxLxL', 'LLLLL', 'xLxLx', 'LLLLL', 'LxLxL'], 0.6),
         atk([beam([0, 4]), v([2])], 0.9), atk([beam([1, 3])], 0.9)],
       [atk([beam([0, 2, 4])], 0.9, 0.5), R(['LxLxL', 'xLxLx', 'LxLxL', 'xLxLx', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.'], 0.56, 0.8, 0.5),
@@ -189,7 +189,8 @@ export const BOSSES = [
     hit: [{ x: 0, y: -12, hw: 26, hh: 24 }, { x: -58, y: -2, r: 22 }, { x: 58, y: -2, r: 22 }, { x: -92, y: 16, r: 18 }, { x: 92, y: 16, r: 18 }],
     phases: [
       [atk([beam([0, 2, 4], 0.5)], 0.9), atk([beam([1, 3], 0.5)], 0.8), R(MARCH(4), 0.55)],
-      [atk([beamSweep([0, 2, 4], 0.3, 0.3)], 0.9), atk([beamSweep([3, 1], 0.3, 0.3)], 0.8), atk([beam([0, 4], 0.6), v([2], 3)], 0.9)],
+      [atk([beamSweep([0, 2, 4], 0.3, 0.3)], 0.9), atk([beam([1, 3], 0.5), low([0, 2, 4])], 0.8),
+        atk([beamSweep([4, 2, 0], 0.3, 0.3)], 0.9), R(MARCH(6), 0.45)],
       [R(MARCH(6), 0.38), atk([beam([1, 3], 0.45), low([0, 2, 4])], 0.9), atk([beamSweep([0, 1, 2, 3], 0.2)], 0.8)],
     ],
     mk2: [
@@ -203,9 +204,10 @@ export const BOSSES = [
     id: 'mother', name: 'MOTHER', color: '#ffd23f',
     hit: [{ x: 0, y: 0, hw: 44, hh: 38 }],
     phases: [
-      [atk([summon([0, 4])], 0.6, 1.2), R(['LLLLL', 'LLLLL'], 0.7), atk([v([2], 4)], 0.8)],
-      [atk([summon([1, 3])], 0.6, 1.0), R(['LLLLL', 'LxLxL', 'LLLLL'], 0.6), atk([low([0, 2, 4])], 0.8)],
-      [atk([summon([0, 2, 4])], 0.5, 0.8), R(['LLLLL', 'LLLLL', 'LLLLL', 'LLLLL'], 0.65), atk([low(ALL)], 0.8)],
+      [atk([summon([0, 4])], 0.6, 1.0), R(['LLLLL', 'xLxLx', 'LLLLL', 'LxLxL'], 0.65), atk([v([1, 3], 3), low([2])], 0.8)],
+      [atk([summon([1, 3])], 0.6, 0.9), R(['LxLxL', 'LLLLL', 'xLxLx', 'LLLLL'], 0.6), atk([low([0, 2, 4]), v([1, 3], 3)], 0.8)],
+      [atk([summon([0, 2, 4])], 0.5, 0.8), R(['LLLLL', 'LxLxL', 'LLLLL', 'xLxLx', 'LLLLL'], 0.6), atk([low(ALL)], 0.8),
+        atk([v([0, 4], 3), low([1, 2, 3])], 0.8)],
     ],
     mk2: [
       [atk([summon([0, 2, 4])], 0.5, 0.8), R(['LLLLL', 'LxLxL', 'LLLLL', 'xLxLx'], 0.55), atk([v([1, 3], 4)], 0.7)],
@@ -294,16 +296,23 @@ function currentAttack(b) {
 }
 
 function resolveParts(b, a) {
-  return a.parts.flatMap((p) => {
+  const out = a.parts.flatMap((p) => {
     // Obstacle rows: the telegraph lights the barrier lanes of the first row.
     if (p.kind === 'obs') {
       const first = p.rows[0];
       return [{ ...p, lanes: [...first].flatMap((c, l) => (c === 'B' ? [l] : [])) }];
     }
-    if (p.kind !== 'rows') return [{ ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes }];
+    if (p.kind !== 'rows') {
+      const r = { ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes };
+      // layer: one more shot per volley every two layers
+      if (p.kind === 'volley') r.shots = p.shots + Math.min(3, Math.floor(b.layer / 2));
+      return [r];
+    }
     let rs = typeof p.rows === 'function' ? p.rows(b.playerLane) : p.rows;
-    // MK3+: two more rows, repeating the last two (same transitions, still fair).
-    if (b.loop >= 2 && rs.length >= 2) rs = [...rs, rs[rs.length - 2], rs[rs.length - 1]];
+    // MK3+ and every two layers: two more rows, repeating the last two (same
+    // transitions, still fair).
+    const pairs = (b.loop >= 2 ? 1 : 0) + Math.min(3, Math.floor(b.layer / 2));
+    for (let k = 0; k < pairs && rs.length >= 2; k++) rs = [...rs, rs[rs.length - 2], rs[rs.length - 1]];
     // Telegraph shows the first row: shots in the boss colour, lows in orange.
     const first = [...rs[0]];
     const shots = first.flatMap((c, l) => (c === 'x' ? [l] : []));
@@ -312,6 +321,14 @@ function resolveParts(b, a) {
     if (lows.length) out.push({ kind: 'low', lanes: lows, tele: true });
     return out;
   });
+  // Layer 2+: a volley or beam attack also sends low waves down the lanes it
+  // leaves free: you jump inside the gap instead of resting in it.
+  if (b.layer >= 2 && out.every((p) => p.kind === 'volley' || p.kind === 'beam')) {
+    const hit = new Set(out.flatMap((p) => p.lanes));
+    const free = ALL.filter((l) => !hit.has(l));
+    if (free.length) out.push({ kind: 'low', lanes: free });
+  }
+  return out;
 }
 
 const ROW_SHOT = { kind: 'rowshot' }, ROW_LOW = { kind: 'rowlow' }, OBS_ROW = { kind: 'obsrow' };
@@ -407,18 +424,50 @@ function fireEvent(b, e, difficulty) {
   }
 }
 
-// A row attack (rhythm rows or obstacle rows) waits until summoned drones and
-// frenzy volleys have fired: their shots could sit in the lane the rows leave
-// free. Fired before the telegraph, they always land before the first row.
-function rowsMustWait(b, a) {
-  if (!a.parts.some((p) => p.kind === 'rows' || p.kind === 'obs')) return false;
-  return !!b.frenzyShot || !!(b.frenzyQueue && b.frenzyQueue.length) ||
-    enemies.some((e) => e.minion && !e.dead && e.state !== 'leave');
+// Other enemies on the boss's screen: summoned drones and reinforcements.
+const others = () => enemies.filter((e) => e.type !== 'boss' && !e.dead && e.state !== 'leave');
+const addLanes = (e) => (e.type === 'stalker' || e.type === 'hopper' ? [e.lane - 1, e.lane, e.lane + 1] : [e.lane]);
+// Lanes an attack hits with shots that cannot be jumped.
+function highLanes(b, a) {
+  const out = new Set();
+  for (const p of a.parts) {
+    if (p.kind === 'low' || p.kind === 'summon' || p.kind === 'obs' || p.kind === 'rows') continue;
+    for (const l of typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes) out.add(l);
+  }
+  return out;
+}
+const isRowAttack = (a) => a.parts.some((p) => p.kind === 'rows' || p.kind === 'obs');
+// An attack waits for the others on screen when they would close it:
+// - a row attack (rhythm or obstacle rows) until summoned drones,
+//   reinforcements and frenzy volleys have fired: their shots could sit in the
+//   lane the rows leave free. Fired before the telegraph, they land before the
+//   first row;
+// - any other attack while, together with them, it would leave fewer than two
+//   free lanes (or fewer than it leaves alone).
+function attackMustWait(b, a) {
+  const rest = others();
+  if (isRowAttack(a)) return !!b.frenzyShot || !!(b.frenzyQueue && b.frenzyQueue.length) || rest.length > 0;
+  if (!rest.length) return false;
+  const A = highLanes(b, a), U = new Set(A);
+  for (const e of rest) for (const l of addLanes(e)) if (l >= 0 && l < LANES) U.add(l);
+  return LANES - U.size < Math.min(2, LANES - A.size);
+}
+// Reinforcements (run.js) may join only while the boss rests before an attack
+// that is not made of rows, in lanes that keep two free with that attack.
+export function bossTakesAdd(b, lanes) {
+  if (b.state !== 'rest') return false;
+  const a = currentAttack(b);
+  if (isRowAttack(a)) return false;
+  const U = highLanes(b, a);
+  for (const e of others()) for (const l of addLanes(e)) U.add(l);
+  for (const l of lanes) U.add(l);
+  return LANES - [...U].filter((l) => l >= 0 && l < LANES).length >= 2;
 }
 
 // Returns true while the boss is alive and fighting.
 export function updateBoss(b, dt, difficulty, playerLane = 2) {
   bossD = difficulty;
+  if (b.layer === undefined) b.layer = bossLayer(difficulty);
   b.playerLane = playerLane;
   b.prevX = b.x; b.prevY = b.y;
   b.t += dt;
@@ -454,7 +503,7 @@ export function updateBoss(b, dt, difficulty, playerLane = 2) {
       if (b.y >= holdY()) { b.y = holdY(); b.state = 'rest'; b.stateT = 0.3; }
       break;
     case 'rest':
-      if (b.stateT >= a.rest / m && !rowsMustWait(b, a)) {
+      if (b.stateT >= a.rest / m / (1 + 0.1 * b.layer) && !attackMustWait(b, a)) {
         b.state = 'telegraph';
         b.stateT = 0;
         b.teleParts = resolveParts(b, a);   // target lock happens here
