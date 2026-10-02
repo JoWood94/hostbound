@@ -242,6 +242,53 @@ Row 5 WARDEN: a ribcage gate, five huge curved ribs across the whole width held 
 a beating red heart in the middle, veins pulsing, pus at the joints.
 ```
 
+## 3b. Boss — secondo foglio (5 boss nuovi)
+
+Stesso formato del primo foglio boss (**allegalo come riferimento**, insieme alla
+spritemap del simbionte): 1024×640, 4 colonne × 5 righe, celle 256×128, fondo **verde
+chroma #00ff00** (lo tolgo io). Colonne come il primo: 1–2 riposo, 3 avviso, 4 ferito.
+Sono i boss dei distretti 6–10; dopo di loro tornano tutti come MK2.
+
+Ogni boss ha già un'identità di gioco, così l'aspetto racconta cosa farà:
+
+| Riga | Boss | Cosa fa in gioco |
+|---|---|---|
+| 1 | MAW | Bocca che inspira: risucchia i colpi verso il centro, poi sputa ventagli e onde basse a tempo |
+| 2 | CHOIR | Anello di teste che cantano: raggi armonici che si alternano tra corsie pari e dispari, cori a canone |
+| 3 | MOTHER | Regina della covata: depone file di uova da saltare e partorisce droni, ondate a ritmo |
+| 4 | SPINE | Millepiedi lungo tutta la pista: il corpo fa da muro su più corsie e si sposta, varchi tra i segmenti |
+| 5 | ECLIPSE | Occhio del vuoto: veli e squarci da attraversare col phase mescolati a raffiche nel buio |
+
+```
+Match the two attached reference sheets exactly: same dark gritty pixel art, same chunky
+pixel size, same Brood flesh palette (bruise purple and grey-green #2a1a3a #3a2a4a
+#4a5a3a #6a7a4a, yellowed bone #cdbb8e #8a7553, dried blood #7a0f22, sickly yellow eyes
+#d9c45a), glowing parts in hot pink #ff2bd6 and toxic orange #ff6a00, 1 px outline
+#07040a, light from the top-left.
+One sprite sheet, 1024x640 pixels, a grid of 4 columns by 5 rows, every cell exactly
+256x128 pixels, no gutters, no borders, flat pure chroma green #00ff00 background.
+Colossal BOSSES seen from directly above, FACING DOWN toward the player, each about
+220 px wide, centred in its cell, filling the width.
+In every row: columns 1-2 a slow two-frame breathing idle. Column 3 the WARNING pose:
+every glowing organ flares white-pink, eyes wide, about to attack. Column 4 the same boss
+WOUNDED: open bleeding gashes, cracked bone, one eye burst.
+Row 1 MAW: an enormous round mouth seen from above, rings of inward-pointing teeth
+spiralling into a dark throat, lips of swollen flesh, two small eyes on stalks at the
+sides, glowing pink saliva strands across the throat.
+Row 2 CHOIR: a ring of five fused heads with open singing mouths, joined by a shared
+spine, each mouth glowing toxic orange inside, thin vocal cords stretched between them
+like harp strings.
+Row 3 MOTHER: a bloated brood queen, a huge translucent abdomen full of glowing yellow
+eggs, many small legs along the sides, a crown of bony horns, a dripping ovipositor at
+the front pointing down.
+Row 4 SPINE: a giant centipede curled across the whole width, armoured bone segments
+with pink glowing joints, many legs, a horned head on one side and a stinger tail on the
+other, gaps between the segments.
+Row 5 ECLIPSE: a black void sphere with a burning pink corona, one huge pale eye in the
+middle, tendrils of darkness reaching out to the sides, small stars caught in its pull.
+No green in the creatures, no text.
+```
+
 ## 4. Colpi, effetti, pickup
 
 Regola di colore: **tutto ciò che spari tu è verde acido** (#c6ff1a, nucleo #f4ffd8);

@@ -118,6 +118,27 @@ export const COURSES = [
   { id: 'c-no-rest', from: 6000, events: [r(8, 'B.BBB'), r(9.5, '.BBBB'), r(11, 'TB.BB'), r(12.5, 'B.B.B'), r(14, '.B.B.'), r(16, 'BPBBB'), r(17.5, 'B.B.B'), v(24), r(26, 'TBTBT')] },
 ];
 
+// Difficulty rating of an authored section, on the same scale as the
+// generator's intensity: enemies by weight, rows by how much they block, tight
+// rows and veils extra. The director plays a section when its rating is close
+// to the current intensity.
+const WEIGHT = { drone: 1, kamikaze: 1.2, brooder: 1.2, hopper: 1.6, sweeper: 1.8, stalker: 1.8, crusher: 1.8, throb: 2.4, weaver: 2.6, wall: 3, tank: 3 };
+export function rateSection(sec) {
+  let s = 0;
+  for (const e of sec.events) if (e.kind === 'enemy') s += WEIGHT[e.type] || 1;
+  const rows = sec.events.filter((e) => e.kind === 'row' || e.kind === 'veil').sort((a, b) => a.beat - b.beat);
+  let prev = null;
+  for (const r of rows) {
+    const row = r.kind === 'veil' ? 'PPPPP' : r.row;
+    const n = (c) => [...row].filter((x) => x === c).length;
+    s += 0.25 + 0.18 * n('B') + 0.12 * n('T') + (r.kind === 'veil' ? 0.9 : 0.35 * n('P'));
+    if (prev !== null && r.beat - prev < 2.5) s += 0.25;
+    prev = r.beat;
+  }
+  return s;
+}
+for (const sec of [...SECTIONS, ...COURSES]) sec.rating = rateSection(sec);
+
 // Mirror a section left/right.
 export function mirrorEvent(ev) {
   const out = { ...ev };

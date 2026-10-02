@@ -147,6 +147,11 @@ Bomb (pulisce schermo), Time Slow 3 s, Overdrive (sparo x3 per 5 s), Heal.
 ### Ritmo d'inizio e rampa (v1.1.1)
 Tempo da 150 BPM, +12 per distretto fino a 230. Viaggio dei colpi nemici 7 tick, 6 dal distretto 3, 5 dal 6: da "corsia accesa" a "colpo" 2,2 s all'inizio, 1,6 s al distretto 3, 1,2 s dal 6. Raffiche extra ai distretti 2, 4 e 7; rinforzi dal distretto 1 (due dal 4); respiro tra sezioni nullo dal distretto 4; élite dal distretto 1. Misurato (raffiche/min, giocatore fermo): 36 · 41 · 43 · 51 · 88 (T4) · 77 (T6) · 90 (T8).
 
+### Sezioni procedurali (v1.2)
+La difficoltà segue un'**intensità** continua e senza tetto, `I = 1 + metri/700` (2,4 a 1000 m, 9,6 a 6000, 18 a 12000). Il direttore alterna combattimento e percorso e, per ognuno, sceglie in base a I: nei primi distretti soprattutto sezioni scritte a mano (insegnano un'idea alla volta, scelte se il loro punteggio di difficoltà è vicino a I), poi quasi solo sezioni **generate** su misura (`generator.js`): più ondate e più fitte, nemici più pesanti, file di ostacoli dentro i combattimenti, percorsi più lunghi e più chiusi. Ogni sezione generata passa il controllo di equità (`fairness.js`) o viene rigenerata; le ondate tengono al massimo 3 corsie minacciate. Misurato (raffiche/min, giocatore fermo): 49 · 65 · 81 · 186 (T4) · 170 (T6) · 253 (T9) · 416 (T12), con 5 nemici a schermo in media a 12000 m. Oltre il distretto 7 le raffiche extra continuano (+1 ogni 3 distretti) e le élite salgono fino al 90%.
+
+**Boss**: primo giro i 5 boss; dal secondo giro **MK2 con pattern riscritti** (Sentinel marcia da battaglia, Hive sciame della peste, Hunter branco, Prism caleidoscopio, Warden tamburi di guerra), più frenesia sotto il 15%; dal terzo giro le righe si allungano e c'è lo sciame del Hive. In arrivo 5 boss nuovi (MAW, CHOIR, MOTHER, SPINE, ECLIPSE: prompt in `ART_PROMPTS.md` §3b) per i distretti 6–10, prima dei MK2.
+
 ### Prestazioni
 Gli ostacoli sono pre-renderizzati: 12 fotogrammi di animazione in loop per tipo e variante, preparati all'avvio della partita (~40 ms una volta sola) e stampati con `drawImage`. Prima ogni ostacolo ricalcolava fili, sfumature e `shadowBlur` a ogni frame: una scena con 25 ostacoli e un velo costava 74 ms per frame, ora 7.
 

@@ -11,6 +11,7 @@ import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPosi
 import { enemies, TYPES, spawnEnemy, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus } from './enemies.js';
 import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
 import { survivable, rowsOf } from './fairness.js';
+import { intensity, generateCourse, generateCombat } from './generator.js';
 import { updateWorld, LANES, LANE_W, PX_PER_M, DISTRICTS, districtIndex, laneX } from './world.js';
 import { obstacles, spawnObstacle, spawnVeil, updateObstacles, clearObstacles, OB_H, warmObstacleArt } from './obstacles.js';
 import { pickups, spawnPickup, dropCoins, updatePickups, clearPickups } from './pickups.js';
@@ -312,23 +313,27 @@ const BEAT = 2;            // ticks per beat
 // Big enemies pay one extra coin.
 const BIG_ENEMIES = new Set(['crusher', 'throb', 'weaver', 'wall', 'tank']);
 
+const inRange = (x, dist) => x.from <= dist && (x.to === undefined || dist < x.to);
+
 // Fight, run, fight, run: combat sections and obstacle courses alternate, so
 // the run breathes between shooting and reading the track.
-const inRange = (x, dist) => x.from <= dist && (x.to === undefined || dist < x.to);
+// Sections are chosen by INTENSITY (generator.js), which rises with distance
+// and has no ceiling. Early on, the authored sections teach one idea at a
+// time; later most sections are generated to measure, and an authored one only
+// shows up now and then when its rating fits (a familiar shape).
 function pickSection(run) {
   const wantCourse = run.lastKind === 'combat';
+  run.lastKind = wantCourse ? 'course' : 'combat';
+  const I = intensity(run.distance);
+  // Sawtooth: right after a boss, the intensity of the previous district.
+  const target = B.heat(run.distance) <= 0 ? intensity(Math.max(0, run.distance - 1000)) : I;
   const lib = wantCourse ? COURSES : SECTIONS;
-  // Sawtooth: right after a boss (heat 0) only sections from the previous
-  // districts, so the new tempo is read on familiar shapes.
-  const cap = B.heat(run.distance) <= 0 ? Math.max(1000, B.tier(run.distance) * 1000 - 1000) : Infinity;
-  let pool = lib.filter((x) => inRange(x, run.distance) && x.from <= cap && !run.recentSec.includes(x.id));
-  if (!pool.length) pool = (wantCourse ? SECTIONS : COURSES).filter((x) => inRange(x, run.distance) && !run.recentSec.includes(x.id));
-  if (!pool.length) pool = SECTIONS.filter((x) => inRange(x, run.distance));
-  // Newer sections (unlocked in the last ~1500 m) come up twice as often.
-  const weighted = pool.flatMap((x) => (run.distance - x.from < 1500 ? [x, x] : [x]));
-  const def = run.rng.pick(weighted);
-  run.lastKind = COURSES.includes(def) ? 'course' : 'combat';
-  return def;
+  const authored = lib.filter((x) => inRange(x, run.distance) && !run.recentSec.includes(x.id)
+    && x.rating >= target - 1.6 && x.rating <= target + 0.6);
+  const useAuthored = authored.length && run.rng.chance(target <= 3 ? 0.75 : 0.25);
+  if (useAuthored) return run.rng.pick(authored);
+  const events = wantCourse ? generateCourse(run.rng, target) : generateCombat(run.rng, target, run.distance);
+  return { id: `gen-${run.lastKind}-${Math.round(run.distance)}`, events, generated: true };
 }
 
 // Narrow enemies that can reinforce a combat section at high tiers.
@@ -356,7 +361,7 @@ function tightenCourse(run, events) {
 
 function startSection(run, d) {
   const def = pickSection(run);
-  run.recentSec = [def.id, ...run.recentSec].slice(0, 3);
+  if (!def.generated) run.recentSec = [def.id, ...run.recentSec].slice(0, 4);
   const mirror = run.rng.chance(0.5);
   const T = B.tier(run.distance), h = B.heat(run.distance);
   let events = def.events.map((ev) => (mirror ? mirrorEvent(ev) : { ...ev }));

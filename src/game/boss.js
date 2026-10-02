@@ -75,6 +75,12 @@ export const BOSSES = [
       [R(MARCH(8), 0.42, 0.8, 0.5), atk([low(ALL)], 0.9, 0.4),
         R(['x.x.x', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.', 'LLLLL', '.x.x.'], 0.5), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
     ],
+    // MK2: battle march. Crossing sweeps, marches broken by jumps.
+    mk2: [
+      [R(MARCH(6), 0.45), atk([v([0, 2, 4]), low([1, 3])], 0.9), atk([sw([0, 1, 2, 3, 4], 0.18), sw([4, 3, 2, 1, 0], 0.18)], 1.0)],
+      [R(['x.x.x', '.x.x.', 'LLLLL', 'x.x.x', '.x.x.', 'LLLLL'], 0.42), atk([v([0, 1, 3, 4], 4), low([2])], 0.8), R(MARCH(8), 0.38)],
+      [R(['x.x.x', 'LxLxL', '.x.x.', 'xLxLx', 'x.x.x'], 0.5), atk([sw([0, 1, 2, 3, 4], 0.14)], 0.7), R(chase(10), 0.36)],
+    ],
   },
   {
     // Swarm: drones on the edges, a wandering hole through spore walls inside.
@@ -86,6 +92,12 @@ export const BOSSES = [
       [atk([summon([0, 4])], 0.6, 1.0), R(corridor(bounce(2, 1, 8, 1, 3)), 0.5), atk([v([2]), low([0, 1, 3, 4])], 0.9), atk([sw([1, 2, 3])])],
       [atk([summon([0, 4])], 0.6, 0.8), R(corridor(bounce(1, 1, 11, 1, 3)), 0.4, 0.8, 0.5), atk([low(ALL)], 0.9),
         atk([v([1, 3], 4)], 0.7), atk([sw([3, 2, 1], 0.18)], 0.9)],
+    ],
+    // MK2: plague swarm. Longer wandering corridors, a low wave down the middle.
+    mk2: [
+      [atk([summon([0, 4])], 0.6, 0.8), R(corridor(bounce(2, 1, 10, 1, 3)), 0.4), atk([v([1, 3], 4), low([2])], 0.8)],
+      [atk([summon([0, 4])], 0.6, 0.6), R(corridor(bounce(1, 1, 12, 1, 3)), 0.36), atk([low(ALL)], 0.8), atk([sw([1, 2, 3], 0.15), sw([3, 2, 1], 0.15)], 0.9)],
+      [atk([summon([0, 4])], 0.5, 0.5), R(corridor(bounce(2, -1, 14, 1, 3)), 0.34), atk([beam([2], 0.6), low([1, 3])], 0.9)],
     ],
   },
   {
@@ -99,6 +111,12 @@ export const BOSSES = [
       [R(chase(10), 0.38, 0.7, 0.4), atk([beam(at([0]), 0.6), low(except([0]))], 0.9), atk([v(at([-1, 0, 1]), 3)], 0.6),
         R(chase(10), 0.36, 0.7, 0.4), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
     ],
+    // MK2: pack hunter. Long chases, locked beams between them.
+    mk2: [
+      [R(chase(8), 0.45), atk([v(at([0]), 5)], 0.7), atk([low(at([-1, 0, 1])), v(at([-2, 2]), 3)], 0.8)],
+      [R(chase(12), 0.38), atk([beam(at([0]), 0.5)], 0.6), R(chase(10), 0.36)],
+      [atk([beam(at([0]), 0.6), low(except([0]))], 0.8), R(chase(14), 0.34), atk([v(at([-1, 1]), 4), v(at([0]), 2)], 0.6)],
+    ],
   },
   {
     // Staircase: beams plus zigzag holes that climb across the whole track.
@@ -111,6 +129,12 @@ export const BOSSES = [
       [atk([beamSweep([0, 1, 2, 3], 0.24)], 0.9, 0.4), R(corridor(bounce(4, -1, 13)), 0.34, 0.8, 0.4),
         atk([beamSweep([4, 3, 2, 1], 0.24)], 0.8), atk([beam([1, 3], 0.5), low([0, 2, 4])], 1.0)],
     ],
+    // MK2: kaleidoscope. Fast staircases between alternating beams.
+    mk2: [
+      [R(corridor(bounce(0, 1, 12)), 0.38), atk([beam([0, 2, 4], 0.5)], 0.8, 0.4), atk([beam([1, 3], 0.5)], 0.6, 0.4)],
+      [atk([beamSweep([0, 1, 2, 3], 0.2)], 0.8, 0.3), R(corridor(bounce(4, -1, 14)), 0.32), atk([beam([1, 3], 0.5), low([0, 2, 4])], 0.9)],
+      [R(corridor(bounce(2, 1, 16)), 0.3), atk([beamSweep([4, 3, 2, 1], 0.18)], 0.7), atk([beam([0, 2, 4], 0.45), low([1, 3])], 0.8)],
+    ],
   },
   {
     // Drums: low waves on the beat. Jump in time, shift lanes in the air.
@@ -122,6 +146,12 @@ export const BOSSES = [
         atk([beam([0, 4]), v([2])], 0.9), atk([beam([1, 3])], 0.9)],
       [atk([beam([0, 2, 4])], 0.9, 0.5), R(['LxLxL', 'xLxLx', 'LxLxL', 'xLxLx', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.'], 0.56, 0.8, 0.5),
         atk([low(ALL), beam([2], 0.5)], 1.0), atk([sw([0, 1, 2, 3, 4], 0.16)], 0.8)],
+    ],
+    // MK2: war drums. Jumps and lane changes back to back.
+    mk2: [
+      [R(['LLLLL', 'x.x.x', 'LLLLL', '.x.x.', 'LLLLL'], 0.6), atk([beam([0, 1]), beam([3, 4], 0.5)], 1.0)],
+      [R(['LxLxL', 'xLxLx', 'LxLxL', 'xLxLx', 'LLLLL', 'x.x.x'], 0.5), atk([beam([2]), low([0, 1, 3, 4])], 0.9), atk([beam([0, 4]), v([1, 3])], 0.9)],
+      [R(['LxLxL', 'xLxLx', 'LLLLL', 'x.x.x', 'LLLLL', '.x.x.', 'LxLxL'], 0.45), atk([low(ALL), beam([1, 3], 0.5)], 1.0), atk([sw([0, 1, 2, 3, 4], 0.14)], 0.7)],
     ],
   },
 ];
@@ -165,7 +195,9 @@ export function makeBoss(index, defIndex, power = 1) {
 const MK3_SUMMON = atk([summon([0, 4])], 0.6, 1.2);
 function currentAttack(b) {
   // Phase 3 is the MK2+ frenzy: phase 2's attacks with volleys layered on top.
-  let list = b.def.phases[Math.min(2, b.phase)];
+  // Second loop and later: the MK2 patterns (rewritten, not just faster).
+  const phases = b.loop >= 1 && b.def.mk2 ? b.def.mk2 : b.def.phases;
+  let list = phases[Math.min(2, b.phase)];
   if (b.loop >= 2 && b.phase === 0) list = [...list, MK3_SUMMON];
   return list[b.atkIndex % list.length];
 }
@@ -174,8 +206,8 @@ function resolveParts(b, a) {
   return a.parts.flatMap((p) => {
     if (p.kind !== 'rows') return [{ ...p, lanes: typeof p.lanes === 'function' ? p.lanes(b.playerLane) : p.lanes }];
     let rs = typeof p.rows === 'function' ? p.rows(b.playerLane) : p.rows;
-    // MK2+: two more rows, repeating the last two (same transitions, still fair).
-    if (b.loop >= 1 && rs.length >= 2) rs = [...rs, rs[rs.length - 2], rs[rs.length - 1]];
+    // MK3+: two more rows, repeating the last two (same transitions, still fair).
+    if (b.loop >= 2 && rs.length >= 2) rs = [...rs, rs[rs.length - 2], rs[rs.length - 1]];
     // Telegraph shows the first row: shots in the boss colour, lows in orange.
     const first = [...rs[0]];
     const shots = first.flatMap((c, l) => (c === 'x' ? [l] : []));
