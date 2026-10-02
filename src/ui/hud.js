@@ -6,6 +6,8 @@ import { ITEM_BY_ID, CAT_COLOR } from '../game/items.js';
 
 // y follows the live safe area (it can settle after launch).
 export const ACTIVE_BTN = { x: 8, get y() { return H - 82 - SAFE_BOTTOM; }, w: 74, h: 46 };
+// Pause: bottom-right, mirroring the active button, in reach of the thumb.
+export const PAUSE_BTN = { x: W - 8 - 44, get y() { return H - 82 - SAFE_BOTTOM; }, w: 44, h: 46 };
 
 export function heart(x, y, color, filled, s = 1) {
   const pts = [x, y - 4 * s, x + 5 * s, y - 8 * s, x + 9 * s, y - 4 * s, x, y + 6 * s, x - 9 * s, y - 4 * s, x - 5 * s, y - 8 * s];
@@ -46,18 +48,24 @@ export function drawHud(run) {
 
   text(`${Math.floor(run.distance)}m`, W - 10, y, { color: PAL.cyan, size: 16, align: 'right' });
   text(`LV ${run.level}`, W - 10, y + 16, { color: PAL.acid, size: 12, align: 'right' });
-  if (!run.boss && run.warnT <= 0) {
+  if (run.tutorial) text('TUTORIAL', W - 10, y + 30, { color: PAL.cyan, size: 9, align: 'right', alpha: 0.8 });
+  else if (!run.boss && run.warnT <= 0) {
     const left = Math.max(0, Math.ceil(run.nextEvent - run.distance));
     text(run.pending ? 'BOSS INCOMING' : `BOSS ${left}m`, W - 10, y + 30, { color: PAL.magenta, size: 9, align: 'right', alpha: 0.8 });
   }
 
   // Pause button
-  ctx.strokeStyle = PAL.dim;
-  ctx.lineWidth = 2;
-  const py = 6 + SAFE_TOP;
-  ctx.strokeRect(W / 2 - 14, py, 28, 22);
-  fillPoly([W / 2 - 6, py + 5, W / 2 - 2, py + 5, W / 2 - 2, py + 17, W / 2 - 6, py + 17], PAL.white);
-  fillPoly([W / 2 + 2, py + 5, W / 2 + 6, py + 5, W / 2 + 6, py + 17, W / 2 + 2, py + 17], PAL.white);
+  {
+    const { x: bx, y: by, w: bw, h: bh } = PAUSE_BTN;
+    ctx.fillStyle = 'rgba(10,0,8,0.7)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = PAL.mute;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(bx, by, bw, bh);
+    const cx = bx + bw / 2, cy = by + bh / 2;
+    fillPoly([cx - 7, cy - 8, cx - 2, cy - 8, cx - 2, cy + 8, cx - 7, cy + 8], PAL.white);
+    fillPoly([cx + 2, cy - 8, cx + 7, cy - 8, cx + 7, cy + 8, cx + 2, cy + 8], PAL.white);
+  }
 
   // Active item: a real button, bottom-left. Fills up with kills; tap it when full.
   if (run.active) {

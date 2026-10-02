@@ -141,7 +141,8 @@ export function updatePlayer(p, input, dt, stats) {
   else if (phaseInput && p.phaseCd <= 0) {
     p.phaseT = stats.phaseTime;
     p.phaseCd = stats.phaseCd;
-    p.iframes = Math.max(p.iframes, stats.phaseTime);
+    // no i-frames: phase passes only shots, enemy bodies and cyan tears /
+    // veils (run.js); barriers and wires still hit (dodge / jump them)
     p.ev.phase = true;
     burst(p.x, PLAYER_Y, PAL.cyan, 10, 140, 0.3, 2);
   }

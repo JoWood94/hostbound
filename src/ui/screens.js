@@ -177,7 +177,9 @@ export function drawMenu(save, t, boardIdx) {
   const dBest = save.daily.date === todayKey() ? save.daily.best : 0;
   button('daily', 60, 402, W - 120, 40, 'DAILY RUN', { color: PAL.magenta, size: 13,
     sub: dBest ? `same seed for everyone · today ${dBest}m` : 'same seed for everyone today' });
-  button('archive', 60, 450, W - 120, 34, 'ARCHIVE', { color: PAL.acid, size: 13 });
+  const hb = (W - 128) / 2;
+  button('archive', 60, 450, hb, 34, 'ARCHIVE', { color: PAL.acid, size: 13 });
+  button('tutorial', 68 + hb, 450, hb, 34, 'TUTORIAL', { color: PAL.white, size: 13 });
 
   const nUnl = unlockedItems(save).length;
   text(`${nUnl}/${ITEMS.length} ITEMS · ${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length} GOALS`, W / 2, 494, { color: PAL.mute, size: 8, align: 'center' });
@@ -341,7 +343,11 @@ export function drawPause(run) {
   dim(0.88);
   text('PAUSED', W / 2, 70, { color: PAL.cyan, size: 28, align: 'center' });
   button('resume', 60, 100, W - 120, 46, 'RESUME', { color: PAL.cyan, size: 18 });
-  button('quit', 60, 154, W - 120, 34, 'QUIT RUN', { color: PAL.red, size: 12 });
+  if (run.tutorial) {
+    const hw = (W - 128) / 2;
+    button('skipTutorial', 60, 154, hw, 34, 'TUTORIAL', { color: PAL.white, size: 11, sub: 'skip it' });
+    button('quit', 68 + hw, 154, hw, 34, 'QUIT RUN', { color: PAL.red, size: 12 });
+  } else button('quit', 60, 154, W - 120, 34, 'QUIT RUN', { color: PAL.red, size: 12 });
 
   // Stats
   const st = run.stats;

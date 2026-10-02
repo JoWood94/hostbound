@@ -18,6 +18,7 @@ function fresh() {
     board: 'stock',
     settings: { sfx: true, music: true },
     daily: { date: '', best: 0 },
+    tutorialDone: false,   // the first-run tutorial was played (or skipped)
   };
 }
 
@@ -35,6 +36,8 @@ function migrate(data) {
   out.extraItems = Array.isArray(data.extraItems) ? data.extraItems : [];
   out.modesUsed = Array.isArray(data.modesUsed) ? data.modesUsed : [];
   out.combos = { ...(data.combos || {}) };
+  // Saves from before the tutorial: whoever already played does not need it.
+  if (data.tutorialDone === undefined) out.tutorialDone = (out.totals.runs || 0) > 0;
   out.v = VERSION;
   return out;
 }

@@ -24,6 +24,7 @@ import { ITEMS, ITEM_BY_ID, rollItems, TRIOS, CARRIER_PAIRS } from './game/items
 import { unlockedBoards, unlockedItems } from './game/achievements.js';
 import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, EVENT_EVERY, drawHusks } from './game/run.js';
 import { drawHud } from './ui/hud.js';
+import { drawTutorial, finishTutorial } from './game/tutorial.js';
 import { drawMenu, drawArchive, archivePages, drawPick, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
 import { startMusic, setMusic } from './audio/music.js';
@@ -54,10 +55,13 @@ function ensureAudio() {
   startMusic();
 }
 
-function startRun(daily = false) {
+// The tutorial plays before the first run (and from the menu's TUTORIAL
+// button); never on the daily or on test starts (?from, &items).
+function startRun(daily = false, tutorial = false) {
   if (!daily) save.board = BOARDS[boardIdx].id;
   writeSave(save);
-  run = createRun(save, { daily });
+  const tut = !daily && (tutorial || (!save.tutorialDone && !START_FROM && !START_ITEMS.length));
+  run = createRun(save, { daily, tutorial: tut });
   if (!daily) for (const id of START_ITEMS) acquire(run, id, true);
   if (START_FROM && !daily) warpTo(run, START_FROM);
   else if (START_ITEMS.length && !daily) { run.toasts = []; toastBuild(run); }
@@ -155,6 +159,7 @@ function update(dt) {
     else if (id === 'boardNext' || input.right) { boardIdx = (boardIdx + 1) % BOARDS.length; sfx.lane(); }
     else if ((id === 'run' || id === 'enter' || input.jump) && unlocked) startRun();
     else if (id === 'daily') startRun(true);
+    else if (id === 'tutorial') startRun(false, true);
     else if (id === 'archive') { screen = 'archive'; sfx.select(); }
     else if (id === 'sfx') { save.settings.sfx = !save.settings.sfx; applySettings(audioSettings()); writeSave(save); sfx.select(); }
     else if (id === 'music') { save.settings.music = !save.settings.music; applySettings(audioSettings()); writeSave(save); sfx.select(); }
@@ -203,6 +208,7 @@ function update(dt) {
     case 'pause':
       if (locked) break;
       if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; sfx.select(); }
+      else if (id === 'skipTutorial' && run.tutorial) { finishTutorial(run); run.mode = 'play'; sfx.select(); }
       else if (id === 'quit') { run.player.dead = true; endRun(run); run.deadT = 0.8; }
       break;
     case 'dead':
@@ -276,6 +282,7 @@ function render(alpha) {
     drawEnemyBullets('high');  // normal enemy bullets always on top: readability rule
     drawBossBar(r.boss);
     drawHud(r);
+    if (r.mode === 'play') drawTutorial(r);
     if (r.mode === 'pick') centred(() => drawPick(r));
     else if (r.mode === 'pause') centred(() => drawPause(r));
     else if (r.mode === 'dead') centred(() => drawDead(r));

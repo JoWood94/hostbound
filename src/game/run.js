@@ -1,7 +1,7 @@
 // One run: spawning, collisions, rewards, levels, bosses, actives, achievements.
 // Modes: play | pick (item after a boss or a level-up) | pause | dead
 // Coins are 'cells' on screen: they are experience. Every level offers a pick.
-import { W, H, SAFE_TOP, ctx } from '../core/canvas.js';
+import { W, H, ctx } from '../core/canvas.js';
 import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
@@ -25,7 +25,8 @@ import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeapon
 import { checkAchievements, unlockedItems, rewardOf } from './achievements.js';
 import { sfx } from '../audio/audio.js';
 import { setMusic, syncMusic } from '../audio/music.js';
-import { ACTIVE_BTN } from '../ui/hud.js';
+import { ACTIVE_BTN, PAUSE_BTN } from '../ui/hud.js';
+import { makeTutorial, updateTutorial, tutorialHit } from './tutorial.js';
 
 export const EVENT_EVERY = 1000;      // metres between bosses: one at the end of each district
 
@@ -42,6 +43,7 @@ function hashSeed(str) {
 
 export function createRun(save, opts = {}) {
   const daily = !!opts.daily;
+  const tutorial = !daily && !!opts.tutorial;
   const dailyKey = daily ? todayKey() : null;
   const seed = daily ? hashSeed(`neon-overdrift:${dailyKey}`) : randomSeed();
   const board = daily ? BOARD_BY_ID.stock : (BOARD_BY_ID[save.board] || BOARD_BY_ID.stock);
@@ -67,6 +69,7 @@ export function createRun(save, opts = {}) {
     corruptSpawned: 0,
     achT: 0, deadT: 0,
     district: 0,
+    tutorial: tutorial ? makeTutorial() : null,
   };
   run.stats = computeStats(board, run.stacks);
   run.player = makePlayer(run.stats, board.color, board.id);
@@ -104,6 +107,7 @@ export function difficulty(run) { return run.distance / 400; }
 
 // One-time contextual tutorial tips, remembered in the save.
 function tip(run, id, textStr, sub) {
+  if (run.tutorial) return;
   if (!run.save.tips) run.save.tips = {};
   if (run.save.tips[id]) return;
   run.save.tips[id] = true;
@@ -780,9 +784,11 @@ export function updateRun(run, input, dt) {
   const st = run.stats;
   const d = difficulty(run);
 
-  // Pause button (top centre) and active item (tap anywhere else)
-  if (input.pause || input.blur || (input.tap && input.tapY >= 0 && input.tapY < 40 + SAFE_TOP && Math.abs(input.tapX - W / 2) < 34)) {
+  // Pause button (bottom right) and active item (bottom left)
+  const P_ = PAUSE_BTN;
+  if (input.pause || input.blur || (input.tap && input.tapX >= P_.x - 6 && input.tapX <= P_.x + P_.w + 6 && input.tapY >= P_.y - 6 && input.tapY <= P_.y + P_.h + 6)) {
     run.mode = 'pause';
+    if (run.tutorial) run.tutorial.paused = true;
     return;
   }
   // Active item: only the button (or E on keyboard), never a stray tap.
@@ -807,12 +813,12 @@ export function updateRun(run, input, dt) {
   // queue has waited LEVEL_WAIT s, the first moment with no shot about to land
   // and no obstacle near is enough.
   if (run.levelUps > 0) run.levelWaitT = (run.levelWaitT || 0) + dt;
-  if (run.levelUps > 0 && run.pickDelay <= 0 && run.warnT <= 0 && !p.dead && (calmBetweenSections(run) || (run.levelWaitT > LEVEL_WAIT && nothingIncoming()))) {
+  if (run.levelUps > 0 && (!run.tutorial || run.tutorial.allowPick) && run.pickDelay <= 0 && run.warnT <= 0 && !p.dead && (calmBetweenSections(run) || (run.levelWaitT > LEVEL_WAIT && nothingIncoming()))) {
     run.levelUps--;
     if (!run.levelUps) run.levelWaitT = 0;
     if (st.parasite && p.hearts > 1) { p.hearts--; toast(run, 'PARASITE FEEDS', '-1 heart', PAL.red, 1.6); }
     sfx.synergy();
-    if (openPick(run, 'level')) return;
+    if (openPick(run, 'level')) { if (run.tutorial) run.tutorial.picked = true; return; }
   }
 
   if (run.slowT > 0) run.slowT -= dt;
@@ -824,7 +830,7 @@ export function updateRun(run, input, dt) {
   run.time += dt;
   const target = 220 + Math.min(260, 40 * Math.log1p(d * 2));
   run.speed = run.boss || run.warnT > 0 ? target * 0.8 : target;
-  if (!run.boss && run.warnT <= 0) run.distance += (run.speed / PX_PER_M) * edt;
+  if (!run.boss && run.warnT <= 0 && !run.tutorial) run.distance += (run.speed / PX_PER_M) * edt;
   run.rs.distance = run.distance;
   updateWorld(edt, run.speed);
   const di = districtIndex(run.distance);
@@ -849,7 +855,8 @@ export function updateRun(run, input, dt) {
     if (run.warnT <= 0) { run.boss = makeBoss(run.bossIndex, run.bossOrder[run.bossIndex % run.bossOrder.length], powerRatio(run.stats)); run.boss.flank = B.tier(run.distance) >= 4; run.bossHit = false; }
   }
 
-  if (!run.pending && !run.boss && run.pickDelay <= 0) {
+  if (run.tutorial) updateTutorial(run, dt);
+  else if (!run.pending && !run.boss && run.pickDelay <= 0) {
     direct(run, d);
     run.chunkT -= edt;
     if (run.chunkT <= 0 && run.distance > 40) {
@@ -860,7 +867,7 @@ export function updateRun(run, input, dt) {
 
   // Player + weapon
   if (run.time > 0.5) tip(run, 'lanes', 'SWIPE OR TAP LEFT / RIGHT', 'Change lane. Lit lanes are about to be shot');
-  if (run.time > 8) tip(run, 'phase', 'SWIPE DOWN TO PHASE', 'Brief invulnerability. In the air: drop and phase');
+  if (run.time > 8) tip(run, 'phase', 'SWIPE DOWN TO PHASE', 'Pass through shots and cyan tears, not walls');
   p.airMul = B.timeMul(0) / B.timeMul(d);        // jumps last the same in ticks as the clock speeds up
   updatePlayer(p, input, dt, st);
   if (p.ev.jump) sfx.jump();
@@ -984,7 +991,8 @@ export function updateRun(run, input, dt) {
       kill(eb, i); i--;
       continue;
     }
-    if (isPhased(p)) {
+    // phase passes shots, not the orange low waves (orange = jump)
+    if (isPhased(p) && !low) {
       run.rs.phaseDodges++;
       // SPECTRE (GHOSTROUND + MIRROR SKIN): reflections are ghost shots
       if (st.mirror) spawn(playerBullets, eb.x[i], eb.y[i], 0, -480, 4, 2 * st.damageMul * (st.counter ? 3 : 1) * (st.spectre ? 2 : 1), 0, st.spectre ? 99 : 1);
@@ -995,11 +1003,11 @@ export function updateRun(run, input, dt) {
     if (p.iframes > 0) continue;
     run.lastHit = { what: shooterName(run, eb.x[i], low), x: eb.x[i], y: PLAYER_Y, lane: p.lane, color: low ? PAL.orange : PAL.magenta };
     kill(eb, i); i--;
-    onHurt(run, hurtPlayer(p, st));
+    onHurt(run, run.tutorial ? tutorialHit(run, p) : hurtPlayer(p, st));
   }
 
-  // Enemy bodies (drones leaving through the player's row)
-  if (p.iframes <= 0) {
+  // Enemy bodies (drones leaving through the player's row): phase passes them
+  if (p.iframes <= 0 && !isPhased(p)) {
     for (const e of enemies) {
       if (e.dead || e.type === 'boss') continue;
       const dx = e.x - p.x, dy = e.y - PLAYER_Y;
@@ -1007,7 +1015,7 @@ export function updateRun(run, input, dt) {
         run.lastHit = { what: e.type.toUpperCase(), x: e.x, y: e.y, lane: p.lane, color: e.T.color };
         damageEnemy(e, 999);
         e.noReward = true;
-        onHurt(run, hurtPlayer(p, st));
+        onHurt(run, run.tutorial ? tutorialHit(run, p) : hurtPlayer(p, st));
         break;
       }
     }
@@ -1033,7 +1041,7 @@ export function updateRun(run, input, dt) {
         o.hit = true;
         const OB_NAME = { wall: ['BARRIER', PAL.magenta], low: ['WIRE (jump it)', PAL.orange], veil: ['VEIL (phase it)', PAL.cyan], rift: ['TEAR (phase it)', PAL.cyan] };
         run.lastHit = { what: OB_NAME[o.type][0], x: o.x, y: o.y, lane: p.lane, color: OB_NAME[o.type][1] };
-        onHurt(run, hurtPlayer(p, st));
+        onHurt(run, run.tutorial ? tutorialHit(run, p) : hurtPlayer(p, st));
       }
     }
     if (!o.passed && o.y > PLAYER_Y + 24) {

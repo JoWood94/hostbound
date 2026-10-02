@@ -28,13 +28,14 @@ Feeling: **Hotline Miami** (cupo, acido, violento, synth martellante) in un mond
 |---|---|---|
 | Cambia corsia | Swipe sx / dx, oppure tap sulla metà sx / dx | ← → / A D |
 | Salto / hop | Swipe su | Spazio / W |
-| Phase (i-frame sul posto) | Swipe giù | Shift / S |
+| Phase (attraversa proiettili e ciano) | Swipe giù | Shift / S |
 | Sparo | Automatico, sempre | — |
-| Pausa | Tap in alto / perdi focus | Esc / P |
+| Pausa | Tasto ‖ in basso a destra (specchio dell'attivo) / perdi focus | Esc / P |
 
 - **Salto**: supera ostacoli bassi (barriere, buchi). Durante salto sei ancora colpibile dai proiettili (in aria si cambia corsia). Dura 0,45 s all'inizio e si accorcia col tempo del gioco (stessa durata in tick: ~0,29 s a 230 BPM); KICKFLIP ×1,3 sopra.
 - **Swipe giù in aria**: con il phase pronto atterri e fai phase subito (un salto non toglie mai il phase); in cooldown solo caduta rapida.
-- **Phase**: invulnerabilità sul posto per 0,45 s, quanto un salto (la board "sfasa"). Cooldown 2 s. Item lo modificano (es. phase = dash di 2 corsie).
+- **Phase**: per 0,45 s, quanto un salto, attraversi i proiettili alti, i corpi dei nemici e gli ostacoli ciano (veli e squarci). **Non** attraversa i muri magenta né i fili e le onde basse arancio: quelli si schivano o si saltano (fino al 2026-10-02 il phase dava invulnerabilità a tutto, per errore). Cooldown 2 s. Item lo modificano (es. phase = dash di 2 corsie).
+- **Tutorial** (`src/game/tutorial.js`): prima della prima run, 9 passi guidati (corsie, magenta = schiva, arancio = salta, ciano = phase, corsia accesa = colpo, cellule → livello → scelta, cuori, pausa). Ogni passo mostra l'istruzione, manda una prova e aspetta che la superi; un colpo non toglie vita: TRY AGAIN e il passo si ripete. Distanza ferma a 0 m durante il tutorial, poi parte la run vera. Una volta sola (`save.tutorialDone`, già vero per chi aveva giocato); si rigioca dal tasto TUTORIAL in home, si salta dalla pausa. ~50 s se giocato bene.
 - Dead zone tocco e sensibilità configurabili in impostazioni.
 
 ## 5. Vita, scudo, danno
