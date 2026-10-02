@@ -13,6 +13,7 @@ const colors = new Array(MAX);
 let count = 0;
 
 export function burst(x, y, color, n = 10, speed = 120, lifeS = 0.5, sz = 2) {
+  if (count > MAX * 0.5) n = Math.ceil(n / 2);   // a crowded screen gets fewer sparks
   for (let i = 0; i < n && count < MAX; i++) {
     const a = Math.random() * Math.PI * 2;
     const s = speed * (0.3 + Math.random() * 0.7);
@@ -41,6 +42,7 @@ export function updateFx(dt, scrollSpeed) {
   }
 }
 
+export const fxCount = () => count;
 export function drawFx() {
   for (let i = 0; i < count; i++) {
     const t = life[i] / maxLife[i];

@@ -2,6 +2,7 @@
 // resolution (gradients, neon tubes with glow, panel details), then blitted each
 // frame. Only small animated parts (flames, rotors, treads, eyes) are drawn live.
 import { ctx, makeOffscreen } from '../core/canvas.js';
+import { DIM } from './draw.js';
 import { PAL } from './palette.js';
 
 const RES = 3;
@@ -31,11 +32,11 @@ export function drawSprite(s, x, y, { rot = 0, sx = 1, sy = 1, alpha = 1, flash 
   ctx.translate(x, y);
   if (rot) ctx.rotate(rot);
   if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * DIM;
   ctx.drawImage(s.canvas, -s.w / 2, -s.h / 2, s.w, s.h);
   if (flash > 0) {
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = alpha * Math.min(1, flash);
+    ctx.globalAlpha = alpha * DIM * Math.min(1, flash);
     ctx.drawImage(s.canvas, -s.w / 2, -s.h / 2, s.w, s.h);
   }
   ctx.restore();

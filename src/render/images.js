@@ -1,6 +1,7 @@
 // Image-based sprite sheets (generated art). Everything degrades gracefully:
 // until an image has loaded, callers fall back to the procedural sprites.
 import { ctx } from '../core/canvas.js';
+import { DIM } from './draw.js';
 
 const cache = {};
 
@@ -26,7 +27,7 @@ export function drawCell(s, row, col, x, y, size, { rot = 0, alpha = 1, flash = 
   if (rot) ctx.rotate(rot);
   if (sx !== 1 || sy !== 1) ctx.scale(sx, sy);
   ctx.imageSmoothingEnabled = true;    // generated art is high-res: downscale smoothly
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * DIM;
   const c = s.cell, ch = s.cellH - insetTop;
   const fullH = (size * s.cellH) / c;
   const h = (size * ch) / c;
@@ -35,7 +36,7 @@ export function drawCell(s, row, col, x, y, size, { rot = 0, alpha = 1, flash = 
   ctx.drawImage(s.img, col * c, srcY, c, ch, -size / 2, dy, size, h);
   if (flash > 0) {
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = alpha * Math.min(1, flash);
+    ctx.globalAlpha = alpha * DIM * Math.min(1, flash);
     ctx.drawImage(s.img, col * c, srcY, c, ch, -size / 2, dy, size, h);
   }
   ctx.restore();

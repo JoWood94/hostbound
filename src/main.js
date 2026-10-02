@@ -4,8 +4,9 @@ import { pollInput, discardGesture, setTapSlop, setEarlyTap } from './core/input
 import { loadSave, writeSave } from './core/save.js';
 import { beginUi, endUi, hitTest, setUiOffset } from './core/ui.js';
 import { applyPost } from './render/post.js';
-import { drawFx, updateShake, shakeOffset } from './render/fx.js';
-import { drawPlayerBullets, drawEnemyBullets, enemyBullets, LOW } from './game/bullets.js';
+import { drawFx, updateShake, shakeOffset, fxCount } from './render/fx.js';
+let layerDim = 1;
+import { drawPlayerBullets, drawEnemyBullets, enemyBullets, playerBullets, LOW } from './game/bullets.js';
 import { drawPlayer, drawPlayerDeath } from './game/player.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
@@ -13,7 +14,7 @@ import { drawObstacles, spawnObstacle, obstacles } from './game/obstacles.js';
 import { drawPickups, pickups } from './game/pickups.js';
 import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.js';
 import { drawWeaponFx, drawWingmen } from './game/weapon.js';
-import { line as drawLine, drawGlowDot } from './render/draw.js';
+import { line as drawLine, drawGlowDot, setDim } from './render/draw.js';
 import { PLAYER_Y } from './game/player.js';
 import { runBot } from './debug/bot.js';
 import { runBench } from './debug/bench.js';
@@ -249,10 +250,17 @@ function render(alpha) {
     drawBossTelegraph(r.boss);
     drawObstacles(alpha);
     drawPickups(alpha, r.time);
+    // Readability: the more of your own stuff is on screen, the dimmer it is
+    // drawn (down to 45%), so enemy shots on top always stand out.
+    const busy = playerBullets.n + fxCount() * 0.25;
+    layerDim += (Math.max(0.45, Math.min(1, 1 - (busy - 30) / 110)) - layerDim) * 0.1;
+    setDim(layerDim);
     drawFx();
+    setDim(1);
     drawCorpses();
     drawBoss(r.boss, alpha);
     drawEnemies(alpha);
+    setDim(layerDim);
     drawWeaponFx();
     drawPlayerBullets();
     if (r.railT > 0) {
@@ -263,6 +271,7 @@ function render(alpha) {
     }
     drawWingmen();
     drawHusks(r);
+    setDim(1);
     drawEnemyBullets('low');   // low waves under the board: you jump over them
     if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
     else drawPlayerDeath(r.player, r.deadT);

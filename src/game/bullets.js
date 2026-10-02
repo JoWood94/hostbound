@@ -1,6 +1,6 @@
 // Pooled bullets in typed arrays. No allocation in the hot loop.
 // Two pools: player bullets and enemy bullets.
-import { drawGlowDot, ring } from '../render/draw.js';
+import { drawGlowDot, ring, DIM } from '../render/draw.js';
 import { ctx } from '../core/canvas.js';
 import { boltSprite, enemyOrbSprite, lowWaveSprite, pelletSprite, rocketSprite, drawSprite } from '../render/sprites.js';
 import { W, H } from '../core/canvas.js';
@@ -136,7 +136,7 @@ function drawBody(p, i, sh, r, rot, art) {
     // a spinning three-bladed bone disc
     drawGlowDot(x, y, C, r + 3, 0.35);
     ctx.save(); ctx.translate(x, y); ctx.rotate(t * 18 + i);
-    ctx.strokeStyle = C; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = C; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.95 * DIM;
     for (let k = 0; k < 3; k++) {
       ctx.rotate((Math.PI * 2) / 3);
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(r * 1.1, -r * 0.4, r * 1.5, r * 0.5); ctx.stroke();
@@ -210,6 +210,10 @@ export function drawEnemyBullets(layer = 'high') {
   for (let i = 0; i < p.n; i++) {
     if ((p.kind[i] === LOW) !== (layer === 'low')) continue;
     if (p.kind[i] === LOW) drawSprite(wave, p.x[i], p.y[i]);
-    else drawSprite(enemyOrbSprite(COLOR_ENEMY_BULLET, p.r[i]), p.x[i], p.y[i]);
+    else {
+      // a dark halo cuts every enemy shot out of whatever glows behind it
+      drawGlowDot(p.x[i], p.y[i], '#000000', p.r[i] + 4, 0.9);
+      drawSprite(enemyOrbSprite(COLOR_ENEMY_BULLET, p.r[i]), p.x[i], p.y[i]);
+    }
   }
 }

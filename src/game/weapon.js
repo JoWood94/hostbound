@@ -8,7 +8,7 @@ import { enemySprite, drawSprite } from '../render/sprites.js';
 import { PLAYER_Y } from './player.js';
 import { PAL, COLOR_PLAYER_BULLET as SHOT } from '../render/palette.js';
 import { burst, shake } from '../render/fx.js';
-import { line, ring, drawGlowDot } from '../render/draw.js';
+import { line, ring, drawGlowDot, DIM } from '../render/draw.js';
 import { sfx } from '../audio/audio.js';
 
 // Short-lived visual effects owned by the weapon (lightning arcs, frag rings).
@@ -99,7 +99,7 @@ function drawTrails() {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const t of trails) {
-    ctx.globalAlpha = 0.35 * (t.t / t.max);
+    ctx.globalAlpha = 0.35 * (t.t / t.max) * DIM;
     ctx.fillStyle = SHOT;
     ctx.fillRect(t.x - 2.5, t.y - 2.5, 5, 5);
   }
@@ -353,8 +353,8 @@ function hitsAlong(pts, halfW, limit) {
 function blast(x, y, dmg, stats, skip) {
   const radius = (24 + 8 * stats.frag + (stats.smartRockets ? 10 : 0)) * (stats.modeLv.rockets > 1 ? 1.25 : 1);
   rings.push({ x, y, r: radius, t: 0.25 });
-  flash(x, y, radius * 0.8, '#ffd27a', 0.22);
-  burst(x, y, '#ffd27a', 10, 200, 0.35, 2.5);
+  flash(x, y, radius * 0.55, '#ffd27a', 0.2);
+  burst(x, y, '#ffd27a', 8, 200, 0.3, 2.2);
   sfx.explode();
   for (const o of enemies) if (o !== skip && !o.dead && overlaps(o, x, y, radius)) damageEnemy(o, dmg * 0.45);
 }
@@ -1316,7 +1316,7 @@ export function updateWeaponFx(dt) {
 
 function poly(pts, color, width, alpha) {
   if (pts.length < 4) return;
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * DIM;
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.lineJoin = 'round';
@@ -1345,7 +1345,7 @@ function texturedBeam(pts, w, alpha, t) {
   const k = bw / SHOTS.cell;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * DIM;
   ctx.fillStyle = pat;
   let run = t * 260;                        // pattern flows up the beam
   for (let i = 0; i + 3 < pts.length; i += 2) {
@@ -1367,7 +1367,7 @@ function texturedBeam(pts, w, alpha, t) {
 export function drawWeaponFx() {
   if (trails.length) drawTrails();
   const t = performance.now() / 1000;
-  for (const f of flashes) drawGlowDot(f.x, f.y, f.c, f.r * (1.2 - 0.4 * (f.t / f.max)), 0.75 * (f.t / f.max));
+  for (const f of flashes) drawGlowDot(f.x, f.y, f.c, f.r * (1.2 - 0.4 * (f.t / f.max)), 0.5 * (f.t / f.max));
   for (const nv of novas) {
     const a = nv.t / 0.4;
     poly(nv.pts, SHOT, 40 * a + 6, 0.35 * a);
@@ -1378,14 +1378,14 @@ export function drawWeaponFx() {
     if (e.dead || !(e.lockUntil > t)) continue;
     const rr = (e.r || 14) + 8;
     ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(t * 2);
-    ctx.strokeStyle = SHOT; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = SHOT; ctx.lineWidth = 2; ctx.globalAlpha = 0.9 * DIM;
     for (let k = 0; k < 4; k++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(rr, -5); ctx.lineTo(rr, 0); ctx.lineTo(rr - 5, 0); ctx.stroke(); }
     ctx.restore();
   }
   // CAUTERIZE: the charge filling on the held target
   if (cautFx && !cautFx.e.dead && cautFx.k > 0.05) {
     const e = cautFx.e, rr = (e.r || 14) + 6;
-    ctx.save(); ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+    ctx.save(); ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 3; ctx.globalAlpha = 0.9 * DIM;
     ctx.beginPath(); ctx.arc(e.x, e.y, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, cautFx.k)); ctx.stroke(); ctx.restore();
     drawGlowDot(e.x, e.y, '#ffd27a', 4 + 8 * cautFx.k, 0.3 + 0.4 * cautFx.k);
   }

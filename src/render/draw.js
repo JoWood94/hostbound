@@ -25,13 +25,19 @@ export function glowSprite(color, radius, blur = radius * 1.5) {
   return s;
 }
 
+// Readability: the player's own layer (shots, beams, sparks) is drawn at DIM
+// when the screen gets crowded, so enemy shots always stand out. Every helper
+// multiplies by it and leaves globalAlpha at DIM.
+export let DIM = 1;
+export function setDim(k) { DIM = k; ctx.globalAlpha = k; }
+
 export function drawGlowDot(x, y, color, radius, alpha = 1) {
   // Quantize to 0.5px so the sprite cache stays small (particles shrink every frame).
   const r = Math.max(0.5, Math.round(radius * 2) / 2);
   const s = glowSprite(color, r);
-  if (alpha !== 1) ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * DIM;
   ctx.drawImage(s.canvas, x - s.half, y - s.half);
-  if (alpha !== 1) ctx.globalAlpha = 1;
+  ctx.globalAlpha = DIM;
 }
 
 export function strokePoly(points, color, width = 2, close = true) {
@@ -55,24 +61,24 @@ export function fillPoly(points, color) {
 }
 
 export function line(x1, y1, x2, y2, color, width = 1, alpha = 1) {
-  if (alpha !== 1) ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * DIM;
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.stroke();
-  if (alpha !== 1) ctx.globalAlpha = 1;
+  ctx.globalAlpha = DIM;
 }
 
 export function ring(x, y, r, color, width = 2, alpha = 1) {
-  if (alpha !== 1) ctx.globalAlpha = alpha;
+  ctx.globalAlpha = alpha * DIM;
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.stroke();
-  if (alpha !== 1) ctx.globalAlpha = 1;
+  ctx.globalAlpha = DIM;
 }
 
 // Type: DotGothic16 (Japanese pixel font) for body text, Russo One (the logo's
