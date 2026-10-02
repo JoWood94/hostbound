@@ -457,7 +457,7 @@ Decisa con l'utente dopo aver scartato il "corridore con maschere" (esperimento 
 - **Nemici**: tante razze aliene (ben più di 5), una per settore, ognuna con boss proprio.
 - **Palette**: il neon attuale ma più sporco e acido, "Japan neon".
 - **Salto e phase**: meccaniche invariate, cambia solo la loro animazione.
-- **Logo**: HOSTBOUND, insegna neon generata con Nano Banana (prompt in ART_PROMPTS.md §9): "Host" corsivo magenta, "BOUND" ciano con plasma magenta, gocce verde acido. Sorgente art/source/logo_hostbound.jpg, importata con `import-glow.py --key black` in public/sprites/logo.png (1024×504); nel menu respira e sfarfalla ogni tanto.
+- **Logo**: HOSTBOUND disegnato in codice come insegna neon giapponese (font Train One): HOST tubo ciano, BOUND tubo rosa, katakana ホストバウンド sotto; ogni parola sfarfalla per conto suo. Tagline RUN · SHOOT · MUTATE in Racing Sans One con effetto VHS.
 
 Fatto: simbionte MASSA generato esternamente (art/source/symbiote_sheet.jpg), pulito con
 scripts/import-sheet.py in public/sprites/symbiote.png (8×4 celle da 128). Usato per volo,

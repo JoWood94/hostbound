@@ -105,83 +105,100 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Logo: Hotline Miami title card. One line of heavy italic racing type in flat
-// hot pink with a pale core, a solid dark offset shadow, a cyan/red RGB split,
-// scanlines through the letters and a neon bloom. Baked once (font loaded).
+// Logo: Japanese neon sign. HOST in a cyan tube, BOUND in a pink tube (Train One
+// draws its letters as double tubes), the katakana reading underneath, a faint
+// RGB split and scanlines. Each word flickers on its own now and then, like
+// real signage. Baked once per word when the font has loaded.
 // ---------------------------------------------------------------------------
-const LOGO_WORD = 'HOSTBOUND';
-const LOGO_FONT = '"Racing Sans One", Impact, sans-serif';
-const LOGO_W = 360, LOGO_H = 100, LOGO_CY = 50;          // bake canvas, logical px
+const LOGO_FONT = '"Train One", "Russo One", sans-serif';
+const LOGO_W = 360, LOGO_H = 110, LOGO_CY = 44;          // bake canvas, logical px
+const LOGO_PARTS = [
+  { word: 'HOST', col: '#19f0ff', core: '#d8ffff' },
+  { word: 'BOUND', col: '#ff2bd6', core: '#ffe0f8' },
+];
+const LOGO_KANA = 'ホストバウンド';
 let logoBake = null;
+const logoFlick = [0, 0];
 
+// One canvas per word (so they can flicker separately) plus one for the kana.
 function bakeLogo(k) {
-  const c = document.createElement('canvas');
-  c.width = Math.round(LOGO_W * k); c.height = Math.round(LOGO_H * k);
-  const o = c.getContext('2d');
-  o.setTransform(k, 0, 0, k, 0, 0);
-  o.font = `54px ${LOGO_FONT}`;
-  o.textAlign = 'center'; o.textBaseline = 'middle';
-  const cx = LOGO_W / 2, cy = LOGO_CY;
-  o.save(); o.translate(cx, cy); o.rotate(-0.06);
-  // solid offset shadow, then the RGB split, then the face
-  o.fillStyle = '#3a1a5a'; o.fillText(LOGO_WORD, 4, 5);
-  o.globalCompositeOperation = 'lighter';
-  o.fillStyle = 'rgba(25,240,255,0.9)'; o.fillText(LOGO_WORD, -2.5, 0);
-  o.fillStyle = 'rgba(255,32,80,0.8)'; o.fillText(LOGO_WORD, 2.5, 0.5);
-  o.globalCompositeOperation = 'source-over';
-  const g = o.createLinearGradient(0, -22, 0, 22);
-  g.addColorStop(0, '#ffe0f8'); g.addColorStop(0.35, '#ff7ae6'); g.addColorStop(0.65, '#ff2bd6'); g.addColorStop(1, '#c0168e');
-  o.fillStyle = g; o.fillText(LOGO_WORD, 0, 0);
-  o.restore();
-  // scanlines through everything drawn so far
-  o.globalCompositeOperation = 'destination-out';
-  o.fillStyle = 'rgba(0,0,0,0.38)';
-  for (let y = 0; y < LOGO_H; y += 3) o.fillRect(0, y, LOGO_W, 1);
-  o.globalCompositeOperation = 'source-over';
-  return { c, k };
+  const mk = () => { const c = document.createElement('canvas'); c.width = Math.round(LOGO_W * k); c.height = Math.round(LOGO_H * k); const x = c.getContext('2d'); x.setTransform(k, 0, 0, k, 0, 0); return [c, x]; };
+  const size = 42;
+  const [, m] = mk();
+  m.font = `${size}px ${LOGO_FONT}`;
+  const ws = LOGO_PARTS.map((p) => m.measureText(p.word).width);
+  const gap = 6, total = ws[0] + ws[1] + gap;
+  const xs = [LOGO_W / 2 - total / 2, LOGO_W / 2 - total / 2 + ws[0] + gap];
+  const tube = (x, txt, px, py, col, core) => {
+    x.textAlign = 'left'; x.textBaseline = 'middle';
+    x.shadowColor = col; x.shadowBlur = 10; x.fillStyle = col; x.fillText(txt, px, py);
+    x.shadowBlur = 3; x.shadowColor = core; x.fillStyle = core; x.globalAlpha = 0.85; x.fillText(txt, px, py);
+    x.globalAlpha = 1; x.shadowBlur = 0;
+    // faint RGB split on the glass
+    x.globalCompositeOperation = 'lighter'; x.globalAlpha = 0.25;
+    x.fillStyle = '#ff2050'; x.fillText(txt, px + 1.5, py);
+    x.fillStyle = '#2050ff'; x.fillText(txt, px - 1.5, py);
+    x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1;
+  };
+  const words = LOGO_PARTS.map((p, i) => {
+    const [c, x] = mk();
+    x.font = `${size}px ${LOGO_FONT}`;
+    tube(x, p.word, xs[i], LOGO_CY, p.col, p.core);
+    x.globalCompositeOperation = 'destination-out'; x.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let y = 0; y < LOGO_H; y += 3) x.fillRect(0, y, LOGO_W, 1);
+    return c;
+  });
+  const [kc, kx] = mk();
+  kx.font = `13px ${LOGO_FONT}`;
+  const kw = kx.measureText(LOGO_KANA).width;
+  // kana sign: small pink tube, letter-spaced under BOUND's right edge
+  const spacing = 3;
+  let px = xs[1] + ws[1] - (kw + spacing * (LOGO_KANA.length - 1));
+  for (const ch of LOGO_KANA) { tube(kx, ch, px, LOGO_CY + 33, '#ff2bd6', '#ffe0f8'); px += kx.measureText(ch).width + spacing; }
+  return { words, kana: kc, k };
 }
 
 function drawLogo(t) {
   const CY = 150;
-  // Cosmic current behind the word.
+  // Cosmic current behind the sign.
   ctx.save();
-  for (const [col, amp, fr, sp, a] of [[PAL.cyan, 3, 0.045, 1.2, 0.5], [PAL.violet, 4.5, 0.03, -0.8, 0.45]]) {
+  for (const [col, amp, fr, sp, a] of [[PAL.cyan, 3, 0.045, 1.2, 0.45], [PAL.violet, 4.5, 0.03, -0.8, 0.4]]) {
     ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = 1.5;
     ctx.shadowColor = col; ctx.shadowBlur = 8;
     ctx.beginPath();
     for (let x = 0; x <= W; x += 6) {
-      const y = CY + 2 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
+      const y = CY + 24 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
       x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
     ctx.stroke();
   }
   ctx.restore();
   const k = ctx.getTransform().a || 1;
-  const fontReady = !document.fonts || document.fonts.check(`54px ${LOGO_FONT}`);
+  const fontReady = !document.fonts || (document.fonts.check(`42px ${LOGO_FONT}`, 'HOSTBOUND') && document.fonts.check(`13px ${LOGO_FONT}`, LOGO_KANA));
   if (!logoBake || logoBake.k !== k || (!logoBake.final && fontReady)) {
     logoBake = bakeLogo(k);
     logoBake.final = fontReady;
   }
-  // Neon bloom (magenta wide), flicker and a rare horizontal tear, VHS style.
   const ox = W / 2 - LOGO_W / 2, oy = CY - LOGO_CY;
-  const flick = Math.random() < 0.015 ? 0.6 : 1;
-  ctx.save();
-  ctx.globalAlpha = flick;
-  ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 20;
-  ctx.drawImage(logoBake.c, ox, oy, LOGO_W, LOGO_H);
-  ctx.restore();
-  if (Math.random() < 0.05) {
-    const sy = 30 + Math.random() * 40, sh = 3 + Math.random() * 5, dx = (Math.random() - 0.5) * 12;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(ox, oy + sy, LOGO_W, sh); ctx.clip();
-    ctx.fillStyle = 'rgba(10,0,8,1)'; ctx.fillRect(ox, oy + sy, LOGO_W, sh);
-    ctx.drawImage(logoBake.c, ox + dx, oy, LOGO_W, LOGO_H);
-    ctx.restore();
+  // Flicker: now and then a word stutters off for a few frames.
+  for (let i = 0; i < 2; i++) {
+    if (logoFlick[i] > 0) logoFlick[i]--;
+    else if (Math.random() < 0.004) logoFlick[i] = 3 + Math.floor(Math.random() * 6);
   }
+  ctx.save();
+  logoBake.words.forEach((c, i) => {
+    const off = logoFlick[i] > 0 && logoFlick[i] % 2 === 0;
+    ctx.globalAlpha = off ? 0.25 : 0.94 + Math.sin(t * 3 + i * 2) * 0.06;
+    ctx.shadowColor = LOGO_PARTS[i].col; ctx.shadowBlur = off ? 0 : 18;
+    ctx.drawImage(c, ox, oy, LOGO_W, LOGO_H);
+  });
+  ctx.globalAlpha = 0.9; ctx.shadowColor = PAL.magenta; ctx.shadowBlur = 8;
+  ctx.drawImage(logoBake.kana, ox, oy, LOGO_W, LOGO_H);
+  ctx.restore();
   // Tagline: angular racing type with a VHS look (RGB split, a tracking band,
   // and now and then a torn slice shifted sideways).
   ctx.save();
-  ctx.translate(W / 2, 200);
+  ctx.translate(W / 2, 214);
   ctx.rotate(-0.05);
   ctx.font = '16px "Racing Sans One", Impact, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
