@@ -65,6 +65,19 @@ export const SECTIONS = [
   { id: 'barrage', from: 3000, events: [e(0, 'drone', 0), e(2, 'drone', 2), e(4, 'drone', 4), r(14, 'TTTTT')] },
   { id: 'gauntlet', from: 3000, events: [e(0, 'stalker', 2), v(10), r(13, 'T.T.T'), r(16, 'BB.BB')] },
   { id: 'storm', from: 3500, events: [e(0, 'sweeper', 0), e(0, 'brooder', 4), r(10, 'BB.BB'), r(12, 'B.BBB'), r(14, 'TTTTT')] },
+  // --- deep tiers (3500 m +): denser, and mixed with obstacle rows ---------
+  // Threat lanes add up (stalker/sweeper/throb/weaver cover 3, drone/kamikaze 1,
+  // wall 4): pairs are chosen so two lanes stay open, else safeToEnter slides them.
+  { id: 'trident', from: 3500, events: [e(0, 'stalker', 0), e(0, 'stalker', 4), r(10, 'B.T.B'), r(14, '.BTB.')] },
+  { id: 'hive-mind', from: 3500, events: [e(0, 'brooder', 0), e(0, 'brooder', 4), r(10, 'BB.BB'), r(14, '.BBB.')] },
+  { id: 'pulse', from: 4000, events: [e(0, 'throb', 2), v(12), r(16, 'TBTBT')] },
+  { id: 'net', from: 4000, events: [e(0, 'weaver', 0), e(0, 'weaver', 4), r(16, 'B.T.B')] },
+  { id: 'firing-squad', from: 4500, events: [e(0, 'drone', 0), e(0, 'drone', 4), e(2, 'drone', 1), r(10, 'BBPBB')] },
+  { id: 'stampede', from: 4500, events: [e(0, 'kamikaze', 1), e(2, 'kamikaze', 2), e(4, 'kamikaze', 3), r(12, 'TTTTT')] },
+  { id: 'siege', from: 5000, events: [e(0, 'tank', 2), r(14, 'B.B.B'), r(18, '.B.B.')] },
+  { id: 'brood-wall', from: 5000, events: [e(0, 'wall', 2), e(8, 'brooder', 0), e(8, 'brooder', 4)] },
+  { id: 'rift-fight', from: 5500, events: [e(0, 'sweeper', 1), v(10), e(10, 'drone', 4), r(16, 'BTBTB')] },
+  { id: 'the-works', from: 6000, events: [e(0, 'weaver', 2), r(12, 'TBPBT'), e(16, 'kamikaze', 0), v(21), r(25, 'BB.BB')] },
 ];
 
 // --- COURSES: obstacle-only sections, many lanes blocked, played in between
@@ -97,6 +110,12 @@ export const COURSES = [
   { id: 'c-rift-snake', from: 2500, events: [r(8, 'B.BBB'), r(10, '.BBBB'), v(12), r(14, 'BB.BB'), r(16, 'BBB.B'), v(20), r(23, 'TTTTT')] },
   { id: 'c-storm', from: 3000, events: [r(8, 'TBTBT'), r(10, 'BB.BB'), r(12, 'B.T.B'), v(14), r(16, '.BBB.'), r(18, 'BTTTB'), r(22, 'BBPBB')] },
   { id: 'c-chaos', from: 3500, events: [r(8, 'PBTBP'), r(11, 'BTBTB'), r(14, 'TBTBT'), r(17, 'BBPBB'), r(20, '.TBT.')] },
+  // --- deep tiers ----------------------------------------------------------
+  { id: 'c-fast-checker', from: 4000, events: [r(8, 'B.B.B'), r(9.5, '.B.B.'), r(11, 'B.B.B'), r(12.5, '.B.B.'), r(14, 'B.B.B')] },
+  { id: 'c-double-snake', from: 4500, events: [r(8, '.BBBB'), r(10, 'B.BBB'), r(12, 'BB.BB'), r(14, 'BBB.B'), r(16, 'BBBBP'), r(18, 'BBB.B'), r(20, 'BB.BB'), r(22, 'B.BBB'), r(24, '.BBBB')] },
+  { id: 'c-phase-ladder', from: 5000, events: [r(8, 'BBPBB'), r(12, 'TTTTT'), r(16, 'BPBBB'), r(20, 'TTTTT'), r(24, 'BBBPB')] },
+  { id: 'c-blender', from: 5500, events: [r(8, 'TBTBT'), r(11, 'BTBTB'), r(13, 'B.B.B'), r(15, '.B.B.'), v(18), r(21, 'TTTTT'), r(23, '.BBBB'), r(25, 'B.BBB'), r(27, 'BB.BB')] },
+  { id: 'c-no-rest', from: 6000, events: [r(8, 'B.BBB'), r(9.5, '.BBBB'), r(11, 'TB.BB'), r(12.5, 'B.B.B'), r(14, '.B.B.'), r(16, 'BPBBB'), r(17.5, 'B.B.B'), v(24), r(26, 'TBTBT')] },
 ];
 
 // Mirror a section left/right.
