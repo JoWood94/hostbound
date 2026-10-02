@@ -16,7 +16,7 @@ Design doc: [GDD.md](GDD.md)
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173/neon-overdrift/ (also on LAN, --host is on)
+npm run dev        # http://localhost:5173/hostbound/ (also on LAN, --host is on)
 npm run build      # dist/
 npm run preview    # serve the production build
 node scripts/make-icons.mjs   # regenerate PWA icons
@@ -29,7 +29,7 @@ Debug handle: open with `?debug` and use `window.__game.run` / `window.__game.sa
 
 Pushing to `main` runs `.github/workflows/deploy.yml`, which builds and publishes `dist/` to GitHub Pages.
 In the repo settings, set **Pages → Source** to **GitHub Actions** once.
-The site lives at `https://<user>.github.io/neon-overdrift/` (the Vite `base` matches the repo name).
+The site lives at https://jowood94.github.io/hostbound/ (the Vite `base` matches the repo name).
 
 ## Structure
 

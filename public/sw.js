@@ -1,6 +1,6 @@
 // Offline support. Stale-while-revalidate: serve from cache instantly, refresh
 // the cache in the background so the next launch picks up new deploys.
-const CACHE = 'neon-overdrift-v1';
+const CACHE = 'hostbound-v1';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png'])));

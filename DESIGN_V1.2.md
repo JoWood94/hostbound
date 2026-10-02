@@ -1,4 +1,4 @@
-# NEON OVERDRIFT v1.2 — item: carrier, tratti, stack, sinergie, evoluzioni
+# HOSTBOUND v1.2 — item: carrier, tratti, stack, sinergie, evoluzioni
 
 Piano concordato in chat (2026-10-02), **implementato** (fasi 1-6). Il bilanciamento si rifinisce provando il feel sul telefono.
 

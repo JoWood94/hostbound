@@ -45,6 +45,7 @@ export function createRun(save, opts = {}) {
   const daily = !!opts.daily;
   const tutorial = !daily && !!opts.tutorial;
   const dailyKey = daily ? todayKey() : null;
+  // Old name kept in the seed: daily runs stay the same after the rename.
   const seed = daily ? hashSeed(`neon-overdrift:${dailyKey}`) : randomSeed();
   const board = daily ? BOARD_BY_ID.stock : (BOARD_BY_ID[save.board] || BOARD_BY_ID.stock);
   const run = {

@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/neon-overdrift/',
+  base: '/hostbound/',
   build: { target: 'es2020', sourcemap: false },
 });

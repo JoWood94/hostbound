@@ -1,5 +1,5 @@
 // Persistent meta progress in localStorage. Versioned so future changes can migrate.
-const KEY = 'neon-overdrift.save';
+const KEY = 'neon-overdrift.save';   // old name kept: existing saves stay readable
 const VERSION = 1;
 
 function fresh() {

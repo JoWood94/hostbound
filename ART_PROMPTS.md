@@ -1,4 +1,4 @@
-# NEON OVERDRIFT — prompt per generare sprite e asset
+# HOSTBOUND — prompt per generare sprite e asset
 
 Prompt in inglese (i generatori rendono meglio). Per ogni asset:
 1. incolla lo **STYLE BIBLE**,

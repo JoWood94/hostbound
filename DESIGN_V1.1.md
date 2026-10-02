@@ -1,4 +1,4 @@
-# NEON OVERDRIFT — Design v1.1: difficoltà, coreografia, nuovi item
+# HOSTBOUND — Design v1.1: difficoltà, coreografia, nuovi item
 
 > **Stato: implementato** (commit dopo `16c4a21`). Deviazioni rispetto al testo qui sotto, decise misurando:
 > - **HP nemici (A.3.7):** la formula "appiattita" faceva scendere il rapporto tempo-per-uccidere / tempo-a-schermo da 0,08 a 0,04 tra 3000 e 8000 m: i nemici morivano prima di sparare le raffiche extra e la nuova difficoltà spariva. Implementato invece `(1 + 0.28·d)·power^0.6` (boss invariati a `^0.5`), che tiene il rapporto costante a 0,07–0,09. Il target "0,45–0,75" del testo era sbagliato per questa metrica (TTK a uptime pieno): conta che il rapporto resti **costante**, banda 0,06–0,10 (`scripts/balance.mjs`).

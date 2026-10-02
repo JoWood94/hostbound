@@ -284,7 +284,7 @@ Best distance, run totali, kill totali, boss battuti, item scoperti (X/40), boar
 ## 12. Architettura tecnica
 
 ```
-neon-overdrift/
+hostbound/
 ├── index.html
 ├── vite.config.js
 ├── package.json
@@ -335,11 +335,11 @@ Principi:
 
 ## 13. Deploy
 
-- Repo GitHub pubblico `neon-overdrift`.
+- Repo GitHub pubblico `hostbound` (ex `neon-overdrift`).
 - GitHub Actions: su push a `main` → `npm ci && npm run build` → deploy `dist/` su Pages.
-- `vite.config.js` con `base: '/neon-overdrift/'`.
+- `vite.config.js` con `base: '/hostbound/'`.
 - **PWA**: manifest + service worker minimale → "Aggiungi a Home", fullscreen, offline. Amici lo installano come app.
-- URL finale: `https://<user>.github.io/neon-overdrift/`.
+- URL finale: `https://jowood94.github.io/hostbound/`.
 
 ## 14. Stato implementazione
 
