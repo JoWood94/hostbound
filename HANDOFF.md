@@ -1,10 +1,10 @@
-# ABYSS TIDE — prompt per ripartire da zero
+# HOSTBOUND — prompt per ripartire da zero
 
 Incolla questo messaggio all'inizio di una nuova chat aperta nella cartella del progetto.
 
 ---
 
-Lavoriamo su **ABYSS TIDE** (ex NEON OVERDRIFT; repo e URL restano `neon-overdrift`), il mio gioco web mobile (portrait, una mano) in JavaScript vanilla + Vite 6 + Canvas 2D, pubblicato su GitHub Pages: https://jowood94.github.io/neon-overdrift/ (repo pubblico `JoWood94/neon-overdrift`, deploy automatico a ogni push su `main`). Versione attuale: **v1.2.0** (tag su GitHub). Parla in italiano.
+Lavoriamo su **HOSTBOUND** (ex NEON OVERDRIFT; repo e URL restano `neon-overdrift`), il mio gioco web mobile (portrait, una mano) in JavaScript vanilla + Vite 6 + Canvas 2D, pubblicato su GitHub Pages: https://jowood94.github.io/neon-overdrift/ (repo pubblico `JoWood94/neon-overdrift`, deploy automatico a ogni push su `main`). Versione attuale: **v1.2.0** (tag su GitHub). Parla in italiano.
 
 **Prima di tutto leggi** `GDD.md` (regole e stato del gioco, aggiornato), `DESIGN_V1.1.md` (difficoltà e item, con le deviazioni annotate in cima), `ART_PROMPTS.md` (prompt degli sprite) e la memoria del progetto.
 

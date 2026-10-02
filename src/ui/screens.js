@@ -105,16 +105,16 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Logo: Carrion-style living mass. "Abyss" glows like bioluminescent tissue,
-// "TIDE" is flesh, and the symbiote's own tentacles (cut from its sprite sheet)
+// Logo: Carrion-style living mass. "Host" glows like bioluminescent tissue,
+// "BOUND" is flesh, and the symbiote's own tentacles (cut from its sprite sheet)
 // hang from it and reach out of the sides, rimmed in neon.
 // ---------------------------------------------------------------------------
 const LOGO_C = document.createElement('canvas');
 const LOGO_X = LOGO_C.getContext('2d');
-const TIDE_W = 230, TIDE_H = 80;            // flesh block canvas, logical px
-const TIDE_Y = 170;                         // centre of the TIDE letters
-let tideXs = [-72, -26, 18, 64];            // letter centres, measured each frame
-let tideWs = [40, 20, 44, 40];
+const BLOCK_W = 290, BLOCK_H = 80;            // flesh block canvas, logical px
+const BLOCK_Y = 170;                         // centre of the BLOCK letters
+let blockXs = [-96, -48, 0, 48, 96];            // letter centres, measured each frame
+let blockWs = [40, 40, 40, 40, 40];
 // Tentacles in the symbiote sheet: idle row, below the body.
 const TENT = { row: 0, x: 26, y: 84, w: 76, h: 40 };
 // Veins inside the letters: polylines in block coordinates (centre = 0,0).
@@ -140,29 +140,29 @@ function tentacles(x, y, w, frame, rot, rim) {
   ctx.drawImage(...src);
   ctx.restore();
 }
-function drawTide(t) {
+function drawBlock(t) {
   const k = ctx.getTransform().a || 1;      // device pixels per logical pixel
-  if (LOGO_C.width !== Math.round(TIDE_W * k)) { LOGO_C.width = Math.round(TIDE_W * k); LOGO_C.height = Math.round(TIDE_H * k); }
+  if (LOGO_C.width !== Math.round(BLOCK_W * k)) { LOGO_C.width = Math.round(BLOCK_W * k); LOGO_C.height = Math.round(BLOCK_H * k); }
   const c = LOGO_X;
   c.setTransform(k, 0, 0, k, 0, 0);
-  c.clearRect(0, 0, TIDE_W, TIDE_H);
-  c.translate(TIDE_W / 2, TIDE_H / 2);
+  c.clearRect(0, 0, BLOCK_W, BLOCK_H);
+  c.translate(BLOCK_W / 2, BLOCK_H / 2);
   c.font = '54px "Russo One", Impact, sans-serif';
   c.textAlign = 'center'; c.textBaseline = 'middle';
   // Letters breathe: each one swells a little, out of step with the others.
-  const word = 'TIDE';
-  tideWs = [...word].map((ch) => c.measureText(ch).width);
-  const total = tideWs.reduce((a, b) => a + b, 0) + 6 * (word.length - 1);
-  tideXs = [];
+  const word = 'BOUND';
+  blockWs = [...word].map((ch) => c.measureText(ch).width);
+  const total = blockWs.reduce((a, b) => a + b, 0) + 6 * (word.length - 1);
+  blockXs = [];
   let x = -total / 2;
-  for (let i = 0; i < word.length; i++) { tideXs.push(x + tideWs[i] / 2); x += tideWs[i] + 6; }
+  for (let i = 0; i < word.length; i++) { blockXs.push(x + blockWs[i] / 2); x += blockWs[i] + 6; }
   const flesh = c.createLinearGradient(0, -22, 0, 24);
   flesh.addColorStop(0, '#ffb8a8'); flesh.addColorStop(0.35, '#e8455e');
   flesh.addColorStop(0.8, '#b0204a'); flesh.addColorStop(1, '#7a0c32');
   c.fillStyle = flesh;
   for (let i = 0; i < word.length; i++) {
     const sw = 1 + Math.sin(t * 1.6 + i * 1.7) * 0.025;
-    c.save(); c.translate(tideXs[i], Math.sin(t * 1.1 + i) * 1.2); c.scale(sw, 2 - sw);
+    c.save(); c.translate(blockXs[i], Math.sin(t * 1.1 + i) * 1.2); c.scale(sw, 2 - sw);
     c.fillText(word[i], 0, 0);
     c.restore();
   }
@@ -180,7 +180,7 @@ function drawTide(t) {
   const py = -30 + ((t * 18) % 70);
   const pulse = c.createLinearGradient(0, py - 14, 0, py + 14);
   pulse.addColorStop(0, 'rgba(255,200,190,0)'); pulse.addColorStop(0.5, 'rgba(255,200,190,0.35)'); pulse.addColorStop(1, 'rgba(255,200,190,0)');
-  c.fillStyle = pulse; c.fillRect(-TIDE_W / 2, py - 14, TIDE_W, 28);
+  c.fillStyle = pulse; c.fillRect(-BLOCK_W / 2, py - 14, BLOCK_W, 28);
   c.globalCompositeOperation = 'source-over';
   c.setTransform(1, 0, 0, 1, 0, 0);
 }
@@ -193,36 +193,36 @@ function drawLogo(t) {
     ctx.shadowColor = col; ctx.shadowBlur = 8;
     ctx.beginPath();
     for (let x = 0; x <= W; x += 6) {
-      const y = TIDE_Y - 16 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
+      const y = BLOCK_Y - 16 + Math.sin(x * fr + t * sp) * amp + Math.sin(x * fr * 2.3 - t * sp * 0.7) * amp * 0.4;
       x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
     ctx.stroke();
   }
   ctx.restore();
-  drawTide(t);
+  drawBlock(t);
   // The symbiote's tentacles, behind the letters: hanging from each one and
   // reaching out of both sides. Each cluster runs its own frame.
   if (MENU_SYM.ready) {
     const f = Math.floor(t * 8);
     const cx = W / 2;
-    tentacles(cx + tideXs[0] - tideWs[0] / 2 - 2, TIDE_Y + 2, 64, f + 3, Math.PI / 2 + Math.sin(t) * 0.08, PAL.magenta);
-    tentacles(cx + tideXs[3] + tideWs[3] / 2 + 2, TIDE_Y + 2, 64, f + 6, -Math.PI / 2 - Math.sin(t * 1.2) * 0.08, PAL.magenta);
-    for (let i = 0; i < tideXs.length; i++) {
-      tentacles(cx + tideXs[i], TIDE_Y + 10, Math.max(44, tideWs[i] * 1.25), f + i * 2, Math.sin(t * 0.9 + i) * 0.06, i % 2 ? PAL.cyan : PAL.magenta);
+    tentacles(cx + blockXs[0] - blockWs[0] / 2 - 2, BLOCK_Y + 2, 64, f + 3, Math.PI / 2 + Math.sin(t) * 0.08, PAL.magenta);
+    tentacles(cx + blockXs[blockXs.length - 1] + blockWs[blockWs.length - 1] / 2 + 2, BLOCK_Y + 2, 64, f + 6, -Math.PI / 2 - Math.sin(t * 1.2) * 0.08, PAL.magenta);
+    for (let i = 0; i < blockXs.length; i++) {
+      tentacles(cx + blockXs[i], BLOCK_Y + 10, Math.max(44, blockWs[i] * 1.25), f + i * 2, Math.sin(t * 0.9 + i) * 0.06, i % 2 ? PAL.cyan : PAL.magenta);
     }
   }
   ctx.save();
   ctx.shadowColor = 'rgba(255,40,80,0.55)'; ctx.shadowBlur = 14;
-  ctx.drawImage(LOGO_C, W / 2 - TIDE_W / 2, TIDE_Y - TIDE_H / 2, TIDE_W, TIDE_H);
+  ctx.drawImage(LOGO_C, W / 2 - BLOCK_W / 2, BLOCK_Y - BLOCK_H / 2, BLOCK_W, BLOCK_H);
   ctx.restore();
-  // Abyss: organic, uneven letters glowing like bioluminescent tissue,
+  // Host: organic, uneven letters glowing like bioluminescent tissue,
   // each drifting on the current, the glow breathing.
   const glow = 0.75 + Math.sin(t * 1.3) * 0.25;
   ctx.save();
-  ctx.translate(W / 2, TIDE_Y - 54);
+  ctx.translate(W / 2, BLOCK_Y - 54);
   ctx.font = '54px Eater, "Russo One", cursive';
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  const word = 'Abyss';
+  const word = 'Host';
   let x = -ctx.measureText(word).width / 2;
   for (let i = 0; i < word.length; i++) {
     const ch = word[i];

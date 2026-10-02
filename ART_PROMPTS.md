@@ -715,3 +715,18 @@ drops, 8 blank.
    `bg_space.png`, `obstacles.png`, `icons_1.png` …
 3. Mettili in `public/sprites/` del progetto (o mandameli): li collego io al gioco
    al posto degli sprite disegnati in codice, senza toccare il gameplay.
+
+---
+
+## 9. Logo HOSTBOUND (Nano Banana / Gemini)
+
+Prompt autonomo (senza STYLE BIBLE). Allega come riferimento colori `public/sprites/border.png`
+(il plasma dei bordi del menu). Esporta su nero puro: lo importo con
+`scripts/import-glow.py --key black`, il bagliore diventa trasparenza.
+
+```
+A neon sign logo for a dark cosmic horror arcade game, reading exactly "HOSTBOUND" split on two lines as "Host" and "BOUND", spelled exactly like that, no other text. Top line: the word "Host" as a hand-drawn neon tube script, tilted slightly upward, made of glowing glass tubes with visible tube bends, joints and small dark gaps where the tube turns, like real old neon signage. Bottom line: the word "BOUND" in heavy wide block capitals, overlapping the bottom of the script a little, built as a thick double neon outline with a near-black glassy fill, and living plasma flowing inside the letters like the attached reference: bright electric cyan #19f0ff currents with hot magenta #e020c0 veins branching through them. Colours taken from the game's menu: "Host" glows hot magenta #ff2bd6 with a pale pink-white core, "BOUND" glows electric cyan #19f0ff with magenta plasma veins, small acid green #b6ff2b sparks and drips of light falling from the bottom edge of "BOUND", and a thin wavy cyan and violet energy current running horizontally behind the two words in place of a horizon line. The light is dirty and organic: slightly uneven tube thickness, a few flickering dim segments, a faint wet bioluminescent haze, like a neon sign in a flooded alien Tokyo alley. Not chrome, not metallic, not 80s Miami vaporwave, no sunset, no palm trees, no grid floor. Flat pure black background, the whole logo centred with generous black margins, wide horizontal format 2:1. Crisp, high contrast, readable at small size on a phone screen.
+```
+
+Se il plasma dentro BOUND viene troppo pieno, aggiungi in fondo:
+`Keep the inside of BOUND mostly dark, the plasma only as thin glowing veins.`
