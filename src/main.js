@@ -24,7 +24,7 @@ import { ITEMS, ITEM_BY_ID, rollItems, TRIOS, CARRIER_PAIRS } from './game/items
 import { unlockedBoards, unlockedItems } from './game/achievements.js';
 import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, EVENT_EVERY, drawHusks } from './game/run.js';
 import { drawHud } from './ui/hud.js';
-import { drawMenu, drawArchive, drawPick, drawPause, drawDead } from './ui/screens.js';
+import { drawMenu, drawArchive, archivePages, drawPick, drawPause, drawDead } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
 import { startMusic, setMusic } from './audio/music.js';
 
@@ -38,7 +38,7 @@ let menuT = 0;
 let boardIdx = Math.max(0, BOARDS.findIndex((b) => b.id === save.board));
 let archiveTab = 'items';
 let archiveSel = null;
-let comboPage = 0;
+let archivePage = 0;
 
 // ?mute: no music, no sound for this session only (automated tests); the
 // saved settings are left untouched.
@@ -163,11 +163,9 @@ function update(dt) {
 
   if (screen === 'archive') {
     if (id === 'back' || input.pause) { screen = 'menu'; sfx.select(); }
-    else if (id === 'tabItems') archiveTab = 'items';
-    else if (id === 'tabGoals') archiveTab = 'goals';
-    else if (id === 'tabCombos') { archiveTab = 'combos'; comboPage = 0; }
-    else if (id === 'comboPrev') comboPage = Math.max(0, comboPage - 1);
-    else if (id === 'comboNext') comboPage++;
+    else if (id === 'tabItems' || id === 'tabGoals' || id === 'tabCombos') { archiveTab = id.slice(3).toLowerCase(); archivePage = 0; }
+    else if (id === 'pagePrev' || (!id && input.left)) archivePage = Math.max(0, archivePage - 1);
+    else if (id === 'pageNext' || (!id && input.right)) archivePage = Math.min(archivePages(save, archiveTab) - 1, archivePage + 1);
     else if (id && id.startsWith('item:')) { archiveSel = id.slice(5); sfx.lane(); }
     return;
   }
@@ -241,7 +239,7 @@ function render(alpha) {
     drawWorld(menuT * 6, -1);
     centred(() => drawMenu(save, menuT, boardIdx));
   } else if (screen === 'archive') {
-    centred(() => drawArchive(save, archiveTab, archiveSel, comboPage));
+    centred(() => drawArchive(save, archiveTab, archiveSel, archivePage));
   } else {
     const r = run;
     look.x = r.player.x; look.y = PLAYER_Y;

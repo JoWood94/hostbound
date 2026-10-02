@@ -195,6 +195,24 @@ export function drawMenu(save, t, boardIdx) {
 // ---------------------------------------------------------------------------
 // Archive: items and goals
 // ---------------------------------------------------------------------------
+// Archive pages: the lists outgrew one screen.
+const ITEM_COLS = 4, ITEM_ROWS = 12, ITEMS_PER = ITEM_COLS * ITEM_ROWS, GOALS_PER = 17, COMBOS_PER = 12;
+export function archivePages(save, tab) {
+  if (tab === 'items') return Math.ceil(ITEMS.length / ITEMS_PER);
+  if (tab === 'goals') return Math.ceil(ACHIEVEMENTS.length / GOALS_PER);
+  return Math.max(1, Math.ceil(COMBOS.filter((c) => save.combos && save.combos[c.id]).length / COMBOS_PER));
+}
+
+// ◄ 1/3 ► along the bottom, with an optional caption under the page number.
+function pager(pg, pages, caption = '') {
+  if (pages > 1) {
+    button('pagePrev', 14, LH - 46, 70, 32, '◄', { color: PAL.white, size: 14, disabled: pg === 0 });
+    button('pageNext', W - 84, LH - 46, 70, 32, '►', { color: PAL.white, size: 14, disabled: pg >= pages - 1 });
+    text(`${pg + 1}/${pages}`, W / 2, LH - (caption ? 38 : 30), { color: PAL.white, size: 11, align: 'center' });
+  }
+  if (caption) text(caption, W / 2, LH - (pages > 1 ? 22 : 24), { color: PAL.mute, size: 9, align: 'center' });
+}
+
 export function drawArchive(save, tab, selected, page = 0) {
   dim(1);
   button('tabItems', 6, 10, 84, 34, 'ITEMS', { color: tab === 'items' ? PAL.cyan : PAL.dim, size: 11 });
@@ -209,8 +227,8 @@ export function drawArchive(save, tab, selected, page = 0) {
         .forEach((l, i) => text(l, W / 2, 110 + i * 14, { color: PAL.mute, size: 9, align: 'center', weight: 'normal' }));
       return;
     }
-    const per = 12;
-    const pages = Math.ceil(known.length / per);
+    const per = COMBOS_PER;
+    const pages = archivePages(save, tab);
     const pg = Math.min(page, pages - 1);
     known.slice(pg * per, pg * per + per).forEach((c, i) => {
       const y = 86 + i * 40;
@@ -218,19 +236,17 @@ export function drawArchive(save, tab, selected, page = 0) {
       text(`${c.evo ? 'MAX ' : ''}${ITEM_BY_ID[c.a].name} + ${ITEM_BY_ID[c.b].name}`, W - 14, y, { color: c.evo ? PAL.acid : PAL.mute, size: 8, align: 'right' });
       text(c.desc, 14, y + 14, { color: PAL.white, size: 8, weight: 'normal' });
     });
-    if (pages > 1) {
-      button('comboPrev', 14, LH - 46, 70, 32, '◄', { color: PAL.white, size: 14, disabled: pg === 0 });
-      text(`${pg + 1}/${pages}`, W / 2, LH - 30, { color: PAL.mute, size: 10, align: 'center' });
-      button('comboNext', W - 84, LH - 46, 70, 32, '►', { color: PAL.white, size: 14, disabled: pg >= pages - 1 });
-    }
+    pager(pg, pages);
     return;
   }
 
   const unl = unlockedItems(save);
   if (tab === 'items') {
-    const cols = 4, cw = 82, ch = 31, gx = 6;
+    const cols = ITEM_COLS, cw = 82, ch = 31, gx = 6;
     const x0 = (W - (cols * cw + (cols - 1) * gx)) / 2;
-    ITEMS.forEach((it, i) => {
+    const pages = archivePages(save, tab);
+    const pg = Math.min(page, pages - 1);
+    ITEMS.slice(pg * ITEMS_PER, (pg + 1) * ITEMS_PER).forEach((it, i) => {
       const cx = x0 + (i % cols) * (cw + gx);
       const cy = 54 + Math.floor(i / cols) * (ch + 4);
       const known = unl.includes(it.id);
@@ -243,9 +259,9 @@ export function drawArchive(save, tab, selected, page = 0) {
       text(known ? it.name : 'LOCKED', cx + cw / 2, cy + 23, { color: known ? PAL.white : PAL.dim, size: 9, align: 'center', alpha: seen ? 1 : 0.6, maxW: cw - 6 });
     });
     const it = ITEM_BY_ID[selected];
-    const py = 54 + Math.ceil(ITEMS.length / cols) * (ch + 4) + 6;
+    const py = 54 + ITEM_ROWS * (ch + 4) + 2;
     ctx.strokeStyle = PAL.dim;
-    ctx.strokeRect(12, py, W - 24, LH - py - 44);
+    ctx.strokeRect(12, py, W - 24, LH - py - 54);
     if (it) {
       const known = unl.includes(it.id);
       text(known ? it.name : '???', 22, py + 16, { color: known ? RARITY[it.rarity].color : PAL.dim, size: 14 });
@@ -256,7 +272,7 @@ export function drawArchive(save, tab, selected, page = 0) {
         const names = known.map((c) => `${c.name} (+${ITEM_BY_ID[c.a === it.id ? c.b : c.a].code})`).join(', ');
         const hidden = mine.length - known.length;
         const line2 = `${names}${names && hidden ? ' · ' : ''}${hidden ? `${hidden} undiscovered` : ''}`;
-        if (line2) wrap(`COMBOS: ${line2}`, 52).slice(0, 2).forEach((l, i) => text(l, 22, py + 76 + i * 11, { color: PAL.magenta, size: 8 }));
+        if (line2) wrap(`COMBOS: ${line2}`, 52).slice(0, 2).forEach((l, i) => text(l, 22, py + 74 + i * 11, { color: PAL.magenta, size: 8 }));
       } else {
         const a = ACHIEVEMENTS.find((x) => x.id === it.unlock);
         text(`Unlock: ${a ? a.desc : '?'}`, 22, py + 36, { color: PAL.white, size: 9, weight: 'normal' });
@@ -265,10 +281,12 @@ export function drawArchive(save, tab, selected, page = 0) {
     } else {
       text('Tap an item for details', W / 2, py + 40, { color: PAL.mute, size: 10, align: 'center' });
     }
-    text(`DISCOVERED ${save.discovered.length}/${ITEMS.length}`, W / 2, LH - 24, { color: PAL.mute, size: 9, align: 'center' });
+    pager(pg, pages, `DISCOVERED ${save.discovered.filter((id) => ITEM_BY_ID[id]).length}/${ITEMS.length}`);
   } else {
-    let y = 62;
-    for (const a of ACHIEVEMENTS) {
+    const pages = archivePages(save, tab);
+    const pg = Math.min(page, pages - 1);
+    let y = 64;
+    for (const a of ACHIEVEMENTS.slice(pg * GOALS_PER, (pg + 1) * GOALS_PER)) {
       const done = !!save.achievements[a.id];
       const [cur, target] = a.progress(save, null);
       const rw = rewardOf(a.id);
@@ -278,8 +296,9 @@ export function drawArchive(save, tab, selected, page = 0) {
       text(a.desc, 28, y + 8, { color: PAL.mute, size: 7, weight: 'normal' });
       text(done ? 'DONE' : a.runOnly ? 'IN ONE RUN' : `${Math.min(Math.floor(cur), target)}/${target}`, W - 12, y - 3, { color: done ? PAL.acid : PAL.cyan, size: 9, align: 'right' });
       if (rw) text(`+ ${rw.name}`, W - 12, y + 8, { color: rw.kind === 'board' ? PAL.orange : PAL.magenta, size: 7, align: 'right' });
-      y += 27;
+      y += 30;
     }
+    pager(pg, pages, `${ACHIEVEMENTS.filter((a) => save.achievements[a.id]).length}/${ACHIEVEMENTS.length} DONE`);
   }
 }
 
