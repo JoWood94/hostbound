@@ -2,9 +2,11 @@
 // corrupted items (locked items that unlock if you survive to the next boss).
 import { PAL } from '../render/palette.js';
 import { H } from '../core/canvas.js';
-import { drawGlowDot, ring, text, strokePoly } from '../render/draw.js';
+import { text } from '../render/draw.js';
+import { ctx } from '../core/canvas.js';
+import { rtri } from '../render/oled.js';
+const TAU = Math.PI * 2;
 import { laneX } from './world.js';
-import { cellSprite, heartSprite, drawSprite } from '../render/sprites.js';
 
 export const pickups = [];
 
@@ -53,27 +55,37 @@ export function updatePickups(dt, speed, player, playerY, magnetLanes) {
   return got;
 }
 
+// Pickups from primitives, flat colour, no glow; motion is all easing.
+//   cell  : one flat acid disc that breathes (no nucleus, no shade)
+//   heart : two circles and a rounded triangle, pulsing (red, or blue shield)
+//   corrupted item: a hollow magenta ring with a glitching "?"
 export function drawPickups(alpha, time) {
   for (const p of pickups) {
     const x = p.prevX + (p.x - p.prevX) * alpha;
     const y = p.prevY + (p.y - p.prevY) * alpha;
     if (p.kind === 'coin') {
-      // cells breathe instead of spinning
-      const b = 1 + Math.sin(time * 6 + y * 0.05) * 0.08;
-      drawSprite(cellSprite(p.v), x, y, { sx: b, sy: 2 - b, rot: Math.sin(time * 2 + p.v) * 0.3 });
+      const r = 5.2 * (1 + Math.sin(time * 5 + p.v * 2.1 + y * 0.03) * 0.1);
+      ctx.fillStyle = PAL.acid;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
     } else if (p.kind === 'heart' || p.kind === 'blue') {
-      const c = p.kind === 'heart' ? PAL.red : PAL.blue;
-      const pulse = 1 + Math.sin(time * 8) * 0.08;
-      drawGlowDot(x, y, c, 9, 0.35);
-      drawSprite(heartSprite(c), x, y, { sx: pulse, sy: pulse });
+      const s = 1 + Math.sin(time * 8) * 0.08;
+      ctx.fillStyle = p.kind === 'heart' ? PAL.red : PAL.blue;
+      heartShape(x, y, 8 * s);
     } else if (p.kind === 'corrupt') {
-      const j = (Math.random() - 0.5) * 3;
-      drawGlowDot(x, y, PAL.magenta, 9, 0.5);
-      ring(x + j, y, 12, PAL.cyan, 2, 0.8);
-      ring(x - j, y, 12, PAL.magenta, 2, 0.8);
-      text('??', x + j, y, { color: PAL.white, size: 10, align: 'center' });
+      const j = Math.sin(time * 37) > 0.7 ? 2 : 0;
+      ctx.strokeStyle = PAL.magenta; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 11, 0, TAU); ctx.stroke();
+      text('?', x + j, y, { color: PAL.white, size: 13, align: 'center', font: 'display' });
     }
   }
+}
+
+// Heart from primitives: two circles on a rounded triangle pointing down.
+export function heartShape(x, y, s) {
+  const r = s * 0.52;
+  ctx.beginPath(); ctx.arc(x - r * 0.95, y - r * 0.35, r, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + r * 0.95, y - r * 0.35, r, 0, TAU); ctx.fill();
+  rtri(x, y + s * 0.05, s * 1.05, 0); ctx.fill();
 }
 
 export function clearPickups() { pickups.length = 0; }

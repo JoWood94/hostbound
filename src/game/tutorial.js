@@ -186,12 +186,12 @@ export function finishTutorial(run) {
 // ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
+// Highlight: a rounded dashed outline whose dashes crawl round it.
 function frame(x, y, w, h, color, t) {
-  const a = 0.6 + Math.sin(t * 8) * 0.4;
   ctx.save();
-  ctx.globalAlpha = a; ctx.strokeStyle = color; ctx.lineWidth = 2.5;
-  ctx.setLineDash([6, 4]); ctx.lineDashOffset = -t * 30;
-  ctx.strokeRect(x, y, w, h);
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.setLineDash([5, 6]); ctx.lineDashOffset = -t * 30;
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.stroke();
   ctx.restore();
 }
 
@@ -204,11 +204,10 @@ export function drawTutorial(run) {
   // Step pointers
   if (st.id === 'move' && tu.phase === 'test' && tu.targets.length) {
     const x = laneX(tu.targets[0]);
-    ctx.save();
-    ctx.globalAlpha = 0.12 + Math.sin(t * 6) * 0.06;
+    // the target lane: two cyan edges, like a lane warning
     ctx.fillStyle = PAL.cyan;
-    ctx.fillRect(x - LANE_W / 2, 0, LANE_W, H);
-    ctx.restore();
+    ctx.beginPath(); ctx.roundRect(x - LANE_W / 2 + 4, 0, 2, H, 1); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x + LANE_W / 2 - 6, 0, 2, H, 1); ctx.fill();
     const bob = Math.sin(t * 7) * 5;
     strokePoly([x - 12, PLAYER_Y - 58 + bob, x, PLAYER_Y - 44 + bob, x + 12, PLAYER_Y - 58 + bob], PAL.cyan, 3, false);
   }
@@ -220,26 +219,24 @@ export function drawTutorial(run) {
   const y0 = H * 0.16 + SAFE_TOP;   // above where the tests become readable
   const a = tu.phase === 'intro' ? Math.min(1, tu.t * 4) : 1;
   const lines = st.sub.length;
+  // a black card outlined in the step's colour
   ctx.save();
-  ctx.globalAlpha = 0.78 * a;
-  ctx.fillStyle = 'rgba(10,0,8,0.9)';
-  ctx.fillRect(18, y0 - 34, W - 36, 50 + lines * 13);
-  ctx.globalAlpha = a;
-  ctx.fillStyle = st.color;
-  ctx.fillRect(18, y0 - 34, 3, 50 + lines * 13);
+  ctx.beginPath(); ctx.roundRect(18.75, y0 - 33.25, W - 37.5, 56.5 + lines * 13, 14);
+  ctx.fillStyle = '#000'; ctx.fill();
+  ctx.strokeStyle = st.color; ctx.lineWidth = 1.5; ctx.stroke();
   ctx.restore();
-  text(`TUTORIAL ${tu.step + 1}/${STEPS.length}`, W / 2, y0 - 20, { color: PAL.mute, size: 9, align: 'center', alpha: a });
-  text(st.title, W / 2, y0, { color: st.color, size: 17, align: 'center', alpha: a });
-  st.sub.forEach((l, i) => text(l, W / 2, y0 + 17 + i * 13, { color: PAL.white, size: 10, align: 'center', alpha: a * 0.92 }));
+  text(`TUTORIAL ${tu.step + 1}/${STEPS.length}`, W / 2, y0 - 20, { color: PAL.mute, size: 9, align: 'center', alpha: a, font: 'display' });
+  text(st.title, W / 2, y0, { color: st.color, size: 17, align: 'center', alpha: a, font: 'display' });
+  st.sub.forEach((l, i) => text(l, W / 2, y0 + 17 + i * 13, { color: PAL.white, size: 11, align: 'center', alpha: a }));
 
   const yr = y0 + 34 + lines * 13;
   if (tu.phase === 'retry') {
     const k = Math.min(1, tu.t * 5);
-    text('TRY AGAIN', W / 2, yr, { color: PAL.red, size: 20, align: 'center', alpha: k });
+    text('TRY AGAIN', W / 2, yr, { color: PAL.red, size: 20, align: 'center', alpha: k, font: 'display' });
   } else if (tu.phase === 'nice') {
-    text('NICE', W / 2, yr, { color: PAL.acid, size: 20, align: 'center', alpha: Math.min(1, tu.t * 5) });
+    text('NICE', W / 2, yr, { color: PAL.acid, size: 20, align: 'center', alpha: Math.min(1, tu.t * 5), font: 'display' });
   }
   if (tu.step === 0 && tu.phase !== 'nice') {
-    text('To skip it: pause ‖, then TUTORIAL · skip it', W / 2, ACTIVE_BTN.y - 14, { color: PAL.mute, size: 9, align: 'center', alpha: 0.8 });
+    text('To skip it: pause, then SKIP TUTORIAL', W / 2, ACTIVE_BTN.y - 14, { color: PAL.mute, size: 10, align: 'center' });
   }
 }

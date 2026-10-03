@@ -3,6 +3,7 @@
 import { ctx } from './canvas.js';
 import { text } from '../render/draw.js';
 import { PAL } from '../render/palette.js';
+import { rtri } from '../render/oled.js';
 
 let rects = [];
 let nextRects = [];
@@ -22,45 +23,97 @@ export function hitTest(x, y) {
   return null;
 }
 
-// Katakana/kanji tags printed on buttons, like Tokyo shop signs.
-const KANA = {
-  RUN: '走れ', 'DAILY RUN': '日替わり', ARCHIVE: '記録', RETRY: '再挑戦', 'RETRY DAILY': '再挑戦',
-  MENU: 'メニュー', SHARE: '共有', RESUME: '再開', 'QUIT RUN': '終了', SKIP: 'スキップ',
-  LEAVE: '出口', REPAIR: '修理', ICE: '氷', BACK: '戻る', ITEMS: '品', GOALS: '目標', COMBOS: '共鳴',
-};
-const kanaFor = (label) => KANA[label] || KANA[label.split(' ')[0]] || null;
+// Rounded rectangle path (iOS-style corners).
+export function rrPath(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
-// Draws a neon sign button: a slanted dark plate, a glowing tube along its left
-// and bottom edges, the label in the logo's block letters, a Japanese tag.
-export function button(id, x, y, w, h, label, { color = PAL.cyan, size = 14, fill = false, disabled = false, sub = null } = {}) {
+// Neon capsule buttons: every button is a capsule outlined in its neon
+// colour, so it reads as tappable; the primary action (`fill`) has a heavier
+// outline and a bigger label. No glow, no fill.
+export function button(id, x, y, w, h, label, { color = PAL.white, size = 14, fill = false, disabled = false, sub = null } = {}) {
   nextRects.push({ id, x, y: y + offY, w, h });
   const c = disabled ? PAL.dim : color;
-  const k = Math.min(10, h * 0.28);          // slant
-  const t = performance.now() / 1000;
-  const flicker = !disabled && Math.sin(t * 13 + x) > 0.995 ? 0.35 : 1;
   ctx.save();
-  // plate
-  ctx.beginPath();
-  ctx.moveTo(x + k, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w - k, y + h); ctx.lineTo(x, y + h); ctx.closePath();
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, fill ? 'rgba(40,10,40,0.9)' : 'rgba(18,6,20,0.88)');
-  g.addColorStop(1, 'rgba(6,2,8,0.92)');
-  ctx.fillStyle = g; ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.stroke();
-  // neon tube: left edge + bottom edge
-  ctx.globalAlpha = flicker;
-  ctx.shadowColor = c; ctx.shadowBlur = disabled ? 0 : 10;
-  ctx.strokeStyle = c; ctx.lineWidth = 2.2;
-  ctx.beginPath(); ctx.moveTo(x + k, y + 2); ctx.lineTo(x + 1, y + h - 1); ctx.lineTo(x + w - k - 2, y + h - 1); ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(x + k, y + 2); ctx.lineTo(x + 1, y + h - 1); ctx.lineTo(x + w - k - 2, y + h - 1); ctx.stroke();
+  rrPath(x + 1, y + 1, w - 2, h - 2, h / 2);
+  ctx.strokeStyle = c; ctx.lineWidth = fill ? 2.5 : 1.5; ctx.stroke();
   ctx.restore();
-  const kana = kanaFor(label);
-  const ty = sub ? y + h / 2 - 7 : y + h / 2 + 1;
-  text(label, x + w / 2, ty, { color: c, size, align: 'center', font: 'display', alpha: flicker });
-  if (sub) text(sub, x + w / 2, y + h / 2 + 9, { color: disabled ? PAL.dim : PAL.white, size: 10, align: 'center' });
-  if (kana && h >= 30) text(kana, x + w - k - 5, y + 8, { color: c, size: 8, align: 'right', alpha: 0.75 * flicker });
+  const ty = sub ? y + h / 2 - 6 : y + h / 2 + 1;
+  text(label, x + w / 2, ty, { color: c, size, align: 'center', font: 'display' });
+  if (sub) text(sub, x + w / 2, y + h / 2 + 9, { color: PAL.mute, size: 10, align: 'center' });
+}
+
+// Square icon button: radius 14 like the rest, neon outline; `filled` turns it
+// solid with the icon knocked out in black. Icons: 'play' (a softly rounded
+// triangle, like the system play glyph) and 'x' (two capsules).
+export function iconButton(id, x, y, s, icon, color, { filled = false } = {}) {
+  nextRects.push({ id, x, y: y + offY, w: s, h: s });
+  ctx.save();
+  rrPath(x + 1, y + 1, s - 2, s - 2, 14);
+  if (filled) { ctx.fillStyle = color; ctx.fill(); }
+  else { ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke(); }
+  const ink = filled ? '#000' : color, cx = x + s / 2, cy = y + s / 2;
+  ctx.fillStyle = ink; ctx.strokeStyle = ink;
+  if (icon === 'play') { rtri(cx + s * 0.05, cy, s * 0.27, -Math.PI / 2, 0.18); ctx.fill(); }
+  else {
+    const d = s * 0.16;
+    ctx.lineWidth = s * 0.075; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - d, cy - d); ctx.lineTo(cx + d, cy + d); ctx.moveTo(cx + d, cy - d); ctx.lineTo(cx - d, cy + d); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Hold-to-confirm capsule: a white outline that fills from the left with
+// `color` while the finger stays on it (k 0..1); the label flips to black
+// where the fill has reached it.
+export function holdButton(id, x, y, w, h, label, k, { color = PAL.red, size = 13 } = {}) {
+  nextRects.push({ id, x, y: y + offY, w, h });
+  const ty = y + h / 2 + 1;
+  ctx.save();
+  rrPath(x + 1, y + 1, w - 2, h - 2, h / 2);
+  ctx.strokeStyle = k > 0 ? color : PAL.white; ctx.lineWidth = 1.5; ctx.stroke();
+  text(label, x + w / 2, ty, { color: PAL.white, size, align: 'center', font: 'display' });
+  if (k > 0) {
+    // clip to the capsule (rebuilt: text() left the glyph strokes as the
+    // current path), then to the filled part
+    rrPath(x + 1, y + 1, w - 2, h - 2, h / 2); ctx.clip();
+    ctx.beginPath(); ctx.rect(x, y, w * Math.min(1, k), h); ctx.clip();
+    ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
+    text(label, x + w / 2, ty, { color: '#000', size, align: 'center', font: 'display' });
+  }
+  ctx.restore();
+}
+
+// iOS-style switch: label on the left, a capsule track with a round knob.
+export function toggle(id, x, y, w, h, label, on, { color = PAL.acid } = {}) {
+  nextRects.push({ id, x, y: y + offY, w, h });
+  text(label, x, y + h / 2 + 1, { color: PAL.white, size: 12, font: 'display' });
+  const tw = 38, th = 22, tx = x + w - tw, ty = y + (h - th) / 2;
+  ctx.save();
+  rrPath(tx, ty, tw, th, th / 2);
+  ctx.fillStyle = on ? color : '#241a2a'; ctx.fill();
+  ctx.beginPath(); ctx.arc(on ? tx + tw - th / 2 : tx + th / 2, ty + th / 2, th / 2 - 3, 0, Math.PI * 2);
+  ctx.fillStyle = on ? '#000' : PAL.mute; ctx.fill();
+  ctx.restore();
+}
+
+// Tabs: neon labels; the selected one is lit and underlined by a short capsule.
+// items: [[id, label], ...]
+export function segmented(x, y, w, h, items, selected, { color = PAL.acid } = {}) {
+  const sw = w / items.length;
+  items.forEach(([id, label], i) => {
+    const sx = x + i * sw, on = id === selected;
+    nextRects.push({ id, x: sx, y: y + offY, w: sw, h });
+    text(label, sx + sw / 2, y + h / 2, { color: on ? color : '#7a6a86', size: 11, align: 'center', font: 'display' });
+    if (on) { rrPath(sx + sw / 2 - 12, y + h - 5, 24, 3, 1.5); ctx.fillStyle = color; ctx.fill(); }
+  });
 }
 
 // Registers an invisible hit area (for cards drawn manually).

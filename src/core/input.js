@@ -101,6 +101,9 @@ canvas.addEventListener('pointermove', onMove);
 canvas.addEventListener('pointerup', onUp);
 canvas.addEventListener('pointercancel', onUp);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+// Mouse wheel / trackpad: accumulated in logical px for scrolling lists.
+let wheel = 0;
+canvas.addEventListener('wheel', (e) => { wheel += e.deltaY * (e.deltaMode === 1 ? 16 : 1); e.preventDefault(); }, { passive: false });
 
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
@@ -128,6 +131,13 @@ export function discardGesture() {
 }
 // Choice screens use a larger tap tolerance, so a short swipe is never a tap.
 export function setTapSlop(px) { tapSlop = px; }
+
+// The finger right now (logical px), for drags and holds: scroll lists, the
+// hold-to-end button. `consumed` = it belongs to the previous screen.
+export function pointer() {
+  return { down: pointerId !== null, x: lastX, y: lastY, startX, startY, consumed };
+}
+export function takeWheel() { const w = wheel; wheel = 0; return w; }
 
 // Read and reset one-shot intents. Call once per logic step.
 export function pollInput() {

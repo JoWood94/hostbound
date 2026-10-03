@@ -1,5 +1,6 @@
 // Particles, screen shake, hit-stop.
-import { drawGlowDot } from './draw.js';
+import { DIM } from './draw.js';
+import { ctx } from '../core/canvas.js';
 
 const MAX = 400;
 const px = new Float32Array(MAX);
@@ -44,10 +45,22 @@ export function updateFx(dt, scrollSpeed) {
 
 export const fxCount = () => count;
 export function drawFx() {
+  // Sparks are short pills along their flight, flat colour, thinning as they
+  // die: impacts splash as clean strokes instead of glowing dots.
+  ctx.save();
+  ctx.lineCap = 'round';
   for (let i = 0; i < count; i++) {
     const t = life[i] / maxLife[i];
-    drawGlowDot(px[i], py[i], colors[i], size[i] * t + 0.5, t);
+    ctx.globalAlpha = DIM;
+    ctx.strokeStyle = colors[i];
+    ctx.lineWidth = size[i] * t * 1.2 + 0.3;   // dies by thinning, never by fading
+    ctx.beginPath();
+    ctx.moveTo(px[i], py[i]);
+    ctx.lineTo(px[i] - vx[i] * 0.04, py[i] - vy[i] * 0.04);
+    ctx.stroke();
   }
+  ctx.restore();
+  ctx.globalAlpha = DIM;
 }
 
 // Screen shake

@@ -1,17 +1,13 @@
 import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { fillPoly, drawGlowDot, ring } from '../render/draw.js';
+import { ring } from '../render/draw.js';
 import { burst, shake, hitStop } from '../render/fx.js';
-import { shipSprite, SHIP_ENGINES, drawSprite } from '../render/sprites.js';
-import { sheet, drawCell } from '../render/images.js';
+import { drawSymbiote, drawSymbioteDeath, SYM_BODY, capsule } from '../render/oled.js';
 
-// The symbiote sprite sheet: 8x4 cells of 128 px.
-//   row 0 fly loop · row 1 roll (jump) · row 2 phase 0-5, hit flash 6-7 · row 3 growth 0-2, death 3-7
-const SYM = sheet('symbiote_neon', 128);   // neon violet recolour (scripts/recolor-neon.py)
-const SYM_SIZE = 62;
+const SYM_R = 19;   // body radius of the procedural symbiote
 import { LANES, laneX } from './world.js';
 
-export const PLAYER_Y = H * 0.78;
+export const PLAYER_Y = H * 0.8;   // keep in step with PLAYER_ROW in world.js and boss.js
 const LANE_TIME = 0.11;   // seconds for a lane hop, fixed: discrete, never follows the finger
 const ORBIT_R = 28;
 
@@ -223,79 +219,23 @@ export function drawPlayer(p, alpha, stats) {
   const blink = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 20) % 2 === 0;
   const c = p.color;
 
-  for (let i = 0; i < p.trail.length; i += 3) {
-    const idx = (p.trailI + i) % p.trail.length;
-    const t = i / p.trail.length;
-    drawGlowDot(p.trail[idx], PLAYER_Y + 8 + (1 - t) * 30, c, 2 + t * 2, t * 0.5);
-  }
+  // ORBITAL spheres: flat blue beads.
+  ctx.fillStyle = PAL.blue;
+  for (const o of orbitalPositions(p, stats.orbitals)) { ctx.beginPath(); ctx.arc(o.x, o.y, 5, 0, Math.PI * 2); ctx.fill(); }
 
-  for (const o of orbitalPositions(p, stats.orbitals)) {
-    drawGlowDot(o.x, o.y, PAL.blue, 4);
-    ring(o.x, o.y, 6, PAL.white, 1, 0.6);
-  }
-
-  // Phase cooldown bar under the board
+  // Phase cooldown under the body: a capsule that fills up.
   if (p.phaseCd > 0) {
     const w = 26 * (1 - p.phaseCd / stats.phaseCd);
-    fillPoly([x - 13, PLAYER_Y + 31, x - 13 + w, PLAYER_Y + 31, x - 13 + w, PLAYER_Y + 33, x - 13, PLAYER_Y + 33], PAL.mute);
+    capsule(x - 13, PLAYER_Y + 32, x - 13 + w, PLAYER_Y + 32, 1.5); ctx.fillStyle = PAL.mute; ctx.fill();
   }
-  // KICKFLIP recharge: a cyan bar, full = the next landing wipes the lane
+  // KICKFLIP recharge: cyan when full = the next landing wipes the lane.
   if (stats.kickflip) {
     const w = 26 * (p.kickK || 0);
-    fillPoly([x - 13, PLAYER_Y + 35, x - 13 + w, PLAYER_Y + 35, x - 13 + w, PLAYER_Y + 37, x - 13, PLAYER_Y + 37], p.kickK >= 1 ? PAL.cyan : PAL.mute);
+    capsule(x - 13, PLAYER_Y + 37, x - 13 + w, PLAYER_Y + 37, 1.5); ctx.fillStyle = p.kickK >= 1 ? PAL.cyan : PAL.mute; ctx.fill();
   }
 
   if (blink) return;
-
-  // Ground shadow stays on the track while the board rises: the gap between
-  // them is what sells the jump in a top-down view.
-  if (jh > 0) {
-    ctx.globalAlpha = 0.55 - jh * 0.25;
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(x, PLAYER_Y + 10, 14 * (1 - jh * 0.35), 6 * (1 - jh * 0.35), 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ring(x, PLAYER_Y + 10, 12 * (1 - jh * 0.35), c, 1, 0.35 * jh);
-  }
-
-  // Generated symbiote art (falls back to the procedural ship until it loads).
-  if (SYM.ready) { drawSymbiote(p, x, y, jh, stats); return; }
-
-  const scale = 1 + jh * 0.45;
-  const sq = p.squash;
-  // Lean into lane changes: bank angle from horizontal speed.
-  const vx = p.x - p.prevX;
-  p.bank = (p.bank || 0) + (Math.max(-0.35, Math.min(0.35, vx * 0.09)) - (p.bank || 0)) * 0.3;
-  const spr = shipSprite(p.ship, c);
-  const sxs = scale * 0.85 * (1 + sq * 0.2);
-  const sys = scale * 0.85 * (1 - sq * 0.2);
-
-  // Engine flames (live, flickering), longer while boosting into a lane
-  if (p.phaseT <= 0) {
-    const cos = Math.cos(p.bank), sin = Math.sin(p.bank);
-    for (const [ex, ey] of SHIP_ENGINES[p.ship] || SHIP_ENGINES.stock) {
-      const len = 5 + Math.random() * 6 + (p.laneT < 1 ? 5 : 0);
-      const bx = x + (ex * cos - ey * sin) * sxs, by = y + (ex * sin + ey * cos) * sys;
-      drawGlowDot(bx, by + len * 0.45, c, 3.4, 0.85);
-      drawGlowDot(bx, by + len, PAL.magenta, 2.2, 0.5);
-      drawGlowDot(bx, by + 1, PAL.white, 1.6, 0.95);
-    }
-  }
-
-  if (p.phaseT > 0) {
-    drawSprite(spr, x - 4, y, { rot: p.bank, sx: sxs, sy: sys, alpha: 0.35 });
-    drawSprite(spr, x + 4, y, { rot: p.bank, sx: sxs, sy: sys, alpha: 0.35 });
-    drawSprite(spr, x, y, { rot: p.bank, sx: sxs, sy: sys, alpha: 0.55, flash: 0.6 });
-    return;
-  }
-  drawSprite(spr, x, y, { rot: p.bank, sx: sxs, sy: sys, flash: p.iframes > 0 ? 0.25 : 0 });
-  // Railgun charge building on the nose
-  if (stats.carrier === 'rail' && p.charge > 0.05) {
-    drawGlowDot(x + Math.sin(p.bank) * 22, y - 24 * sys, PAL.cyan, 2 + p.charge * 5, 0.4 + p.charge * 0.6);
-    if (p.charge > 0.9) drawGlowDot(x + Math.sin(p.bank) * 22, y - 24 * sys, '#ffffff', 2.5);
-  }
-  if (p.shield > 0) ring(x, y, 20, PAL.blue, 1.5 + p.shield, 0.35 + Math.sin(p.orbitA * 3) * 0.15);
+  drawSymbioteLive(p, x, y, jh, stats);
 }
 
 // ---------------------------------------------------------------------------
@@ -303,44 +243,45 @@ export function drawPlayer(p, alpha, stats) {
 // ---------------------------------------------------------------------------
 function growth(p) { return Math.min(0.35, (p.items || 0) * 0.03); }
 
-function drawSymbiote(p, x, y, jh, stats) {
+// Draw radius of the symbiote (grows with items, shrinks with MOLT).
+export function symRadius(p) { return SYM_R * (1 + growth(p)) * (p.shrinkT > 0 ? 0.75 : 1); }
+
+function drawSymbioteLive(p, x, y, jh, stats) {
   const t = performance.now() / 1000;
-  const size = SYM_SIZE * (1 + growth(p)) * (p.shrinkT > 0 ? 0.75 : 1);   // MOLT
+  const R = symRadius(p) * (1 + jh * 0.35);
   const vx = p.x - p.prevX;
   p.bank = (p.bank || 0) + (Math.max(-0.3, Math.min(0.3, vx * 0.08)) - (p.bank || 0)) * 0.3;
   const hit = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 18) % 2 === 0;
-
+  p.oled = p.oled || {};
+  const pose = { R, bank: p.bank, squash: p.squash, jh, phase: false, hit, t, state: p.oled, genome: p.specimen, air: p.jumpT > 0 };
   if (p.jumpT > 0) {
-    // Jump: curled ball spinning, afterimages, a pink halo
-    const k = 1 + jh * 0.35;
-    const f = Math.floor((1 - p.jumpT / p.jumpDur) * 16) % 8;
-    for (let i = 3; i >= 1; i--) drawCell(SYM, 1, (f + 8 - i) % 8, x, y + i * 6, size * k, { alpha: 0.12 * (4 - i) });
-    ring(x, y, size * 0.32 * k, PAL.magenta, 2, 0.3 + jh * 0.4);
-    drawCell(SYM, 1, f, x, y, size * k, { flash: hit ? 0.5 : 0 });
-    return;
+    // JUMP: the body rolls into a sphere (oled.drawSymbiote) and somersaults;
+    // a ring left on the track shrinks under it, so the height reads top-down.
+    const k = 1 - p.jumpT / p.jumpDur;
+    pose.spin = (1 - (1 - k) ** 3) * Math.PI * 2 * (p.bank < 0 ? -1 : 1);
+    ring(x, PLAYER_Y + 4, R * (1.1 - jh * 0.45), SYM_BODY, 1.5, 1);
   }
   if (p.phaseT > 0) {
-    const prog = 1 - p.phaseT / Math.max(0.01, stats.phaseTime);
-    drawCell(SYM, 2, Math.min(5, Math.floor(prog * 6)), x, y + 2, size, { rot: p.bank });
-    return;
+    // PHASE: out of step with the world. Two dark-cyan echoes slide apart on
+    // either side of a flat cyan silhouette.
+    const k = 1 - p.phaseT / Math.max(0.01, stats.phaseTime);
+    const off = 4 + 8 * Math.sin(Math.PI * Math.min(1, k * 1.4));
+    p.oledL = p.oledL || {}; p.oledR = p.oledR || {};
+    drawSymbiote(x - off, y + 2, { ...pose, phase: true, phaseColor: '#0b4a50', state: p.oledL });
+    drawSymbiote(x + off, y + 2, { ...pose, phase: true, phaseColor: '#0b4a50', state: p.oledR });
+    pose.phase = true;
   }
-  if (hit) { drawCell(SYM, 2, 6, x, y + 2, size, { rot: p.bank }); return; }
-  // Fly loop, a touch faster while changing lanes
-  const fps = p.laneT < 1 ? 16 : 10;
-  drawCell(SYM, 0, Math.floor(t * fps) % 8, x, y + 2, size, { rot: p.bank });
-  // Rail charge gathers in the maw
+  drawSymbiote(x, y + 2, pose);
+  // Rail charge: a flat acid bead swelling at the top of the body
   if (stats.carrier === 'rail' && p.charge > 0.05) {
-    drawGlowDot(x, y - size * 0.28, '#c6ff1a', 2 + p.charge * 5, 0.4 + p.charge * 0.6);
-    if (p.charge > 0.9) drawGlowDot(x, y - size * 0.28, '#ffffff', 2.5);
+    ctx.fillStyle = p.charge > 0.9 ? '#f4ffd8' : '#c6ff1a';
+    ctx.beginPath(); ctx.arc(x, y - R * 1.2, 1.5 + p.charge * 4, 0, Math.PI * 2); ctx.fill();
   }
-  if (p.shield > 0) ring(x, y, size * 0.38, PAL.blue, 1.5 + p.shield, 0.35 + Math.sin(p.orbitA * 3) * 0.15);
+  // Shield: a solid blue ring, thicker with more shield
+  if (p.shield > 0) ring(x, y, R * 1.45, PAL.blue, 1.2 + p.shield * 0.8, 1);
 }
 
 // Death: the symbiote bursts (row 3, frames 3-7). Returns false when finished.
 export function drawPlayerDeath(p, deadT) {
-  if (!SYM.ready) return false;
-  const f = 3 + Math.floor(deadT / 0.09);
-  if (f > 7) return false;
-  drawCell(SYM, 3, f, p.x, PLAYER_Y + 2, SYM_SIZE * (1 + growth(p)) * 1.1);
-  return true;
+  return drawSymbioteDeath(p.x, PLAYER_Y + 2, SYM_R * (1 + growth(p)), deadT);
 }

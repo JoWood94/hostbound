@@ -8,39 +8,24 @@
 //   crusher -> jump (low wave across 3 lanes) or move 2 lanes away
 import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { strokePoly, drawGlowDot, line, ring, text } from '../render/draw.js';
-import { enemySprite, drawSprite, drawEye, EYES } from '../render/sprites.js';
-import { sheet, drawCell } from '../render/images.js';
+import { strokePoly, line, ring, text } from '../render/draw.js';
+import { drawEnemyBody, drawEnemyDeath, ATK_S, HIT_S, DEATH_S } from '../render/bestiary.js';
+import { drawBossDeath, BOSS_DEATH_S } from '../render/bosses.js';
 
-// Generated Brood sheet: 8x7 cells of 128 px. Rows in TYPES order below;
-// columns 0-3 idle, 4-5 warning, 6-7 death.
-const BROOD = sheet('enemies_brood', 128);
-const BROOD2 = sheet('enemies_brood2', 128);
-// type -> [sheet, row]. Second sheet: the rhythm teachers.
-const ART = {
-  drone: [BROOD, 0], sweeper: [BROOD, 1], crusher: [BROOD, 2], hopper: [BROOD, 3], kamikaze: [BROOD, 4], wall: [BROOD, 5], tank: [BROOD, 6],
-  brooder: [BROOD2, 0], stalker: [BROOD2, 1], throb: [BROOD2, 2], weaver: [BROOD2, 3],
-};
-// Idle frames per type (default columns 0-3). The stalker's 2-4 show its body
-// side-on without the eye, a different read: it hovers on its front pose.
-const IDLE = { stalker: [0] };
-const BROOD_SIZE = 64;
 // Death animations left behind by killed enemies.
 const corpses = [];
 export function updateCorpses(dt, scroll) {
   for (let i = 0; i < corpses.length; i++) {
     const c = corpses[i];
-    c.t += dt; c.y += scroll * 0.35 * dt;
-    if (c.t > 0.5) { corpses.splice(i, 1); i--; }
+    c.t += dt;
+    if (!c.boss) c.y += scroll * 0.35 * dt;   // a boss dies where it held
+    if (c.t > (c.boss ? BOSS_DEATH_S : DEATH_S)) { corpses.splice(i, 1); i--; }
   }
 }
 export function drawCorpses() {
-  if (!BROOD.ready && !BROOD2.ready) return;
   for (const c of corpses) {
-    const col = c.t < 0.14 ? 6 : 7;
-    const [sh, row] = ART[c.type];
-    if (!sh.ready) continue;
-    drawCell(sh, row, col, c.x, c.y, BROOD_SIZE * c.k, { alpha: c.t < 0.14 ? 1 : Math.max(0, 1 - (c.t - 0.14) / 0.36) });
+    if (c.boss) drawBossDeath(c.boss, c.x, c.y, c.color, Math.min(1, c.t / BOSS_DEATH_S));
+    else drawEnemyDeath(c.type, c.x, c.y, (c.r || 12) * c.k, c.color || PAL.white, Math.min(1, c.t / DEATH_S));
   }
 }
 
@@ -302,7 +287,7 @@ function fire(e, st, d) {
     const prev = danger.get(l);
     if (!prev || prev.until < simT + travel) danger.set(l, { until: simT + travel, color: st.low ? PAL.orange : e.T.color });
   }
-  e.muzzle = 0.12;
+  e.muzzle = ATK_S;
   burst(e.x, y, st.low ? PAL.orange : e.T.color, 4, 70, 0.18, 1.6);
   sfx.enemyShot();
 }
@@ -462,11 +447,11 @@ export function damageEnemy(e, dmg) {
     e.jinkDir = e.lane <= 0 ? 1 : e.lane >= LANES - 1 ? -1 : (Math.random() < 0.5 ? -1 : 1);
   }
   e.hp -= dmg * (e.brandMul || 1);          // BRAND: marked enemies take more from everything
-  e.hitFlash = 0.06;
+  e.hitFlash = HIT_S;
   burst(e.x, e.y, e.T.color, 3, 90, 0.25, 1.5);
   if (e.hp <= 0) {
     e.dead = true;
-    if (ART[e.type]) corpses.push({ type: e.type, x: e.x, y: e.y, t: 0, k: e.minion ? 0.8 : 1 });
+    corpses.push({ type: e.type, boss: e.type === 'boss' ? e.def.id : null, x: e.x, y: e.y, t: 0, k: e.minion ? 0.8 : 1, r: e.r, color: e.T.color });
     burst(e.x, e.y, e.T.color, 18, 180, 0.5, 2.5);
     burst(e.x, e.y, PAL.white, 6, 90, 0.3, 2);
     shake(3, 0.1);
@@ -484,19 +469,26 @@ export function damageEnemy(e, dmg) {
 }
 
 // Glowing lane strips for telegraphed shots, under everything else.
-// Lights a whole lane, top to bottom: a smooth vertical gradient (stronger
-// toward the player, who has to read it) and glowing edges. One call per lane
-// per frame: callers dedupe, so overlapping warnings never stack into steps.
+// Marks a whole lane as a warning: only its two thin edges, in a shade of the
+// threat colour that brightens as the shot nears. The lane itself stays
+// black, so the shots inside keep full contrast. No fill, no alpha.
+const tintCache = new Map();
+function tint(hex, k) {
+  const key = hex + (k * 20 | 0);
+  let v = tintCache.get(key);
+  if (!v) {
+    const n = parseInt(hex.slice(1), 16), q = (k * 20 | 0) / 20;
+    const f = (c) => Math.round(c * q).toString(16).padStart(2, '0');
+    v = `#${f(n >> 16)}${f((n >> 8) & 255)}${f(n & 255)}`;
+    tintCache.set(key, v);
+  }
+  return v;
+}
 export function glowLane(l, color, a) {
-  const x = laneX(l) - LANE_W / 2 + 3, w = LANE_W - 6;
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, rgbaHex(color, a * 0.08));
-  g.addColorStop(0.55, rgbaHex(color, a * 0.2));
-  g.addColorStop(1, rgbaHex(color, a * 0.32));
-  ctx.fillStyle = g;
-  ctx.fillRect(x, 0, w, H);
-  line(x, 0, x, H, color, 1.5, a * 0.75);
-  line(x + w, 0, x + w, H, color, 1.5, a * 0.75);
+  const x = laneX(l) - LANE_W / 2 + 4, w = LANE_W - 8;
+  ctx.fillStyle = tint(color, 0.3 + 0.7 * Math.min(1, a));
+  ctx.beginPath(); ctx.roundRect(x, 0, 2, H, 1); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(x + w - 2, 0, 2, H, 1); ctx.fill();
 }
 function rgbaHex(hex, a) {
   let h = hex.slice(1);
@@ -524,7 +516,7 @@ export function drawTelegraphs() {
     if (next === null) continue;
     const y = e.y + 24, x0 = laneX(e.lane), x1 = laneX(next);
     const d = Math.sign(x1 - x0);
-    line(x0 + d * 12, y, x1, y, e.T.color, 1.5, 0.7);
+    line(x0 + d * 12, y, x1, y, e.T.color, 1.5, 1);
     strokePoly([x1 - d * 6, y - 5, x1, y, x1 - d * 6, y + 5], e.T.color, 1.5, false);
   }
   for (const e of enemies) {
@@ -547,7 +539,7 @@ export function drawTelegraphs() {
     if (next !== null) {
       const y = e.y + 22, x0 = laneX(e.lane), x1 = laneX(next);
       const d = Math.sign(x1 - x0);
-      line(x0 + d * 12, y, x1, y, e.T.color, 1.5, 0.7);
+      line(x0 + d * 12, y, x1, y, e.T.color, 1.5, 1);
       strokePoly([x1 - d * 6, y - 5, x1, y, x1 - d * 6, y + 5], e.T.color, 1.5, false);
     }
     // Sweeper: arrow showing sweep direction
@@ -569,7 +561,6 @@ function ctxFill(x, y, w, h, color, alpha) {
   ctx.globalAlpha = 1;
 }
 
-const BRANDART = sheet('fx_status', 96);   // same image as weapon.js STATUS (cached)
 export function drawEnemies(alpha) {
   for (const e of enemies) {
     if (e.type === 'boss' || e.dead) continue;
@@ -577,80 +568,29 @@ export function drawEnemies(alpha) {
     const y = e.prevY + (e.y - e.prevY) * alpha;
     const r = e.r;
     const c = e.T.color;
-    const tele = e.state === 'telegraph' && teleProgress(e) > 0.45 && Math.floor(e.stateT * 16) % 2 === 0;
-    const flash = e.hitFlash > 0 ? 0.9 : tele ? 0.7 : 0;
     const t = e.t;
 
-    // Ground shadow sells the "hovering above the track" look
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.ellipse(x + 4, y + r + 6, r * 1.1, r * 0.35, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
-
+    // Elite: a solid amber ring, plus the trait mark above.
     if (e.elite) {
-      ring(x, y, r + 9 + Math.sin(t * 6) * 1.5, PAL.amber, 2, 0.85);
-      ring(x, y, r + 13, PAL.amber, 1, 0.35);
+      ctx.strokeStyle = PAL.amber; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, r + 11 + Math.sin(t * 6) * 1.5, 0, Math.PI * 2); ctx.stroke();
       if (e.trait) {
         const glyph = { shell: '◆', nervous: '!!', prolific: '+' }[e.trait];
         const col = e.trait === 'shell' ? (e.shellCd > 0 ? PAL.dim : '#d8d0bc') : e.trait === 'nervous' ? PAL.red : PAL.acid;
-        text(glyph, x, y - r - 20, { color: col, size: 10, align: 'center' });
+        text(glyph, x, y - r - 22, { color: col, size: 10, align: 'center', font: 'display' });
       }
     }
 
-    // Live parts under the body
-    if (e.type === 'hopper') {
-      const hop = e.hopT !== undefined && e.hopT < 1 ? Math.sin(e.hopT * Math.PI) : 0;
-      const spread = 1 + hop * 0.5;
-      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        const kx = x + sx * 9 * spread, ky = y + sy * 6;
-        line(x + sx * 4, y + sy * 3, kx, ky - 3, c, 2, 0.9);
-        line(kx, ky - 3, x + sx * 13 * spread, y + sy * 12, c, 1.6, 0.9);
-      }
-    } else if (e.type === 'tank') {
-      for (const s of [-1, 1]) for (const k of [-1, 0, 1]) {
-        const sw = Math.sin(t * 9 + k * 2 + (s > 0 ? Math.PI : 0)) * 3;
-        line(x + s * 11, y + k * 9, x + s * 19, y + k * 9 + sw, '#3a1a2a', 2.4, 1);
-        line(x + s * 19, y + k * 9 + sw, x + s * 22, y + k * 9 + 5 + sw, '#3a1a2a', 1.8, 1);
-      }
-    } else if (e.type === 'drone') {
-      // wing membranes flutter: a faint pulse ring
-      ring(x, y, 15 + Math.sin(t * 14) * 1.5, c, 1, 0.18);
-    } else if (e.type === 'kamikaze') {
-      const len = e.state === 'dive' ? 16 + Math.random() * 10 : 5 + Math.random() * 3;
-      drawGlowDot(x, y - 14 - len * 0.4, PAL.amber, 4, 0.9);
-      drawGlowDot(x, y - 14 - len, PAL.red, 3, 0.6);
-    }
-
-    // Bio-creatures breathe.
-    const breathe = 1 + Math.sin(t * 3.2 + e.id) * 0.035;
-
-    // Generated sprite sheet when available
-    const art = ART[e.type];
-    if (art && art[0].ready) {
-      const warn = e.state === 'telegraph' && teleProgress(e) > 0.35;
-      const idle = IDLE[e.type];
-      const col = warn ? 4 + (Math.floor(e.stateT * 12) % 2) : idle ? idle[Math.floor(t * 6 + e.id) % idle.length] : Math.floor(t * 6 + e.id) % 4;
-      if (e.type === 'kamikaze' && e.state === 'dive') {
-        drawGlowDot(x, y - 18, PAL.amber, 4, 0.9);
-      }
-      drawCell(art[0], art[1], col, x, y, BROOD_SIZE * breathe * (e.minion ? 0.8 : 1), { flash: e.hitFlash > 0 ? 0.7 : 0 });
-      if (e.muzzle > 0) { drawGlowDot(x, y + MOUTH, c, 7 * (e.muzzle / 0.12) + 2, 0.9); drawGlowDot(x, y + MOUTH, '#ffffff', 2.5, e.muzzle / 0.12); }
-      if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
-      if (e.brandMul && !BRANDART.ready) { ring(x, y, r + 5, PAL.acid, 1.2, 0.55); drawGlowDot(x + r + 4, y - r, PAL.acid, 2, 0.9); }   // else fx_status (weapon.js)
-      continue;
-    }
-    const scale = breathe * (e.minion ? 0.8 : 1) * (e.type === 'wall' ? 1 : (r / ({ drone: 11, sweeper: 11, crusher: 12, hopper: 11, kamikaze: 10, tank: 16 }[e.type] || r)));
-    drawSprite(enemySprite(e.type, c), x, y, { sx: scale, sy: scale, flash });
-
-    // Live parts over the body: eyes track the ship, telegraph makes them flare.
-    const blink = (Math.sin(t * 0.7 + e.id * 1.7) > 0.985) ? 0.9 : 0;
-    const eyeCol = tele ? '#ffffff' : e.elite ? PAL.amber : '#d9c45a';
-    for (const [ex, ey, er] of EYES[e.type] || []) drawEye(x + ex * scale, y + ey * scale, er * scale * (tele ? 1.25 : 1), eyeCol, look.x, look.y, blink);
-    if (e.muzzle > 0) { drawGlowDot(x, y + MOUTH, c, 7 * (e.muzzle / 0.12) + 2, 0.9); drawGlowDot(x, y + MOUTH, '#ffffff', 2.5, e.muzzle / 0.12); }
-    if (e.type === 'crusher' && e.state === 'telegraph') {
-      drawGlowDot(x, y + 9, c, 4 + Math.sin(t * 30) * 1.5, 0.9);
-    }
-    if (e.poison > 0) drawGlowDot(x, y - r - 7, PAL.acid, 2.5, 0.8);
+    const tp = e.state === 'telegraph' ? teleProgress(e) : 0;
+    const hop = e.hopT !== undefined && e.hopT < 1 ? Math.sin(e.hopT * Math.PI) : 0;
+    // Sheet rows: idle on the age, the wind-up on telegraph progress, then
+    // the shot and the hit as one-shots counted down by muzzle / hitFlash.
+    drawEnemyBody(e.type, x, y, r, {
+      color: c, t, tele: tp, lookX: look.x, lookY: look.y, dir: e.dir, hop,
+      dive: e.state === 'dive', minion: e.minion,
+      atk: e.muzzle > 0 ? 1 - e.muzzle / ATK_S : -1,
+      hit: e.hitFlash > 0 ? 1 - e.hitFlash / HIT_S : -1,
+    });
   }
 }
 

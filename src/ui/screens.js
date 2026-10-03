@@ -1,20 +1,20 @@
 // Menu, archive and in-run overlays. Drawing registers buttons (see core/ui.js);
 // main.js maps the returned button ids to actions.
-import { ctx, W, H, UI_OFFSET } from '../core/canvas.js';
+import { ctx, W, H, UI_OFFSET, SAFE_TOP, SAFE_BOTTOM } from '../core/canvas.js';
 
 // Screens are laid out for a 640-tall canvas and centred with UI_OFFSET.
 const LH = 640;
 import { PAL } from '../render/palette.js';
 import { text, line, strokePoly, FONT_BODY } from '../render/draw.js';
-import { button, area, wrap } from '../core/ui.js';
-import { ITEMS, ITEM_BY_ID, RARITY, CAT_COLOR, SYNERGIES, STAT_DEFS, statDelta } from '../game/items.js';
+import { button, area, wrap, toggle, segmented, rrPath, holdButton } from '../core/ui.js';
+import { drawWord, wordWidth } from './glyphs.js';
+import { drawIcon } from '../render/icons.js';
+import { ITEMS, ITEM_BY_ID, RARITY, SYNERGIES, STAT_DEFS, statDelta, computeStats } from '../game/items.js';
 import { BOARDS } from '../game/boards.js';
 import { laneX, LANE_W } from '../game/world.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
-import { shipSprite, drawSprite } from '../render/sprites.js';
-import { sheet, drawCell } from '../render/images.js';
-const MENU_SYM = sheet('symbiote_neon', 128);
+import { drawSymbiote } from '../render/oled.js';
 import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
 import { version } from '../../package.json';
@@ -22,14 +22,15 @@ import { version } from '../../package.json';
 // Shown on the menu; single source of truth is package.json.
 const VERSION = `v${version}`;
 
-function dim(a = 0.78) {
-  ctx.fillStyle = `rgba(10,0,8,${a})`;
-  ctx.fillRect(0, -UI_OFFSET, W, H);   // screens are drawn shifted by UI_OFFSET: cover the whole canvas
+// Modal backdrop. OLED: menus sit on true black (a < 1 only while fading in).
+function dim(a = 1) {
+  ctx.fillStyle = `rgba(0,0,0,${a})`;
+  ctx.fillRect(0, -H, W, H * 3);   // centred or not, cover the whole canvas
 }
 
-// Wrap by measured width (the body font is not monospaced).
+// Wrap by measured width, in the same font text() uses.
 function wrapPx(str, maxW, size) {
-  ctx.font = `normal ${Math.round(size * 1.08)}px ${FONT_BODY}`;
+  ctx.font = `500 ${Math.max(9, size)}px ${FONT_BODY}`;
   const lines = [];
   let cur = '';
   for (const w of str.split(' ')) {
@@ -41,10 +42,28 @@ function wrapPx(str, maxW, size) {
   return lines;
 }
 
-// Card text sizes: `fs` is the description size, the rest scale with it.
+// Card grid. Everything hangs off one padding P:
+//   chip  at (P, P), size IC
+//   text column at TX = P + IC + GAP: name, meta, then the body below the chip
+//   right edge at w - P (wrap width, stat arrows, resonance dot)
+//   height = last body line + P
+// `fs` is the body size; compact shrinks the grid when four cards must fit.
+function cardGrid(fs, compact) {
+  const P = compact ? 10 : 14, IC = compact ? 34 : 42, GAP = 12;
+  const nameS = compact ? 15 : 17, metaS = 10;
+  return {
+    P, IC, TX: P + IC + GAP, nameS, metaS,
+    nameY: P + nameS * 0.36,                 // glyph top (0.72 em tall) sits on the chip's top edge
+    metaY: P + IC - metaS * 0.6,              // meta baseline sits on the chip's bottom edge
+    bodyTop: P + IC + (compact ? 8 : 10),     // body starts under the chip
+    lh: Math.round(fs * 1.4), hlh: Math.round((fs - 1) * 1.4),
+  };
+}
+
 function cardLayout(it, w, run, fs, compact = false) {
   const hints = run ? offerHints(it.id, run.stacks, run.save, run.board) : [];
-  const tw = w - 78;
+  const g = cardGrid(fs, compact);
+  const tw = w - g.TX - g.P;
   const desc = wrapPx(it.desc, tw, fs);
   let hint = [];
   let known = null;
@@ -58,207 +77,75 @@ function cardLayout(it, w, run, fs, compact = false) {
         : `⟡ RESONATES WITH ${hints.map((h) => h.partner.name).slice(0, 2).join(' + ')}`;
     hint = wrapPx(msg, tw, fs - 1);
   }
-  const lh = Math.round(fs * 1.35), hlh = Math.round((fs - 1) * 1.3);
-  const hd = compact ? 44 : 56;
-  const body = hd + desc.length * lh + (hint.length ? 4 + hint.length * hlh : 0);
-  return { hints, desc, hint, known, fs, lh, hlh, hd, compact, h: Math.max(compact ? 64 : 76, body + 10) };
+  const body = desc.length * g.lh + (hint.length ? 6 + hint.length * g.hlh : 0);
+  return { hints, desc, hint, known, fs, g, compact, h: g.bodyTop + body + g.P - 2 };
 }
 
 function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
-  const { hints, desc, hint, known, fs, lh, hlh, hd, compact, h } = L;
-  const ic = compact ? 34 : 44, ny = compact ? 16 : 20, my = compact ? 33 : 40;
+  const { hints, desc, hint, fs, g, compact, h } = L;
   area(id, x, y, w, h);
   const rc = RARITY[it.rarity].color;
-  const cc = CAT_COLOR[it.cat];
-  ctx.fillStyle = selected ? 'rgba(40,6,32,0.98)' : 'rgba(20,2,15,0.95)';
-  ctx.fillRect(x, y, w, h);
+  // Minimal card: black, a thin rarity outline, white when selected.
+  rrPath(x + 1, y + 1, w - 2, h - 2, 14);
+  ctx.fillStyle = selected ? '#120a16' : '#000'; ctx.fill();
   ctx.strokeStyle = selected ? PAL.white : rc;
-  ctx.lineWidth = selected ? 3 : 2;
-  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-  // A resonating item gets a pulsing magenta inner frame.
+  ctx.lineWidth = selected ? 2.5 : 1.5;
+  ctx.stroke();
+  // A resonating item gets a magenta dot that beats in the top-right corner.
   if (hints.length) {
-    ctx.strokeStyle = PAL.magenta;
-    ctx.globalAlpha = 0.45 + Math.sin(performance.now() / 180) * 0.25;
-    ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
-    ctx.globalAlpha = 1;
+    const k = 3.5 + Math.sin(performance.now() / 160) * 1.2;
+    ctx.beginPath(); ctx.arc(x + w - g.P - 4, y + g.P + 4, k, 0, Math.PI * 2);
+    ctx.fillStyle = PAL.magenta; ctx.fill();
   }
-  // icon
-  ctx.strokeStyle = cc;
-  ctx.strokeRect(x + 10, y + 10, ic, ic);
-  text(it.code, x + 10 + ic / 2, y + 10 + ic / 2, { color: cc, size: compact ? 11 : 13, align: 'center' });
-  text(it.name, x + 64, y + ny, { color: rc, size: compact ? 15 : 17 });
-  text(`${RARITY[it.rarity].name} · ${it.cat === 'mode' ? 'SHOT' : it.cat.toUpperCase()}`, x + 64, y + my, { color: PAL.mute, size: 10 });
+  // Icon: no frame, centred vertically on the card in the left column.
+  const icx = x + g.P + g.IC / 2, icy = y + h / 2;
+  if (!drawIcon(it.id, icx, icy, g.IC * 0.66)) {
+    text(it.code, icx, icy + 1, { color: PAL.white, size: compact ? 11 : 13, align: 'center', font: 'display' });
+  }
+  text(it.name, x + g.TX, y + g.nameY, { color: rc, size: g.nameS, font: 'display', maxW: w - g.TX - g.P - (hints.length ? 14 : 0) });
+  text(`${RARITY[it.rarity].name} · ${it.cat === 'mode' ? 'SHOT' : it.cat.toUpperCase()}`, x + g.TX, y + g.metaY, { color: PAL.mute, size: g.metaS });
   // Stat arrows, computed by actually applying the item to this build.
   if (run) {
-    let sx = x + w - 10;
+    let sx = x + w - g.P;
     for (const d of statDelta(run.board, run.stacks, it.id).reverse()) {
       const label = `${d.label}${d.dir > 0 ? '▲' : '▼'}`;
-      text(label, sx, y + my, { color: d.dir > 0 ? PAL.acid : PAL.red, size: 10, align: 'right' });
+      text(label, sx, y + g.metaY, { color: d.dir > 0 ? PAL.acid : PAL.red, size: g.metaS, align: 'right' });
       sx -= ctx.measureText(label).width + 8;
     }
   }
-  const ty = y + hd + 2 + lh / 2;
-  desc.forEach((l, i) => text(l, x + 64, ty + i * lh, { color: PAL.white, size: fs, weight: 'normal', alpha: 0.92 }));
+  const ty = y + g.bodyTop + g.lh / 2;
+  desc.forEach((l, i) => text(l, x + g.TX, ty + i * g.lh, { color: '#ece6f2', size: fs }));
   // Combo hint: vague until discovered, explicit afterwards.
-  const hy = ty + desc.length * lh + 4 + (hlh - lh) / 2;
-  hint.forEach((l, i) => text(l, x + 64, hy + i * hlh, { color: PAL.magenta, size: fs - 1, alpha: known ? 1 : 0.75 + Math.sin(performance.now() / 180) * 0.25 }));
+  const hy = ty + desc.length * g.lh + 6 + (g.hlh - g.lh) / 2;
+  hint.forEach((l, i) => text(l, x + g.TX, hy + i * g.hlh, { color: PAL.magenta, size: fs - 1 }));
 }
 
 // ---------------------------------------------------------------------------
-// Logo: Japanese neon sign. HOST in a cyan tube, BOUND in a pink tube (Train One
-// draws its letters as double tubes), the katakana reading underneath, a faint
-// RGB split and scanlines, slightly italic, underlined by flowing plasma
-// strands from edge to edge. Each word flickers on its own now and then, like
-// real signage. Baked once per word when the font has loaded.
+// Logo: HOST in neon green, BOUND in the symbiote's pink, spelled in monoline
+// primitive glyphs (ui/glyphs.js). It traces itself in when the menu opens;
+// the tagline follows in neon green.
 // ---------------------------------------------------------------------------
-const LOGO_FONT = '"Train One", "Russo One", sans-serif';
-const LOGO_W = 360, LOGO_H = 110, LOGO_CY = 44;          // bake canvas, logical px
-const LOGO_PARTS = [
-  { word: 'HOST', col: '#19f0ff', core: '#d8ffff' },
-  { word: 'BOUND', col: '#ff2bd6', core: '#ffe0f8' },
-];
-const LOGO_KANA = 'ホストバウンド';
-let logoBake = null;
-const logoFlick = [0, 0];
-
-// One canvas per word (so they can flicker separately) plus one for the kana.
-// Everything that glows is baked once (shadowBlur is costly on mobile GPUs);
-// per frame the menu only blits canvases and fills a few plasma ribbons.
-function bakeLogo(k) {
-  const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const x = c.getContext('2d'); x.setTransform(k, 0, 0, k, 0, 0); return [c, x]; };
-  const size = 42;
-  const [, m] = mk(1, 1);
-  m.font = `${size}px ${LOGO_FONT}`;
-  const ws = LOGO_PARTS.map((p) => m.measureText(p.word).width);
-  const gap = 6, total = ws[0] + ws[1] + gap;
-  const xs = [LOGO_W / 2 - total / 2, LOGO_W / 2 - total / 2 + ws[0] + gap];
-  const tube = (x, txt, px, py, col, core, halo) => {
-    x.save(); x.translate(px, py); x.transform(1, 0, -0.16, 1, 0, 0);   // italic
-    x.textAlign = 'left'; x.textBaseline = 'middle';
-    x.shadowColor = col; x.shadowBlur = halo; x.fillStyle = col; x.fillText(txt, 0, 0);   // halo
-    x.shadowBlur = 10; x.fillText(txt, 0, 0);
-    x.shadowBlur = 3; x.shadowColor = core; x.fillStyle = core; x.globalAlpha = 0.85; x.fillText(txt, 0, 0);
-    x.globalAlpha = 1; x.shadowBlur = 0;
-    // faint RGB split on the glass
-    x.globalCompositeOperation = 'lighter'; x.globalAlpha = 0.25;
-    x.fillStyle = '#ff2050'; x.fillText(txt, 1.5, 0);
-    x.fillStyle = '#2050ff'; x.fillText(txt, -1.5, 0);
-    x.restore();
-  };
-  const words = LOGO_PARTS.map((p, i) => {
-    const [c, x] = mk(LOGO_W, LOGO_H);
-    x.font = `${size}px ${LOGO_FONT}`;
-    tube(x, p.word, xs[i], LOGO_CY, p.col, p.core, 18);
-    x.globalCompositeOperation = 'destination-out'; x.fillStyle = 'rgba(0,0,0,0.25)';
-    for (let y = 0; y < LOGO_H; y += 3) x.fillRect(0, y, LOGO_W, 1);
-    return c;
-  });
-  const [kc, kx] = mk(LOGO_W, LOGO_H);
-  kx.font = `13px ${LOGO_FONT}`;
-  const kw = kx.measureText(LOGO_KANA).width;
-  // kana sign: small pink tube, letter-spaced under BOUND's right edge
-  const spacing = 3;
-  let px = xs[1] + ws[1] - (kw + spacing * (LOGO_KANA.length - 1));
-  for (const ch of LOGO_KANA) { tube(kx, ch, px, LOGO_CY + 33, '#ff2bd6', '#ffe0f8', 8); px += kx.measureText(ch).width + spacing; }
-  // Tagline: RGB split, cyan glow and scanlines, baked flat (tilt at blit).
-  const [tc, tx] = mk(TAG_W, TAG_H);
-  tx.font = `13px ${LOGO_FONT}`;
-  tx.textAlign = 'center'; tx.textBaseline = 'middle';
-  tx.globalCompositeOperation = 'lighter'; tx.globalAlpha = 0.7;
-  tx.fillStyle = '#ff2050'; tx.fillText(TAG, TAG_W / 2 - 1.6, TAG_H / 2);
-  tx.fillStyle = '#2050ff'; tx.fillText(TAG, TAG_W / 2 + 1.6, TAG_H / 2 + 0.5);
-  tx.globalCompositeOperation = 'source-over'; tx.globalAlpha = 1;
-  tx.shadowColor = PAL.cyan; tx.shadowBlur = 8;
-  tx.fillStyle = PAL.cyan; tx.fillText(TAG, TAG_W / 2, TAG_H / 2);
-  tx.shadowBlur = 0;
-  tx.globalCompositeOperation = 'destination-out'; tx.fillStyle = 'rgba(0,0,0,0.35)';
-  for (let y = TAG_H / 2 - 7; y < TAG_H / 2 + 8; y += 2) tx.fillRect(0, y, TAG_W, 1);
-  return { words, kana: kc, tag: tc, k };
-}
-const TAG = 'RUN · SHOOT · MUTATE', TAG_W = 300, TAG_H = 40;
-
-// Plasma underline across the whole screen: smooth strands that twist around
-// each other and swell and thin as they flow, like the plasma of the borders.
-// Each strand is one filled ribbon plus one wide faint stroke as its glow.
-const PLASMA = [
-  // colour, amplitude, wavelengths, speed, phase, base width
-  ['#19f0ff', 3.2, 0.035, 0.11, 1.3, 0, 2.6],
-  ['#19f0ff', 2.4, 0.05, 0.08, -1.0, 2.1, 1.4],
-  ['#e020c0', 3.8, 0.042, 0.13, 1.7, 4.2, 1.6],
-  ['#a64dff', 2.0, 0.06, 0.1, -1.5, 1.0, 1.0],
-];
-const PL_N = Math.ceil(W / 6) + 2;
-const plY = new Float32Array(PL_N), plW = new Float32Array(PL_N);
-function plasmaUnderline(y, t) {
-  ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let s = 0; s < PLASMA.length; s++) {
-    const [col, amp, f1, f2, sp, ph, bw] = PLASMA[s];
-    for (let i = 0; i < PL_N; i++) {
-      const x = i * 6 - 6;
-      plY[i] = y + Math.sin(x * f1 + t * sp + ph) * amp + Math.sin(x * f2 - t * sp * 0.6 + ph * 1.7) * amp * 0.45;
-      plW[i] = Math.max(0.4, bw * (0.55 + 0.45 * Math.sin(x * 0.027 - t * 1.1 + ph * 2.3)) * (0.8 + 0.2 * Math.sin(x * 0.11 + t * 2 + ph)));
-    }
-    const line = () => { ctx.beginPath(); for (let i = 0; i < PL_N; i++) i ? ctx.lineTo(i * 6 - 6, plY[i]) : ctx.moveTo(-6, plY[0]); };
-    // glow: one wide faint stroke
-    ctx.strokeStyle = col; ctx.globalAlpha = 0.16; ctx.lineWidth = bw * 4 + 3;
-    line(); ctx.stroke();
-    // body: ribbon whose thickness follows plW
-    ctx.globalAlpha = 0.9; ctx.fillStyle = col;
-    ctx.beginPath();
-    for (let i = 0; i < PL_N; i++) { const x = i * 6 - 6; i ? ctx.lineTo(x, plY[i] - plW[i] / 2) : ctx.moveTo(x, plY[i] - plW[i] / 2); }
-    for (let i = PL_N - 1; i >= 0; i--) ctx.lineTo(i * 6 - 6, plY[i] + plW[i] / 2);
-    ctx.closePath(); ctx.fill();
-    if (s === 0) { ctx.strokeStyle = '#e8ffff'; ctx.globalAlpha = 0.8; ctx.lineWidth = 0.9; line(); ctx.stroke(); }
-  }
-  ctx.restore();
-}
-
+const LOGO_SIZE = 34, TAG_SIZE = 9;
 function drawLogo(t) {
-  const CY = 150;
-  const k = ctx.getTransform().a || 1;
-  const fontReady = !document.fonts || (document.fonts.check(`42px ${LOGO_FONT}`, 'HOSTBOUND') && document.fonts.check(`13px ${LOGO_FONT}`, LOGO_KANA));
-  if (!logoBake || logoBake.k !== k || (!logoBake.final && fontReady)) {
-    logoBake = bakeLogo(k);
-    logoBake.final = fontReady;
-  }
-  const ox = W / 2 - LOGO_W / 2, oy = CY - LOGO_CY;
-  plasmaUnderline(CY + 21, t);
-  // Flicker: now and then a word stutters off for a few frames.
-  for (let i = 0; i < 2; i++) {
-    if (logoFlick[i] > 0) logoFlick[i]--;
-    else if (Math.random() < 0.004) logoFlick[i] = 3 + Math.floor(Math.random() * 6);
-  }
-  ctx.save();
-  logoBake.words.forEach((c, i) => {
-    const off = logoFlick[i] > 0 && logoFlick[i] % 2 === 0;
-    ctx.globalAlpha = off ? 0.25 : 0.94 + Math.sin(t * 3 + i * 2) * 0.06;
-    ctx.drawImage(c, ox, oy, LOGO_W, LOGO_H);
-  });
-  ctx.globalAlpha = 0.9;
-  ctx.drawImage(logoBake.kana, ox, oy, LOGO_W, LOGO_H);
-  ctx.restore();
-  // Tagline with a VHS look: jitter, a slow tracking band and now and then a
-  // torn slice shifted sideways.
-  ctx.save();
-  ctx.translate(W / 2, 212);
-  const jit = Math.random() < 0.06 ? (Math.random() - 0.5) * 3 : 0;
-  const tc = logoBake.tag, tk = logoBake.k;
-  ctx.drawImage(tc, -TAG_W / 2 + jit, -TAG_H / 2, TAG_W, TAG_H);
-  if (Math.random() < 0.08) {
-    const sy = TAG_H / 2 - 6 + Math.random() * 9, sh = 2 + Math.random() * 3;
-    ctx.fillStyle = 'rgba(10,0,8,1)'; ctx.fillRect(-TAG_W / 2, -TAG_H / 2 + sy, TAG_W, sh);
-    ctx.drawImage(tc, 0, sy * tk, tc.width, sh * tk, -TAG_W / 2 + (Math.random() - 0.5) * 10, -TAG_H / 2 + sy, TAG_W, sh);
-  }
-  const by = -8 + ((t * 9) % 16);
-  ctx.fillStyle = 'rgba(200,255,255,0.12)'; ctx.fillRect(-TAG_W / 2, by, TAG_W, 2);
-  ctx.restore();
+  const p = Math.min(1, t / 1.1);
+  const e = 1 - (1 - p) ** 3;
+  const wH = wordWidth('HOST', LOGO_SIZE), wB = wordWidth('BOUND', LOGO_SIZE), gap = LOGO_SIZE * 0.42;
+  const x0 = W / 2 - (wH + gap + wB) / 2, y0 = 128;
+  drawWord('HOST', x0, y0, LOGO_SIZE, PAL.acid, { weight: 0.12, progress: e });
+  drawWord('BOUND', x0 + wH + gap, y0, LOGO_SIZE, '#d83cd8', { weight: 0.12, progress: Math.max(0, e * 1.2 - 0.2) });
+  const tp = Math.max(0, Math.min(1, (t - 0.8) / 0.8));
+  drawWord('RUN · SHOOT · MUTATE', W / 2, y0 + LOGO_SIZE + 22, TAG_SIZE, PAL.acid, { weight: 0.16, align: 'center', progress: 1 - (1 - tp) ** 3 });
 }
 
 // ---------------------------------------------------------------------------
 // Menu
 // ---------------------------------------------------------------------------
-export function drawMenu(save, t, boardIdx) {
+// Where the menu shows the alien (menu coordinates) and its spring state, so
+// the RUN transition can take over from exactly this pose.
+export const MENU_SYM = { y: 276, R: 46, state: {} };
+export const menuBob = (t) => Math.sin(t * 2) * 3;
+
+export function drawMenu(save, t, boardIdx, specimen) {
   dim(0.55);
   drawLogo(t);
 
@@ -266,151 +153,293 @@ export function drawMenu(save, t, boardIdx) {
   const b = BOARDS[boardIdx];
   const unlocked = unlockedBoards(save).includes(b.id);
   if (BOARDS.length > 1) {
-    button('boardPrev', 16, 238, 44, 96, '◄', { color: PAL.white, size: 18 });
-    button('boardNext', W - 60, 238, 44, 96, '►', { color: PAL.white, size: 18 });
+    button('boardPrev', 16, 250, 40, 64, '‹', { size: 20 });
+    button('boardNext', W - 56, 250, 40, 64, '›', { size: 20 });
   }
-  // The protagonist, big and free-floating (generated art; procedural fallback until the sheet loads).
-  const bob = Math.sin(t * 2) * 3;
-  if (!drawCell(MENU_SYM, 0, Math.floor(t * 10) % 8, W / 2, 292 + bob, 104, { alpha: unlocked ? 1 : 0.4 })) {
-    drawSprite(shipSprite(b.id, unlocked ? b.color : PAL.mute), W / 2, 292, { sx: 1.4, sy: 1.4, alpha: unlocked ? 1 : 0.45 });
-  }
+  // The protagonist, big and free-floating, drawn live: this run's specimen.
+  // On RUN it flies from here to the start of the run (main.js run.intro).
+  drawSymbiote(W / 2, MENU_SYM.y + menuBob(t), { R: MENU_SYM.R, bank: Math.sin(t * 0.8) * 0.12, t, hit: false, genome: specimen, state: MENU_SYM.state });
 
-  button('run', 60, 348, W - 120, 46, 'RUN', { color: PAL.cyan, size: 20, disabled: !unlocked });
+  // One primary action; everything else is an outline.
+  const bx = 48, bw = W - 96;
+  button('run', bx, 352, bw, 54, 'RUN', { color: '#d83cd8', fill: true, size: 22, disabled: !unlocked });
   const dBest = save.daily.date === todayKey() ? save.daily.best : 0;
-  button('daily', 60, 402, W - 120, 40, 'DAILY RUN', { color: PAL.magenta, size: 13,
-    sub: dBest ? `same seed for everyone · today ${dBest}m` : 'same seed for everyone today' });
-  const hb = (W - 128) / 2;
-  button('archive', 60, 450, hb, 34, 'ARCHIVE', { color: PAL.acid, size: 13 });
-  button('tutorial', 68 + hb, 450, hb, 34, 'TUTORIAL', { color: PAL.white, size: 13 });
+  button('daily', bx, 416, bw, 44, 'DAILY RUN', { color: PAL.acid, size: 15, sub: dBest ? `today ${dBest}m` : null });
+  const hb = (bw - 10) / 2;
+  button('archive', bx, 470, hb, 40, 'ARCHIVE', { color: PAL.white, size: 14 });
+  button('tutorial', bx + hb + 10, 470, hb, 40, 'TUTORIAL', { color: PAL.white, size: 14 });
+
+  const st = save.settings;
+  toggle('sfx', bx + 6, 522, hb - 16, 30, 'SFX', st.sfx);
+  toggle('music', bx + hb + 20, 522, hb - 16, 30, 'MUSIC', st.music);
 
   const nUnl = unlockedItems(save).length;
-  text(`${nUnl}/${ITEMS.length} ITEMS · ${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length} GOALS`, W / 2, 494, { color: PAL.mute, size: 8, align: 'center' });
-
-  const bw = (W - 128) / 2;
-  const st = save.settings;
-  button('sfx', 60, 506, bw, 30, `SFX ${st.sfx ? 'ON' : 'OFF'}`, { color: st.sfx ? PAL.white : PAL.dim, size: 10 });
-  button('music', 68 + bw, 506, bw, 30, `MUSIC ${st.music ? 'ON' : 'OFF'}`, { color: st.music ? PAL.white : PAL.dim, size: 10 });
-
-  text('SWIPE OR TAP ◄ ► LANE · ▲ JUMP · ▼ PHASE', W / 2, 556, { color: PAL.mute, size: 8, align: 'center' });
-  if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 582, { color: PAL.acid, size: 12, align: 'center' });
-  text(VERSION, W / 2, LH - 14, { color: PAL.dim, size: 8, align: 'center' });
+  if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 572, { color: PAL.acid, size: 12, align: 'center', font: 'display' });
+  text(`${nUnl}/${ITEMS.length} ITEMS · ${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length} GOALS`, W / 2, 592, { color: '#4a3a55', size: 9, align: 'center' });
+  text(VERSION, W / 2, LH - 14, { color: '#3a2a40', size: 9, align: 'center' });
 }
 
 // ---------------------------------------------------------------------------
-// Archive: items and goals
+// Archive: items, combos and goals as one scrolling list per tab, in the
+// home's language: glyph headings, pink for selection, acid for progress,
+// no card grid. Drawn in real screen coordinates (not centred), so the list
+// uses the whole height and the header sits under the notch.
 // ---------------------------------------------------------------------------
-// Archive pages: the lists outgrew one screen.
-const ITEM_COLS = 4, ITEM_ROWS = 12, ITEMS_PER = ITEM_COLS * ITEM_ROWS, GOALS_PER = 17, COMBOS_PER = 12;
-export function archivePages(save, tab) {
-  if (tab === 'items') return Math.ceil(ITEMS.length / ITEMS_PER);
-  if (tab === 'goals') return Math.ceil(ACHIEVEMENTS.length / GOALS_PER);
-  return Math.max(1, Math.ceil(COMBOS.filter((c) => save.combos && save.combos[c.id]).length / COMBOS_PER));
+const PINK = '#d83cd8';
+// Locked placeholders: a darker shade of the rarity colour (no alpha on OLED).
+const RARITY_DARK = ['#55505e', '#0f5d66', '#45307a'];
+const TRACK = '#241a2a';
+
+// Scroll and selection state; main.js feeds taps, tickArchive() the physics.
+export const ARCH = { tab: 'items', sel: null, selK: 1, scroll: 0, vel: 0, max: 0, dragY: null, grabV: 0, last: 0 };
+
+export function archiveTab(tab) {
+  ARCH.tab = tab; ARCH.sel = null; ARCH.scroll = 0; ARCH.vel = 0;
+}
+export function archiveSelect(id) {
+  ARCH.sel = ARCH.sel === id ? null : id;
+  ARCH.selK = 0;
 }
 
-// ◄ 1/3 ► along the bottom, with an optional caption under the page number.
-function pager(pg, pages, caption = '') {
-  if (pages > 1) {
-    button('pagePrev', 14, LH - 46, 70, 32, '◄', { color: PAL.white, size: 14, disabled: pg === 0 });
-    button('pageNext', W - 84, LH - 46, 70, 32, '►', { color: PAL.white, size: 14, disabled: pg >= pages - 1 });
-    text(`${pg + 1}/${pages}`, W / 2, LH - (caption ? 38 : 30), { color: PAL.white, size: 11, align: 'center' });
-  }
-  if (caption) text(caption, W / 2, LH - (pages > 1 ? 22 : 24), { color: PAL.mute, size: 9, align: 'center' });
-}
-
-export function drawArchive(save, tab, selected, page = 0) {
-  dim(1);
-  button('tabItems', 6, 10, 84, 34, 'ITEMS', { color: tab === 'items' ? PAL.cyan : PAL.dim, size: 11 });
-  button('tabCombos', 94, 10, 84, 34, 'COMBOS', { color: tab === 'combos' ? PAL.magenta : PAL.dim, size: 11 });
-  button('tabGoals', 182, 10, 84, 34, 'GOALS', { color: tab === 'goals' ? PAL.acid : PAL.dim, size: 11 });
-  button('back', 270, 10, 84, 34, 'BACK', { color: PAL.white, size: 11 });
-  if (tab === 'combos') {
-    const known = COMBOS.filter((c) => save.combos && save.combos[c.id]);
-    text(`DISCOVERED ${known.length}/${COMBOS.length}`, W / 2, 62, { color: PAL.magenta, size: 10, align: 'center' });
-    if (!known.length) {
-      wrap('Hold two items that work together to discover a combo. Items that resonate with your build glow magenta when offered.', 46)
-        .forEach((l, i) => text(l, W / 2, 110 + i * 14, { color: PAL.mute, size: 9, align: 'center', weight: 'normal' }));
-      return;
-    }
-    const per = COMBOS_PER;
-    const pages = archivePages(save, tab);
-    const pg = Math.min(page, pages - 1);
-    known.slice(pg * per, pg * per + per).forEach((c, i) => {
-      const y = 86 + i * 40;
-      text(c.name, 14, y, { color: c.evo ? PAL.acid : PAL.magenta, size: 11 });
-      text(`${c.evo ? 'MAX ' : ''}${ITEM_BY_ID[c.a].name} + ${ITEM_BY_ID[c.b].name}`, W - 14, y, { color: c.evo ? PAL.acid : PAL.mute, size: 8, align: 'right' });
-      text(c.desc, 14, y + 14, { color: PAL.white, size: 8, weight: 'normal' });
-    });
-    pager(pg, pages);
-    return;
-  }
-
-  const unl = unlockedItems(save);
-  if (tab === 'items') {
-    const cols = ITEM_COLS, cw = 82, ch = 31, gx = 6;
-    const x0 = (W - (cols * cw + (cols - 1) * gx)) / 2;
-    const pages = archivePages(save, tab);
-    const pg = Math.min(page, pages - 1);
-    ITEMS.slice(pg * ITEMS_PER, (pg + 1) * ITEMS_PER).forEach((it, i) => {
-      const cx = x0 + (i % cols) * (cw + gx);
-      const cy = 54 + Math.floor(i / cols) * (ch + 4);
-      const known = unl.includes(it.id);
-      const seen = save.discovered.includes(it.id);
-      area(`item:${it.id}`, cx, cy, cw, ch);
-      ctx.strokeStyle = selected === it.id ? PAL.white : known ? CAT_COLOR[it.cat] : PAL.dim;
-      ctx.lineWidth = selected === it.id ? 2.5 : 1.5;
-      ctx.strokeRect(cx, cy, cw, ch);
-      text(known ? it.code : '???', cx + cw / 2, cy + 10, { color: known ? CAT_COLOR[it.cat] : PAL.dim, size: 11, align: 'center' });
-      text(known ? it.name : 'LOCKED', cx + cw / 2, cy + 23, { color: known ? PAL.white : PAL.dim, size: 9, align: 'center', alpha: seen ? 1 : 0.6, maxW: cw - 6 });
-    });
-    const it = ITEM_BY_ID[selected];
-    const py = 54 + ITEM_ROWS * (ch + 4) + 2;
-    ctx.strokeStyle = PAL.dim;
-    ctx.strokeRect(12, py, W - 24, LH - py - 54);
-    if (it) {
-      const known = unl.includes(it.id);
-      text(known ? it.name : '???', 22, py + 16, { color: known ? RARITY[it.rarity].color : PAL.dim, size: 14 });
-      if (known) {
-        wrap(it.desc, 52).forEach((l, i) => text(l, 22, py + 36 + i * 12, { color: PAL.white, size: 9, weight: 'normal' }));
-        const mine = COMBOS.filter((c) => c.a === it.id || c.b === it.id);
-        const known = mine.filter((c) => save.combos && save.combos[c.id]);
-        const names = known.map((c) => `${c.name} (+${ITEM_BY_ID[c.a === it.id ? c.b : c.a].code})`).join(', ');
-        const hidden = mine.length - known.length;
-        const line2 = `${names}${names && hidden ? ' · ' : ''}${hidden ? `${hidden} undiscovered` : ''}`;
-        if (line2) wrap(`COMBOS: ${line2}`, 52).slice(0, 2).forEach((l, i) => text(l, 22, py + 74 + i * 11, { color: PAL.magenta, size: 8 }));
-      } else {
-        const a = ACHIEVEMENTS.find((x) => x.id === it.unlock);
-        text(`Unlock: ${a ? a.desc : '?'}`, 22, py + 36, { color: PAL.white, size: 9, weight: 'normal' });
-        text('Or find it corrupted in a run and beat the next boss.', 22, py + 50, { color: PAL.mute, size: 8, weight: 'normal' });
-      }
-    } else {
-      text('Tap an item for details', W / 2, py + 40, { color: PAL.mute, size: 10, align: 'center' });
-    }
-    pager(pg, pages, `DISCOVERED ${save.discovered.filter((id) => ITEM_BY_ID[id]).length}/${ITEMS.length}`);
+// Drag, fling and rubber band, on real time so it is smooth at any refresh.
+export function tickArchive(p, wheel) {
+  const now = performance.now();
+  const dt = Math.min(0.05, Math.max(0.001, (now - (ARCH.last || now - 16)) / 1000));
+  ARCH.last = now;
+  const A = ARCH, over = A.scroll < 0 ? A.scroll : A.scroll > A.max ? A.scroll - A.max : 0;
+  if (p.down && !p.consumed) {
+    if (A.dragY === null) { A.dragY = p.y; A.grabV = Math.abs(A.vel); A.vel = 0; }
+    const dy = p.y - A.dragY;
+    A.dragY = p.y;
+    A.scroll -= dy * (over ? 0.4 : 1);
+    A.vel = A.vel * 0.5 + (-dy / dt) * 0.5;
   } else {
-    const pages = archivePages(save, tab);
-    const pg = Math.min(page, pages - 1);
-    let y = 64;
-    for (const a of ACHIEVEMENTS.slice(pg * GOALS_PER, (pg + 1) * GOALS_PER)) {
-      const done = !!save.achievements[a.id];
-      const [cur, target] = a.progress(save, null);
-      const rw = rewardOf(a.id);
-      const col = done ? PAL.acid : PAL.white;
-      text(done ? '■' : '□', 14, y, { color: col, size: 10 });
-      text(a.name, 28, y - 3, { color: col, size: 10 });
-      text(a.desc, 28, y + 8, { color: PAL.mute, size: 7, weight: 'normal' });
-      text(done ? 'DONE' : a.runOnly ? 'IN ONE RUN' : `${Math.min(Math.floor(cur), target)}/${target}`, W - 12, y - 3, { color: done ? PAL.acid : PAL.cyan, size: 9, align: 'right' });
-      if (rw) text(`+ ${rw.name}`, W - 12, y + 8, { color: rw.kind === 'board' ? PAL.orange : PAL.magenta, size: 7, align: 'right' });
-      y += 30;
-    }
-    pager(pg, pages, `${ACHIEVEMENTS.filter((a) => save.achievements[a.id]).length}/${ACHIEVEMENTS.length} DONE`);
+    A.dragY = null;
+    A.scroll += A.vel * dt;
+    A.vel *= Math.exp(-dt * 3.4);
+    if (over) { A.scroll -= over * (1 - Math.exp(-dt * 16)); A.vel *= Math.exp(-dt * 20); }
+    if (Math.abs(A.vel) < 4) A.vel = 0;
   }
+  if (wheel) { A.scroll = Math.max(0, Math.min(A.max, A.scroll + wheel)); A.vel = 0; }
+  A.selK += (1 - A.selK) * (1 - Math.exp(-dt * 14));
+}
+
+const HEAD_H = 64;
+function archView() {
+  const top = SAFE_TOP + 12;
+  return { top, listTop: top + HEAD_H, listBot: H - SAFE_BOTTOM - 6 };
+}
+
+// One detail block, used for items under their row. Returns its full height.
+function itemDetail(it, save, unl, x, y, w, draw) {
+  const known = unl.includes(it.id);
+  let h = 6;
+  const at = (dy) => y + h + dy;
+  // the row above already names a known item; a locked one is only a dot
+  if (!known) {
+    if (draw) text('LOCKED', x, at(8), { color: PINK, size: 15, font: 'display', maxW: w });
+    h += 24;
+  }
+  if (draw) text(`${RARITY[it.rarity].name} · ${it.cat === 'mode' ? 'SHOT' : it.cat.toUpperCase()}`, x, at(0), { color: PAL.mute, size: 10 });
+  h += 18;
+  if (known) {
+    const desc = wrapPx(it.desc, w, 12);
+    desc.forEach((l, i) => { if (draw) text(l, x, at(i * 17), { color: '#ece6f2', size: 12 }); });
+    h += desc.length * 17;
+    const mine = COMBOS.filter((c) => c.a === it.id || c.b === it.id);
+    const found = mine.filter((c) => save.combos && save.combos[c.id]);
+    const hidden = mine.length - found.length;
+    const parts = found.map((c) => `${c.name} with ${ITEM_BY_ID[c.a === it.id ? c.b : c.a].name}`);
+    if (hidden) parts.push(`${hidden} combo${hidden > 1 ? 's' : ''} still hidden`);
+    if (parts.length) {
+      h += 6;
+      wrapPx(parts.join(' · '), w, 11).forEach((l, i) => { if (draw) text(l, x, at(i * 15), { color: PINK, size: 11 }); h += 15; });
+    }
+  } else {
+    const a = ACHIEVEMENTS.find((q) => q.id === it.unlock);
+    const lines = [...wrapPx(`Unlock: ${a ? a.desc : '?'}`, w, 12)];
+    lines.forEach((l, i) => { if (draw) text(l, x, at(i * 17), { color: '#ece6f2', size: 12 }); });
+    h += lines.length * 17;
+    const more = wrapPx('Or find it corrupted in a run and beat the next boss.', w, 11);
+    more.forEach((l, i) => { if (draw) text(l, x, at(i * 15), { color: PAL.mute, size: 11 }); });
+    h += more.length * 15;
+  }
+  return h + 12;
+}
+
+// Small padlock-free placeholder for a locked item: a hollow circle.
+function lockedDot(x, y, rarity, sel) {
+  ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
+  ctx.strokeStyle = sel ? PINK : RARITY_DARK[rarity]; ctx.lineWidth = sel ? 2.5 : 1.5; ctx.stroke();
+}
+
+function drawItemsList(save, y0, V) {
+  const unl = unlockedItems(save);
+  const M = 20, cols = 2, gx = 10, cw = (W - M * 2 - gx) / cols, rh = 40;
+  const vis = (y, h) => y + h > V.listTop && y < V.listBot;
+  const hit = (id, x, y, w, h) => {
+    const a = Math.max(y, V.listTop), b = Math.min(y + h, V.listBot);
+    if (b > a) area(id, x, a, w, b - a);
+  };
+  let y = y0;
+  for (let r = 0; r < RARITY.length; r++) {
+    const all = ITEMS.filter((it) => it.rarity === r);
+    const open = all.filter((it) => unl.includes(it.id));
+    const shut = all.filter((it) => !unl.includes(it.id));
+    if (vis(y, 30)) {
+      text(RARITY[r].name, M, y + 12, { color: RARITY[r].color, size: 13, font: 'display' });
+      text(`${open.length}/${all.length}`, W - M, y + 12, { color: PAL.mute, size: 11, font: 'display', align: 'right' });
+    }
+    y += 32;
+    // Rows of unlocked items, two per row; the detail opens under its row.
+    const detail = (it) => {
+      const full = itemDetail(it, save, unl, M + 8, 0, W - M * 2 - 16, false);
+      const h = full * ARCH.selK;
+      // while it opens, bring the whole detail into view
+      if (ARCH.selK < 0.97 && ARCH.dragY === null) {
+        const over = y + full - (V.listBot - 12);
+        if (over > 0) ARCH.scroll += Math.min(over, y - V.listTop - 60) * 0.18;
+      }
+      if (vis(y, h)) {
+        ctx.save(); ctx.beginPath(); ctx.rect(0, y, W, h); ctx.clip();
+        itemDetail(it, save, unl, M + 8, y, W - M * 2 - 16, true);
+        ctx.restore();
+      }
+      y += h;
+    };
+    for (let i = 0; i < open.length; i += cols) {
+      const row = open.slice(i, i + cols);
+      if (vis(y, rh)) row.forEach((it, j) => {
+        const x = M + j * (cw + gx), cy = y + rh / 2, sel = ARCH.sel === it.id;
+        hit(`item:${it.id}`, x, y, cw, rh);
+        if (sel) { rrPath(x + 1, y + 3, cw - 2, rh - 6, (rh - 6) / 2); ctx.strokeStyle = PINK; ctx.lineWidth = 2; ctx.stroke(); }
+        if (!drawIcon(it.id, x + 20, cy, 20)) text(it.code, x + 20, cy + 1, { color: PAL.white, size: 9, align: 'center', font: 'display', maxW: 24 });
+        text(it.name, x + 38, cy + 1, { color: sel ? PINK : PAL.white, size: 11, font: 'display', maxW: cw - 50 });
+      });
+      y += rh;
+      const s = row.find((it) => it.id === ARCH.sel);
+      if (s) detail(s);
+    }
+    // Locked: hollow circles, no text. Tap one to see how to unlock it.
+    if (shut.length) {
+      y += 8;
+      if (vis(y, 18)) text(`${shut.length} LOCKED · TAP ONE TO SEE HOW TO GET IT`, M, y + 6, { color: PAL.mute, size: 9, font: 'display', maxW: W - M * 2 });
+      y += 16;
+      const step = 26, per = Math.floor((W - M * 2) / step);
+      for (let i = 0; i < shut.length; i += per) {
+        const row = shut.slice(i, i + per);
+        if (vis(y, step)) row.forEach((it, j) => {
+          const x = M + 13 + j * step;
+          hit(`item:${it.id}`, x - 13, y, step, step);
+          lockedDot(x, y + step / 2, r, ARCH.sel === it.id);
+        });
+        y += step;
+        const s = row.find((it) => it.id === ARCH.sel);
+        if (s) detail(s);
+      }
+    }
+    y += 22;
+  }
+  return y - y0;
+}
+
+function drawCombosList(save, y0, V) {
+  const M = 20, known = COMBOS.filter((c) => save.combos && save.combos[c.id]);
+  const vis = (y, h) => y + h > V.listTop && y < V.listBot;
+  const tx = M + 74, tw = W - tx - M;
+  let y = y0;
+  for (const c of known) {
+    const desc = wrapPx(c.desc, tw, 11);
+    const h = 26 + desc.length * 15 + 16;
+    if (vis(y, h)) {
+      const col = c.evo ? PAL.acid : PINK;
+      const iy = y + 12;
+      if (!drawIcon(c.a, M + 11, iy, 20)) text(ITEM_BY_ID[c.a].code, M + 11, iy, { color: PAL.white, size: 9, align: 'center', font: 'display', maxW: 22 });
+      text('+', M + 33, iy + 1, { color: PAL.mute, size: 11, align: 'center', font: 'display' });
+      if (!drawIcon(c.b, M + 55, iy, 20)) text(ITEM_BY_ID[c.b].code, M + 55, iy, { color: PAL.white, size: 9, align: 'center', font: 'display', maxW: 22 });
+      text(c.name, tx, iy + 1, { color: col, size: 12, font: 'display', maxW: tw - (c.evo ? 44 : 0) });
+      if (c.evo) text('MAX', W - M, iy + 1, { color: PAL.acid, size: 9, font: 'display', align: 'right' });
+      desc.forEach((l, i) => text(l, tx, y + 32 + i * 15, { color: '#ece6f2', size: 11 }));
+    }
+    y += h;
+  }
+  const hidden = COMBOS.length - known.length;
+  if (hidden) {
+    y += known.length ? 8 : 0;
+    if (vis(y, 120)) {
+      text(`${hidden} STILL HIDDEN`, M, y + 10, { color: PAL.mute, size: 12, font: 'display' });
+      wrapPx('Hold two items that work together. An offered item that resonates with your build shows a beating dot.', W - M * 2, 12)
+        .forEach((l, i) => text(l, M, y + 34 + i * 17, { color: PAL.mute, size: 12 }));
+    }
+    y += 100;
+  }
+  return y - y0;
+}
+
+function drawGoalsList(save, y0, V) {
+  const M = 20, tx = M + 22, rw = 74, tw = W - tx - M - rw;
+  const vis = (y, h) => y + h > V.listTop && y < V.listBot;
+  const goals = [...ACHIEVEMENTS.filter((a) => !save.achievements[a.id]), ...ACHIEVEMENTS.filter((a) => save.achievements[a.id])];
+  let y = y0;
+  for (const a of goals) {
+    const done = !!save.achievements[a.id];
+    const [cur, target] = a.progress(save, null);
+    const rw_ = rewardOf(a.id);
+    const desc = wrapPx(a.desc, tw, 11);
+    const bar = !done && !a.runOnly && target > 1;
+    const h = 22 + desc.length * 15 + (bar ? 12 : 0) + 14;
+    if (vis(y, h)) {
+      const cy = y + 9;
+      ctx.beginPath(); ctx.arc(M + 6, cy, 6, 0, Math.PI * 2);
+      if (done) { ctx.fillStyle = PAL.acid; ctx.fill(); } else { ctx.strokeStyle = RARITY_DARK[0]; ctx.lineWidth = 1.5; ctx.stroke(); }
+      text(a.name, tx, cy + 1, { color: done ? PAL.acid : PAL.white, size: 12, font: 'display', maxW: tw });
+      text(done ? 'DONE' : a.runOnly ? 'ONE RUN' : `${Math.min(Math.floor(cur), target)}/${target}`, W - M, cy + 1, { color: done ? PAL.acid : PAL.white, size: 11, font: 'display', align: 'right' });
+      desc.forEach((l, i) => text(l, tx, y + 28 + i * 15, { color: PAL.mute, size: 11 }));
+      if (rw_) text(`+ ${rw_.name}`, W - M, y + 28, { color: rw_.kind === 'board' ? PAL.orange : PINK, size: 10, align: 'right', maxW: rw - 6 });
+      if (bar) {
+        const by = y + 22 + desc.length * 15 + 4, bw = W - tx - M;
+        rrPath(tx, by, bw, 3, 1.5); ctx.fillStyle = TRACK; ctx.fill();
+        const k = Math.max(0, Math.min(1, cur / target));
+        if (k > 0) { rrPath(tx, by, Math.max(3, bw * k), 3, 1.5); ctx.fillStyle = PAL.acid; ctx.fill(); }
+      }
+    }
+    y += h;
+  }
+  return y - y0;
+}
+
+export function drawArchive(save) {
+  dim(1);
+  const V = archView(), A = ARCH;
+  // the list, clipped under the header
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, V.listTop, W, V.listBot - V.listTop); ctx.clip();
+  const y0 = V.listTop + 8 - A.scroll;
+  const h = A.tab === 'items' ? drawItemsList(save, y0, V) : A.tab === 'combos' ? drawCombosList(save, y0, V) : drawGoalsList(save, y0, V);
+  ctx.restore();
+  A.max = Math.max(0, h + 24 - (V.listBot - V.listTop));
+  // scroll position: a thin capsule on the right edge while there is more
+  if (A.max > 0) {
+    const vh = V.listBot - V.listTop, th = Math.max(28, vh * vh / (vh + A.max));
+    const k = Math.max(0, Math.min(1, A.scroll / A.max));
+    rrPath(W - 5, V.listTop + 4 + (vh - 8 - th) * k, 3, th, 1.5); ctx.fillStyle = TRACK; ctx.fill();
+  }
+  // header on top of the list: tabs, back, one counter
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, V.listTop);
+  const tabId = { items: 'tabItems', combos: 'tabCombos', goals: 'tabGoals' }[A.tab];
+  segmented(12, V.top, 240, 36, [['tabItems', 'ITEMS'], ['tabCombos', 'COMBOS'], ['tabGoals', 'GOALS']], tabId);
+  button('back', W - 16 - 80, V.top, 80, 36, 'BACK', { color: PAL.white, size: 12 });
+  const count = A.tab === 'items' ? `${unlockedItems(save).length}/${ITEMS.length} UNLOCKED`
+    : A.tab === 'combos' ? `${COMBOS.filter((c) => save.combos && save.combos[c.id]).length}/${COMBOS.length} FOUND`
+      : `${Object.keys(save.achievements).length}/${ACHIEVEMENTS.length} DONE`;
+  text(count, 20, V.top + 52, { color: PAL.acid, size: 10, font: 'display' });
 }
 
 // ---------------------------------------------------------------------------
 // In-run overlays
 // ---------------------------------------------------------------------------
 export function drawPick(run) {
-  dim(0.82);
+  dim();
   const lvl = run.pickKind === 'level';
   text(lvl ? `LEVEL ${run.level}` : 'BOSS DOWN', W / 2, 56, { color: lvl ? PAL.acid : PAL.magenta, size: 22, align: 'center', font: 'display' });
   text(lvl ? 'THE MASS MUTATES · CHOOSE ONE' : 'CHOOSE ONE UPGRADE', W / 2, 82, { color: PAL.white, size: 11, align: 'center' });
@@ -438,46 +467,104 @@ export function drawPick(run) {
   if (run.pickSel >= 0) text('TAP AGAIN TO TAKE IT', W / 2, 100, { color: PAL.acid, size: 11, align: 'center', alpha: 0.6 + Math.sin(performance.now() / 120) * 0.4 });
   else if (t > 0.45) text('TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 10, align: 'center' });
   const full = run.player.hearts >= run.stats.maxHearts;
-  button('skip', 80, cy - gap + 10, W - 160, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
+  button('skip', 90, cy - gap + 14, W - 180, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
 }
 
-export function drawPause(run) {
-  dim(0.88);
-  text('PAUSED', W / 2, 70, { color: PAL.cyan, size: 28, align: 'center' });
-  button('resume', 60, 100, W - 120, 46, 'RESUME', { color: PAL.cyan, size: 18 });
-  if (run.tutorial) {
-    const hw = (W - 128) / 2;
-    button('skipTutorial', 60, 154, hw, 34, 'TUTORIAL', { color: PAL.white, size: 11, sub: 'skip it' });
-    button('quit', 68 + hw, 154, hw, 34, 'QUIT RUN', { color: PAL.red, size: 12 });
-  } else button('quit', 60, 154, W - 120, 34, 'QUIT RUN', { color: PAL.red, size: 12 });
+// Pause: the home's composition. Your alien in the middle, where you are in
+// the run above it, the build under it, and the home's buttons at the bottom:
+// RESUME (primary), HOLD TO END RUN (fills red under the finger), SFX/MUSIC.
+// Drawn in real screen coordinates so the buttons hug the bottom edge.
+export const END_HOLD = 0.8;
+export function drawPause(run, save) {
+  dim();
+  const top = SAFE_TOP, bot = H - SAFE_BOTTOM;
+  const t = performance.now() / 1000;
+  const st = run.stats, p = run.player;
 
-  // Stats
-  const st = run.stats;
-  text('STATS', 20, 210, { color: PAL.mute, size: 10 });
-  STAT_DEFS.forEach((d, i) => {
-    const x = 20 + (i % 3) * 110, y = 228 + Math.floor(i / 3) * 18;
-    text(d.label, x, y, { color: PAL.mute, size: 9 });
-    text(d.fmt(d.get(st)), x + 44, y, { color: PAL.white, size: 11 });
-  });
-  text(`SHOT: ${st.carrier.toUpperCase()}${st.hasScatter ? ' · FAN' : ''}${st.hasSine ? ' · WAVE' : ''}${st.hasRocket && st.carrier !== 'rocket' ? ' · BLAST' : ''}`, 20, 270, { color: PAL.cyan, size: 9 });
+  // Bottom block, anchored to the bottom edge like the home's buttons.
+  const bx = 48, bw = W - 96, hb = (bw - 10) / 2;
+  const ty = bot - 48;
+  toggle('sfx', bx + 6, ty, hb - 16, 30, 'SFX', save.settings.sfx);
+  toggle('music', bx + hb + 20, ty, hb - 16, 30, 'MUSIC', save.settings.music);
+  const ey = ty - 58;
+  const k = Math.min(1, (run.holdT || 0) / END_HOLD);
+  const label = k > 0 ? 'KEEP HOLDING' : run.holdHint > 0 ? 'HOLD IT DOWN' : 'HOLD TO END RUN';
+  holdButton('endRun', bx, ey, bw, 44, label, k, { color: PAL.red, size: 13 });
+  const ry = ey - 66;
+  button('resume', bx, ry, bw, 54, 'RESUME', { color: PINK, fill: true, size: 22 });
+  let floor = ry - 20;
+  if (run.tutorial) { button('skipTutorial', bx + 40, ry - 46, bw - 80, 34, 'SKIP TUTORIAL', { color: PAL.white, size: 11 }); floor = ry - 64; }
 
-  text('BUILD', 20, 296, { color: PAL.mute, size: 10 });
-  let y = 312;
-  let col = 0;
-  for (const id in run.stacks) {
-    const it = ITEM_BY_ID[id];
-    const n = run.stacks[id];
-    const x = 20 + col * 165;
-    text(it.code, x, y, { color: CAT_COLOR[it.cat], size: 9 });
-    text(`${it.name}${n > 1 ? ' x' + n : ''}`, x + 32, y, { color: PAL.white, size: 9 });
-    col = (col + 1) % 2;
-    if (col === 0) y += 14;
-    if (y > 470) break;
+  // Lay out the upper block first, then centre it in the space left.
+  const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
+  const cs = 38, per = Math.floor((W - 40) / cs);
+  const HEAD = 236;                       // title, status, hearts, alien
+  const base = computeStats(run.board, {});
+  const parts = [];
+  for (const d of STAT_DEFS) {
+    const a = d.get(base), b = d.get(st);
+    if (Math.abs(b - a) > 1e-6) parts.push({ s: `${d.label} ${d.fmt(b)}`, c: b > a ? PAL.acid : PAL.red, w: wordWidth(`${d.label} ${d.fmt(b)}`, 10 * 0.72) + 18 });
   }
-  const combos = activeCombos(run.stacks, run.stats);
-  if (combos.length) {
-    text('COMBOS', 20, 496, { color: PAL.magenta, size: 10 });
-    combos.slice(0, 6).forEach((c, i) => text(`${c.name}: ${c.desc}`, 20, 512 + i * 13, { color: PAL.white, size: 8, weight: 'normal' }));
+  const statLines = [[]];
+  let lw = 0;
+  for (const q of parts) {
+    if (lw + q.w > W - 48 && statLines[statLines.length - 1].length) { statLines.push([]); lw = 0; }
+    statLines[statLines.length - 1].push(q); lw += q.w;
+  }
+  const nStat = parts.length ? statLines.length : 0;
+  const comboLines = wrapPx(activeCombos(run.stacks, run.stats).map((c) => c.name).join(' · '), W - 64, 12).filter(Boolean);
+  const room = floor - top;
+  let rows = Math.ceil(ids.length / per);
+  const bodyH = (r) => ids.length ? r * cs + 10 + 22 + nStat * 20 + (comboLines.length ? 4 + comboLines.length * 17 : 0) : 40;
+  while (rows > 1 && HEAD + bodyH(rows) > room) rows--;
+  const used = HEAD + bodyH(rows);
+  const y0 = top + Math.max(0, (room - used) * 0.4);
+
+  text('PAUSED', W / 2, y0 + 46, { color: PAL.white, size: 22, align: 'center', font: 'display' });
+  text(`${Math.floor(run.distance)}m · LV ${run.level}`, W / 2, y0 + 76, { color: PAL.acid, size: 12, align: 'center', font: 'display' });
+  const nh = st.maxHearts + p.blueHearts;
+  for (let i = 0; i < nh; i++) {
+    const hx = W / 2 - (nh - 1) * 10 + i * 20;
+    if (i < st.maxHearts) heart(hx, y0 + 100, PAL.red, i < p.hearts); else heart(hx, y0 + 100, PAL.blue, true);
+  }
+  // The alien you are playing, big and alive.
+  const sy = y0 + 166;
+  run.pauseSym = run.pauseSym || {};
+  drawSymbiote(W / 2, sy + Math.sin(t * 2) * 3, { R: 36, bank: Math.sin(t * 0.8) * 0.12, t, hit: false, genome: p.specimen, state: run.pauseSym });
+
+  let y = y0 + HEAD;
+  if (!ids.length) {
+    wrapPx('No mutations yet. Collect cells to level up, then choose one.', W - 96, 12)
+      .forEach((l, i) => text(l, W / 2, y + 8 + i * 17, { color: PAL.mute, size: 12, align: 'center' }));
+    return;
+  }
+  // Build: icons in centred rows, a rarity capsule under each, stack count.
+  ids.slice(0, rows * per).forEach((id, i) => {
+    const it = ITEM_BY_ID[id], n = run.stacks[id];
+    const inRow = Math.min(per, ids.length - Math.floor(i / per) * per);
+    const x = W / 2 + ((i % per) - (inRow - 1) / 2) * cs, cy = y + Math.floor(i / per) * cs + 14;
+    if (!drawIcon(id, x, cy, 20)) text(it.code, x, cy + 1, { color: PAL.white, size: 9, align: 'center', font: 'display', maxW: 26 });
+    rrPath(x - 7, cy + 15, 14, 3, 1.5); ctx.fillStyle = RARITY[it.rarity].color; ctx.fill();
+    if (n > 1) text(`${n}`, x + 13, cy - 10, { color: RARITY[it.rarity].color, size: 9, align: 'center', font: 'display' });
+  });
+  y += rows * cs + 10;
+  // Shot, then only the stats this build moved (green up, red down).
+  const shot = `${st.carrier}${st.hasScatter ? ' · fan' : ''}${st.hasSine ? ' · wave' : ''}${st.hasRocket && st.carrier !== 'rocket' ? ' · blast' : ''}`.toUpperCase();
+  text(`SHOT ${shot}`, W / 2, y, { color: PAL.white, size: 11, align: 'center', font: 'display' });
+  y += 22;
+  if (nStat) for (const ln of statLines) {
+    let x = W / 2 - ln.reduce((s, q) => s + q.w, 0) / 2;
+    for (const q of ln) { text(q.s, x + q.w / 2, y, { color: q.c, size: 10, align: 'center', font: 'display' }); x += q.w; }
+    y += 20;
+  }
+  // Active combos: names in pink.
+  if (comboLines.length) {
+    y += 4;
+    for (const l of comboLines) {
+      if (y > floor) break;
+      text(l, W / 2, y, { color: PINK, size: 12, align: 'center' });
+      y += 17;
+    }
   }
 }
 
@@ -495,10 +582,10 @@ export function drawDead(run) {
     ctx.beginPath(); ctx.arc(k.x, k.y, 22 + Math.sin(run.deadT * 14) * 3, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
-  dim(Math.min(0.8, Math.max(0, run.deadT - 0.6) * 1.4));
+  dim(Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6));   // fades to solid black
   const jitter = run.deadT < 0.5 ? (Math.random() - 0.5) * 6 : 0;
-  text('CONSUMED', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center' });
-  text(`${Math.floor(run.distance)}m`, W / 2, 158, { color: PAL.cyan, size: 30, align: 'center' });
+  text('CONSUMED', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center', font: 'display' });
+  text(`${Math.floor(run.distance)}m`, W / 2, 158, { color: PAL.cyan, size: 30, align: 'center', font: 'display' });
   if (run.daily) text(`DAILY ${run.dailyKey}${run.newDailyBest ? ' · NEW DAILY BEST' : ''}`, W / 2, 134, { color: PAL.magenta, size: 9, align: 'center' });
   if (run.newBest) text('NEW BEST', W / 2, 186, { color: PAL.acid, size: 12, align: 'center', alpha: 0.6 + Math.sin(run.deadT * 6) * 0.4 });
   const rs = run.rs;
@@ -510,10 +597,10 @@ export function drawDead(run) {
     [...new Set(run.newUnlocks)].slice(0, 6).forEach((n, i) => text(n, W / 2, 292 + i * 16, { color: PAL.magenta, size: 11, align: 'center' }));
   }
   if (run.deadT > 0.8) {
-    button('retry', 60, 420, W - 120, 50, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PAL.cyan, size: 18 });
-    const hw = (W - 128) / 2;
-    button('menu', 60, 482, hw, 40, 'MENU', { color: PAL.white, size: 13 });
-    button('share', 68 + hw, 482, hw, 40, run.shareMsg || 'SHARE', { color: PAL.magenta, size: 13 });
+    button('retry', 48, 420, W - 96, 52, run.daily ? 'RETRY DAILY' : 'RETRY', { color: '#d83cd8', fill: true, size: 18 });
+    const hw = (W - 106) / 2;
+    button('menu', 48, 482, hw, 42, 'MENU', { color: PAL.white, size: 13 });
+    button('share', 58 + hw, 482, hw, 42, run.shareMsg || 'SHARE', { color: PAL.acid, size: 13 });
   }
 }
 

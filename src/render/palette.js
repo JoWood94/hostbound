@@ -13,7 +13,11 @@ export const PAL = {
   amber: '#ffb000',
   violet: '#a64dff',
   mint: '#00ff9c',
+  yellow: '#ffe81a',   // neon yellow: tertiary UI accent
+  violetNeon: '#9b5cff', // ultraviolet: epic rarity
 };
+// UI roles: primary = symbiote pink, secondary = neon green (acid), tertiary =
+// neon yellow. Cyan stays in the palette for the phase language.
 
 // Reserved colours: enemy bullets are ALWAYS magenta/orange, player shots ALWAYS acid green.
 export const COLOR_ENEMY_BULLET = PAL.magenta;

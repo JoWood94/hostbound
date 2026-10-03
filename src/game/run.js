@@ -6,8 +6,8 @@ import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
-import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_TOXIC, BIO, K_SHARD, setShotLook } from './bullets.js';
-import { drawCell } from '../render/images.js';
+import { husk } from '../render/shots.js';
+import { LOW, BIG, playerBullets, enemyBullets, updatePool, clearPool, kill, spawn, F_EXPLODE, F_TOXIC, K_SHARD, setShotLook } from './bullets.js';
 import { makePlayer, updatePlayer, hurtPlayer, isAirborne, isPhased, orbitalPositions, PLAYER_Y } from './player.js';
 import { enemies, TYPES, spawnEnemy, setShiftGuard, updateEnemies, damageEnemy, clearEnemies, updateCorpses, look, beatClock, TICK_SEC, setTeleBonus, noteJump, jumpClash } from './enemies.js';
 import { SECTIONS, COURSES, mirrorEvent } from './sections.js';
@@ -1216,18 +1216,7 @@ export function updateRun(run, input, dt) {
 // HUSK shells (drawn with the world, under the player)
 export function drawHusks(run) {
   if (!run || !run.husks) return;
-  for (const h of run.husks) {
-    const a = Math.min(1, h.t / 0.5) * 0.9;
-    for (let k = 0; k < h.hp; k++) {
-      if (BIO.ready) drawCell(BIO, 0, 6, h.x, h.y + 6 - k * 5, LANE_W * 0.8, { alpha: a });
-      else {
-        ctx.globalAlpha = a;
-        ctx.strokeStyle = PAL.acid; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(h.x, h.y - k * 5, LANE_W * 0.32, 6, 0, Math.PI, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-    }
-  }
+  for (const h of run.husks) husk(h.x, h.y, LANE_W * 0.32 * Math.min(1, h.t / 0.25), h.hp);
 }
 
 export function endRun(run) {

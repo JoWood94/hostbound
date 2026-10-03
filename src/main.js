@@ -1,20 +1,23 @@
 import { ctx, W, H, UI_OFFSET } from './core/canvas.js';
 import { startLoop } from './core/loop.js';
-import { pollInput, discardGesture, setTapSlop, setEarlyTap } from './core/input.js';
+import { pollInput, discardGesture, setTapSlop, setEarlyTap, pointer, takeWheel } from './core/input.js';
 import { loadSave, writeSave } from './core/save.js';
 import { beginUi, endUi, hitTest, setUiOffset } from './core/ui.js';
 import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset, fxCount } from './render/fx.js';
 let layerDim = 1;
 import { drawPlayerBullets, drawEnemyBullets, enemyBullets, playerBullets, LOW } from './game/bullets.js';
-import { drawPlayer, drawPlayerDeath } from './game/player.js';
+import { drawPlayer, drawPlayerDeath, symRadius } from './game/player.js';
+import { drawLiquidMorph } from './render/oled.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles, spawnObstacle, obstacles } from './game/obstacles.js';
 import { drawPickups, pickups } from './game/pickups.js';
 import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.js';
 import { drawWeaponFx, drawWingmen } from './game/weapon.js';
-import { line as drawLine, drawGlowDot, setDim } from './render/draw.js';
+import { setDim } from './render/draw.js';
+import { path as shotPath } from './render/shots.js';
+const railPath = [0, 0, 0, 0];
 import { PLAYER_Y } from './game/player.js';
 import { runBot } from './debug/bot.js';
 import { runBench } from './debug/bench.js';
@@ -25,7 +28,10 @@ import { unlockedBoards, unlockedItems } from './game/achievements.js';
 import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickItem, skipPick, EVENT_EVERY, drawHusks } from './game/run.js';
 import { drawHud } from './ui/hud.js';
 import { drawTutorial, finishTutorial } from './game/tutorial.js';
-import { drawMenu, drawArchive, archivePages, drawPick, drawPause, drawDead } from './ui/screens.js';
+import { makeSpecimen } from './render/specimen.js';
+import { MENU_SYM, menuBob } from './ui/screens.js';
+import { randomSeed } from './core/rng.js';
+import { drawMenu, drawArchive, ARCH, archiveTab, archiveSelect, tickArchive, drawPick, drawPause, drawDead, END_HOLD } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
 import { startMusic, setMusic } from './audio/music.js';
 
@@ -37,9 +43,6 @@ let screen = 'menu';
 let run = null;
 let menuT = 0;
 let boardIdx = Math.max(0, BOARDS.findIndex((b) => b.id === save.board));
-let archiveTab = 'items';
-let archiveSel = null;
-let archivePage = 0;
 
 // ?mute: no music, no sound for this session only (automated tests); the
 // saved settings are left untouched.
@@ -47,7 +50,7 @@ const MUTE = new URLSearchParams(location.search).has('mute');
 const audioSettings = () => (MUTE ? { ...save.settings, sfx: false, music: false } : save.settings);
 applySettings(audioSettings());
 // Logo fonts. Offline the canvas falls back to system fonts.
-if (document.fonts) { document.fonts.load('48px "Russo One"').catch(() => {}); document.fonts.load('52px "Train One"', 'HOSTBOUNDホストバウンド').catch(() => {}); document.fonts.load('16px DotGothic16').catch(() => {}); }
+if (document.fonts) { document.fonts.load('500 16px "Quicksand"').catch(() => {}); document.fonts.load('600 16px "Quicksand"').catch(() => {}); }
 
 function ensureAudio() {
   unlockAudio();
@@ -57,11 +60,24 @@ function ensureAudio() {
 
 // The tutorial plays before the first run (and from the menu's TUTORIAL
 // button); never on the daily or on test starts (?from, &items).
-function startRun(daily = false, tutorial = false) {
+// Alien body for the next run: new on every launch and after every start.
+let nextSpecimen = makeSpecimen(randomSeed());
+
+function startRun(daily = false, tutorial = false, fromMenu = false) {
   if (!daily) save.board = BOARDS[boardIdx].id;
   writeSave(save);
   const tut = !daily && (tutorial || (!save.tutorialDone && !START_FROM && !START_ITEMS.length));
   run = createRun(save, { daily, tutorial: tut });
+  // The alien shown on the menu is the one you play; a new one grows at once
+  // for the next run (retry or back to the menu). Purely cosmetic.
+  run.player.specimen = nextSpecimen;
+  nextSpecimen = makeSpecimen(randomSeed());
+  // From the menu, the alien first flies down from its menu pose to the
+  // start of the run, shrinking; the run waits for it (see update/render).
+  if (fromMenu) {
+    run.intro = { t: 0, start: performance.now(), t0: menuT, dur: 1.25, x0: W / 2, y0: UI_OFFSET + MENU_SYM.y + menuBob(menuT), R0: MENU_SYM.R };
+    run.player.oled = MENU_SYM.state;          // keep the springs: no pop
+  }
   if (!daily) for (const id of START_ITEMS) acquire(run, id, true);
   if (START_FROM && !daily) warpTo(run, START_FROM);
   else if (START_ITEMS.length && !daily) { run.toasts = []; toastBuild(run); }
@@ -124,8 +140,14 @@ async function shareRun(r) {
   catch { r.shareMsg = 'NEEDS HTTPS'; sfx.deny(); }
 }
 
+function toggleSetting(id) {
+  save.settings[id] = !save.settings[id];
+  applySettings(audioSettings()); writeSave(save); sfx.select();
+}
+
 function toMenu() {
   screen = 'menu';
+  menuT = 0;   // the logo traces itself in again
   run = null;
   setMusic('menu');
 }
@@ -157,25 +179,35 @@ function update(dt) {
     const unlocked = unlockedBoards(save).includes(BOARDS[boardIdx].id);
     if (id === 'boardPrev' || input.left) { boardIdx = (boardIdx + BOARDS.length - 1) % BOARDS.length; sfx.lane(); }
     else if (id === 'boardNext' || input.right) { boardIdx = (boardIdx + 1) % BOARDS.length; sfx.lane(); }
-    else if ((id === 'run' || id === 'enter' || input.jump) && unlocked) startRun();
-    else if (id === 'daily') startRun(true);
-    else if (id === 'tutorial') startRun(false, true);
-    else if (id === 'archive') { screen = 'archive'; sfx.select(); }
-    else if (id === 'sfx') { save.settings.sfx = !save.settings.sfx; applySettings(audioSettings()); writeSave(save); sfx.select(); }
-    else if (id === 'music') { save.settings.music = !save.settings.music; applySettings(audioSettings()); writeSave(save); sfx.select(); }
+    else if ((id === 'run' || id === 'enter' || input.jump) && unlocked) startRun(false, false, true);
+    else if (id === 'daily') startRun(true, false, true);
+    else if (id === 'tutorial') startRun(false, true, true);
+    else if (id === 'archive') { screen = 'archive'; archiveTab('items'); sfx.select(); }
+    else if (id === 'sfx' || id === 'music') toggleSetting(id);
     return;
   }
 
   if (screen === 'archive') {
+    const TABS = ['items', 'combos', 'goals'];
     if (id === 'back' || input.pause) { screen = 'menu'; sfx.select(); }
-    else if (id === 'tabItems' || id === 'tabGoals' || id === 'tabCombos') { archiveTab = id.slice(3).toLowerCase(); archivePage = 0; }
-    else if (id === 'pagePrev' || (!id && input.left)) archivePage = Math.max(0, archivePage - 1);
-    else if (id === 'pageNext' || (!id && input.right)) archivePage = Math.min(archivePages(save, archiveTab) - 1, archivePage + 1);
-    else if (id && id.startsWith('item:')) { archiveSel = id.slice(5); sfx.lane(); }
+    else if (id === 'tabItems' || id === 'tabGoals' || id === 'tabCombos') { archiveTab(id.slice(3).toLowerCase()); sfx.lane(); }
+    else if (!id && (input.left || input.right)) {   // horizontal swipe flips tabs
+      const i = TABS.indexOf(ARCH.tab) + (input.right ? 1 : -1);
+      if (i >= 0 && i < TABS.length) { archiveTab(TABS[i]); sfx.lane(); }
+    }
+    // a tap that only stopped a fling selects nothing
+    else if (id && id.startsWith('item:') && ARCH.grabV < 250) { archiveSelect(id.slice(5)); sfx.lane(); }
     return;
   }
 
   // screen === 'run'
+  // RUN transition: the world scrolls, nothing else runs until the alien lands.
+  if (run.intro) {
+    const k = Math.min(1, (performance.now() - run.intro.start) / (run.intro.dur * 1000));
+    updateWorld(dt, 60 + 160 * k);
+    if (k >= 1) run.intro = null;
+    return;
+  }
   // Modal screens (pick, pause, dead): when one opens, drop the gesture in
   // progress and ignore input for MODAL_LOCK s, so a swipe meant for the
   // symbiote can never choose a card.
@@ -205,12 +237,21 @@ function update(dt) {
       else if (id === 'enter' && run.pickSel >= 0) pickItem(run, run.pickSel);
       break;
     }
-    case 'pause':
+    case 'pause': {
+      // END RUN is a hold: it fills while the finger that pressed it stays
+      // on it, and drains when it lets go, so a stray tap never ends a run.
+      const p = pointer();
+      const holding = !locked && p.down && !p.consumed && hitTest(p.startX, p.startY) === 'endRun' && hitTest(p.x, p.y) === 'endRun';
+      run.holdT = holding ? (run.holdT || 0) + dt : Math.max(0, (run.holdT || 0) - dt * 3);
+      run.holdHint = Math.max(0, (run.holdHint || 0) - dt);
+      if (run.holdT >= END_HOLD) { run.holdT = 0; run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
       if (locked) break;
-      if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; sfx.select(); }
+      if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; run.holdT = 0; sfx.select(); }
       else if (id === 'skipTutorial' && run.tutorial) { finishTutorial(run); run.mode = 'play'; sfx.select(); }
-      else if (id === 'quit') { run.player.dead = true; endRun(run); run.deadT = 0.8; }
+      else if (id === 'sfx' || id === 'music') toggleSetting(id);
+      else if (id === 'endRun') { run.holdHint = 1.4; sfx.deny(); }   // a tap: say it needs a hold
       break;
+    }
     case 'dead':
       updateDead(run, dt);
       if (run.deadT > 0.8) {
@@ -235,6 +276,15 @@ function centred(fn) {
   setUiOffset(0);
 }
 
+// RUN transition: the alien melts part by part and flows from its menu pose
+// to the run start, re-forming the same body at run size (oled.drawLiquidMorph).
+// Timed on real time, so it is as smooth as the display refresh.
+function drawIntro(r) {
+  const it = r.intro, p = r.player;
+  const u = Math.min(1, (performance.now() - it.start) / (it.dur * 1000));
+  drawLiquidMorph(p.specimen, u, it.x0, it.y0, it.R0, p.x, PLAYER_Y + 2, symRadius(p), it.t0);
+}
+
 function render(alpha) {
   beginUi();
   const sh = shakeOffset();
@@ -243,9 +293,10 @@ function render(alpha) {
 
   if (screen === 'menu') {
     drawWorld(menuT * 6, -1);
-    centred(() => drawMenu(save, menuT, boardIdx));
+    centred(() => drawMenu(save, menuT, boardIdx, nextSpecimen));
   } else if (screen === 'archive') {
-    centred(() => drawArchive(save, archiveTab, archiveSel, archivePage));
+    tickArchive(pointer(), takeWheel());
+    drawArchive(save);
   } else {
     const r = run;
     look.x = r.player.x; look.y = PLAYER_Y;
@@ -257,7 +308,8 @@ function render(alpha) {
     // Readability: the more of your own stuff is on screen, the dimmer it is
     // drawn (down to 45%), so enemy shots on top always stand out.
     const busy = playerBullets.n + fxCount() * 0.25;
-    layerDim += (Math.max(0.45, Math.min(1, 1 - (busy - 30) / 110)) - layerDim) * 0.1;
+    // OLED: no translucent layers; enemy shots stay readable by being drawn last.
+    layerDim = 1;
     setDim(layerDim);
     drawFx();
     setDim(1);
@@ -266,25 +318,27 @@ function render(alpha) {
     drawEnemies(alpha);
     setDim(layerDim);
     drawWeaponFx();
-    drawPlayerBullets();
+    drawPlayerBullets(alpha);
     if (r.railT > 0) {
       const a = Math.min(1, r.railT * 3);
-      drawLine(r.player.x, PLAYER_Y - 20, r.player.x, 0, PAL.cyan, 10 + Math.random() * 4, 0.35 * a);
-      drawLine(r.player.x, PLAYER_Y - 20, r.player.x, 0, '#ffffff', 3, 0.9 * a);
-      drawGlowDot(r.player.x, PLAYER_Y - 22, PAL.cyan, 10, a);
+      // RAIL STRIKE: one flat cyan column with a round foot, thinning as it ends
+      railPath[0] = r.player.x; railPath[1] = PLAYER_Y - 20; railPath[2] = r.player.x; railPath[3] = -10;
+      shotPath(railPath, PAL.cyan, 12 * a + 1);
+      ctx.fillStyle = PAL.cyan; ctx.beginPath(); ctx.arc(r.player.x, PLAYER_Y - 20, 6 + 4 * a, 0, Math.PI * 2); ctx.fill();
     }
     drawWingmen();
     drawHusks(r);
     setDim(1);
-    drawEnemyBullets('low');   // low waves under the board: you jump over them
-    if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
+    drawEnemyBullets('low', alpha);   // low waves under the board: you jump over them
+    if (r.intro) drawIntro(r);
+    else if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
     else drawPlayerDeath(r.player, r.deadT);
-    drawEnemyBullets('high');  // normal enemy bullets always on top: readability rule
+    drawEnemyBullets('high', alpha);  // normal enemy bullets always on top: readability rule
     drawBossBar(r.boss);
     drawHud(r);
     if (r.mode === 'play') drawTutorial(r);
     if (r.mode === 'pick') centred(() => drawPick(r));
-    else if (r.mode === 'pause') centred(() => drawPause(r));
+    else if (r.mode === 'pause') drawPause(r, save);
     else if (r.mode === 'dead') centred(() => drawDead(r));
   }
 

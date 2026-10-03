@@ -3,21 +3,12 @@
 // switched at 2/3 and 1/3 HP. A safe option (lane, jump or phase) always exists.
 import { ctx, W, H, SAFE_TOP } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
-import { strokePoly, drawGlowDot, line, text, ring } from '../render/draw.js';
-import { bossSprite, prismEmitterSprite, drawSprite, drawEye } from '../render/sprites.js';
+import { strokePoly, line, text, ring } from '../render/draw.js';
 import { look, glowLane, beatClock, shotSpeed, TELE_TICKS, TICK_SEC, teleBonusNow } from './enemies.js';
-import { sheet, drawCell } from '../render/images.js';
 
-// Generated boss sheet: 4x5 cells of 256x128, cropped to content by
-// import-sheet.py --fit (no cuts). Columns: 0-1 idle, 2 warning, 3 wounded.
-const BROOD_BOSSES = sheet('bosses_brood', 256, 128);
-const BROOD_BOSSES2 = sheet('bosses_brood2', 256, 128);
-// boss id -> [sheet, row]
-const BOSS_ART = {
-  sentinel: [BROOD_BOSSES, 0], hive: [BROOD_BOSSES, 1], hunter: [BROOD_BOSSES, 2], prism: [BROOD_BOSSES, 3], warden: [BROOD_BOSSES, 4],
-  maw: [BROOD_BOSSES2, 0], choir: [BROOD_BOSSES2, 1], mother: [BROOD_BOSSES2, 2], spine: [BROOD_BOSSES2, 3], eclipse: [BROOD_BOSSES2, 4],
-};
-const PLAYER_ROW = H * 0.78;
+// Boss bodies are drawn from primitives (render/bosses.js).
+import { drawBossBody } from '../render/bosses.js';
+const PLAYER_ROW = H * 0.8;   // = player.js PLAYER_Y
 import { enemyBullets, spawn, LOW } from './bullets.js';
 import { burst, shake } from '../render/fx.js';
 import { LANES, LANE_W, laneX } from './world.js';
@@ -625,7 +616,7 @@ export function drawBossTelegraph(b) {
       const y = b.y + 44;
       const x0 = laneX(p.lanes[0]), x1 = laneX(p.lanes[p.lanes.length - 1]);
       const dir = Math.sign(x1 - x0) || 1;
-      line(x0, y, x1, y, c, 2, 0.4 + prog * 0.5);
+      line(x0, y, x1, y, c, 2, 1);
       strokePoly([x1 - dir * 8, y - 6, x1, y, x1 - dir * 8, y + 6], c, 2, false);
     }
   }
@@ -635,80 +626,32 @@ export function drawBoss(b, alpha) {
   if (!b || b.dead) return;
   const x = b.prevX + (b.x - b.prevX) * alpha;
   const y = b.prevY + (b.y - b.prevY) * alpha;
-  const tele = b.state === 'telegraph' && Math.floor(b.stateT * 14) % 2 === 0;
-  const flash = b.hitFlash > 0 ? 0.8 : b.phaseFlash > 0 ? 1 : tele ? 0.5 : 0;
   const hw = b.hw, hh = b.hh;
   const id = b.def.id;
   const t = b.t;
 
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = '#000';
-  ctx.beginPath(); ctx.ellipse(x + 6, y + hh + 14, hw * 0.8, 9, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 1;
-
-  const art = BOSS_ART[id];
-  if (art && art[0].ready) {
-    const col = b.state === 'telegraph' ? 2 : b.phase >= 2 ? 3 : Math.floor(t * 2) % 2;
-    // MAW inhales while it telegraphs: motes drift into the mouth
-    if (id === 'maw' && b.state === 'telegraph' && Math.random() < 0.6) {
-      const a = Math.random() * Math.PI * 2;
-      burst(x + Math.cos(a) * 110, y + Math.sin(a) * 50, b.color, 1, 0, 0.3, 1.5);
-    }
-    drawCell(art[0], art[1], col, x, y, 236, { flash: b.hitFlash > 0 ? 0.6 : b.phaseFlash > 0 ? 0.9 : 0 });
-    if (id === 'hunter') {   // keep the aim telegraph: it is gameplay information
-      const tx = laneX(b.playerLane);
-      const aim = b.state === 'telegraph' ? 0.9 : 0.25;
-      line(x + 30, y, tx, H - 30, b.color, 1.2, aim * 0.6);
-      ring(tx, PLAYER_ROW, 16 + Math.sin(t * 10) * 2, b.color, 1.5, aim);
-    }
-    if (b.poison > 0) drawGlowDot(x + hw * 0.8, y - hh - 6, PAL.acid, 3);
-    return;
+  // MAW inhales while it telegraphs: motes drift into the mouth
+  if (id === 'maw' && b.state === 'telegraph' && Math.random() < 0.6) {
+    const a = Math.random() * Math.PI * 2;
+    burst(x + Math.cos(a) * 110, y + Math.sin(a) * 50, b.color, 1, 0, 0.3, 1.5);
   }
-  if (!['sentinel', 'hive', 'hunter', 'prism', 'warden'].includes(id)) {
-    // art still loading: a glowing core so the fight stays readable
-    drawGlowDot(x, y, b.color, 40, 0.6);
-    drawGlowDot(x, y, '#ffffff', 8, 0.9);
-    return;
-  }
-  if (id === 'prism') {
-    drawSprite(prismEmitterSprite(b.color, hw), x, y + hh * 0.6, { flash });
-    drawSprite(bossSprite(id, b.color, hw, hh), x, y - 2, { rot: Math.sin(t * 0.9) * 0.25, flash });
-    drawGlowDot(x, y + 2, b.color, 7 + Math.sin(t * 5) * 1.5);
-  } else {
-    drawSprite(bossSprite(id, b.color, hw, hh), x, y, { flash });
-  }
-
-  // Live details
-  const eyeCol = b.state === 'telegraph' ? '#ffffff' : '#d9c45a';
-  if (id === 'sentinel') {
-    drawEye(x, y, 13 + Math.sin(t * 3) * 0.8, eyeCol, look.x, look.y, b.hitFlash > 0 ? 0.5 : 0);
-  } else if (id === 'hive') {
-    for (const [cx, k] of [[-62, 0], [0, 1], [62, 2]]) {
-      drawGlowDot(x + cx, y, b.color, 5 + Math.sin(t * 6 + k * 2) * 2, 0.9);
-      drawGlowDot(x + cx + Math.cos(t * 3 + k) * 6, y + Math.sin(t * 3 + k) * 6, PAL.white, 1.6, 0.8);
-    }
-  } else if (id === 'hunter') {
-    const tx = laneX(b.playerLane);
-    const aim = b.state === 'telegraph' ? 0.9 : 0.25;
-    line(x, y, tx, H - 30, b.color, 1.2, aim * 0.6);
-    ring(tx, PLAYER_ROW, 16 + Math.sin(t * 10) * 2, b.color, 1.5, aim);
-    drawEye(x, y - 4, 10, eyeCol, tx, PLAYER_ROW, 0);
-  } else if (id === 'warden') {
-    // beating heart: double pulse
-    const beat = Math.max(0, Math.sin(t * 7)) ** 6 + Math.max(0, Math.sin(t * 7 - 0.9)) ** 6 * 0.6;
-    drawGlowDot(x, y - 4, PAL.red, 6 + beat * 4);
-    drawGlowDot(x, y - 4, '#ffffff', 2 + beat * 1.5, 0.8);
-  }
-  if (b.poison > 0) drawGlowDot(x + hw * 0.8, y - hh - 6, PAL.acid, 3);
+  const teleProg = b.state === 'telegraph' ? Math.min(1, b.stateT / teleTime()) : 0;
+  drawBossBody(b, x, y, t, { lookX: look.x, lookY: look.y, aimX: laneX(b.playerLane ?? 2), aimY: PLAYER_ROW, teleProg });
+  if (b.poison > 0) { ctx.fillStyle = PAL.acid; ctx.beginPath(); ctx.arc(x + hw * 0.8, y - hh - 6, 3, 0, Math.PI * 2); ctx.fill(); }
 }
 
 export function drawBossBar(b) {
   if (!b || b.dead) return;
-  const x = 16, y = 60 + SAFE_TOP, w = W - 32;
-  text(b.name, W / 2, y - 6, { color: b.color, size: 10, align: 'center' });
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.fillRect(x, y, w, 5);
+  // Up in the HUD strip, under the XP bar, clear of the boss body; the name
+  // sits centred between the hearts and the distance.
+  const x = 8, y = SAFE_TOP + 9, w = W - 16;
+  text(b.name, W / 2, SAFE_TOP + 26, { color: b.color, size: 12, align: 'center', font: 'display' });
+  // capsule track, solid fill, two notches at the phase thresholds
+  ctx.fillStyle = '#1a141e';
+  ctx.beginPath(); ctx.roundRect(x, y, w, 5, 2.5); ctx.fill();
+  const k = Math.max(0, b.hp / b.maxHp);
   ctx.fillStyle = b.color;
-  ctx.fillRect(x, y, w * Math.max(0, b.hp / b.maxHp), 5);
-  for (const f of [1 / 3, 2 / 3]) line(x + w * f, y - 1, x + w * f, y + 6, PAL.bg, 2);
+  if (k > 0.01) { ctx.beginPath(); ctx.roundRect(x, y, Math.max(5, w * k), 5, 2.5); ctx.fill(); }
+  ctx.fillStyle = '#000';
+  for (const f of [1 / 3, 2 / 3]) ctx.fillRect(x + w * f - 1, y - 1, 2, 7);
 }

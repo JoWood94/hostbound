@@ -2,14 +2,7 @@
 // Every DISTRICT_LEN metres the city district changes palette. Enemy bullet
 // colours never change (readability rule); only the environment does.
 import { ctx, W, H } from '../core/canvas.js';
-import { PAL } from '../render/palette.js';
-import { line, text } from '../render/draw.js';
-import { bake, shade, rgba } from '../render/sprites.js';
-import { sheet } from '../render/images.js';
-
-// Generated art: one tile of the cosmic current that flows down every lane.
-const CURRENT = sheet('current', 144, 219);
-const BORDER = sheet('border', 150, 144);
+import { text } from '../render/draw.js';
 
 export const LANES = 5;
 export const PX_PER_M = 10;
@@ -17,7 +10,7 @@ const MARGIN = 16;                         // side walls
 export const LANE_W = (W - MARGIN * 2) / LANES;
 export const laneX = (i) => MARGIN + LANE_W * (i + 0.5);
 export const DISTRICT_LEN = 1000;
-const PLAYER_ROW = H * 0.78;
+const PLAYER_ROW = H * 0.8;   // = player.js PLAYER_Y
 
 export const DISTRICTS = [
   { name: 'NEON ROW', bg: '#060004', floor: 'rgba(255,43,214,0.025)', sleeper: '#3a1030', rail: '#7b3fd6', wall: '#ff2bd6', wallFill: '#14020f' },
@@ -30,143 +23,127 @@ export const DISTRICTS = [
 export const districtIndex = (distance) => Math.floor(distance / DISTRICT_LEN) % DISTRICTS.length;
 
 let scroll = 0;
-const TILE_H = 96;
 
 export function updateWorld(dt, speed) {
-  scroll = (scroll + speed * dt) % (TILE_H * 100);
+  scroll = (scroll + speed * dt) % 96000;   // long period: wall flesh and stars don't visibly repeat
 }
 
-// One baked track tile per district: deep void, faint dust, and a thin plasma
-// field line between lanes. Scrolled vertically. The side borders are art.
-function trackTile(di) {
-  const D = DISTRICTS[di];
-  return bake(`track:${di}`, W, TILE_H, (c) => {
-    c.translate(-W / 2, -TILE_H / 2);
-    c.fillStyle = D.bg;
-    c.fillRect(0, 0, W, TILE_H);
-    // Dust and distant stars (deterministic per district)
-    let seed = 17 + di * 101;
-    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-    for (let k = 0; k < 7; k++) {
-      const x = MARGIN + rnd() * (W - MARGIN * 2), y = rnd() * TILE_H, r = 10 + rnd() * 20;
-      const g = c.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, rgba(rnd() < 0.5 ? D.wall : D.rail, 0.035)); g.addColorStop(1, 'rgba(0,0,0,0)');
-      c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    for (let k = 0; k < 10; k++) {
-      c.fillStyle = rgba('#ffffff', 0.12 + rnd() * 0.25);
-      c.fillRect(MARGIN + rnd() * (W - MARGIN * 2), rnd() * TILE_H, 1, 1);
-    }
-    // Dividers: a thin magnetic field line with a soft glow and one knot
-    for (let i = 1; i < LANES; i++) {
-      const x = MARGIN + i * LANE_W;
-      const g = c.createLinearGradient(x - 4, 0, x + 4, 0);
-      g.addColorStop(0, rgba(D.rail, 0)); g.addColorStop(0.5, rgba(D.rail, 0.16)); g.addColorStop(1, rgba(D.rail, 0));
-      c.fillStyle = g; c.fillRect(x - 4, 0, 8, TILE_H);
-      c.fillStyle = rgba('#19f0ff', 0.28); c.fillRect(x - 0.5, 0, 1, TILE_H);
-      const sy = TILE_H / 4 + (i % 2) * TILE_H / 2;
-      const sg = c.createRadialGradient(x, sy, 0, x, sy, 3.5);
-      sg.addColorStop(0, rgba('#ffffff', 0.5)); sg.addColorStop(0.4, rgba('#19f0ff', 0.35)); sg.addColorStop(1, rgba('#19f0ff', 0));
-      c.fillStyle = sg; c.fillRect(x - 4, sy - 4, 8, 8);
-    }
-  });
-}
-
-// Side borders: banks of plasma filaments (generated art), mirrored right.
-// The bright inner filament sits exactly on the lane edge.
-function drawBorders(di) {
-  if (!BORDER.ready) return false;
-  const w = 110, h = (w * BORDER.cellH) / BORDER.cell;
-  const fx = 0.913 * w;                    // inner filament position in the art
-  const o = (scroll * 0.9) % h;
-  const D = DISTRICTS[di];
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  for (const side of [0, 1]) {
-    ctx.save();
-    if (side) { ctx.translate(W, 0); ctx.scale(-1, 1); }
-    ctx.globalCompositeOperation = 'lighter';
-    for (let y = o - h; y < H; y += h) ctx.drawImage(BORDER.img, MARGIN - fx, y, w, h);
-    // district tint on top: same plasma, the sector's colour
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.07;
-    ctx.fillStyle = D.wall;
-    ctx.fillRect(0, 0, MARGIN - 1, H);
-    ctx.restore();
+// OLED track, alien and organic like the player, solid colours only:
+//   stars  - three parallax layers of tiny dots drifting past underneath
+//   walls  - banks of breathing flesh: overlapping circles in a dark shade of
+//            the district colour, brighter nodules, now and then a small
+//            green eye (the player's own iris and slit)
+//   lanes  - no dividers; the lane you enter glows faintly, then fades
+const shadeCache = new Map();
+function dark(hex, k) {           // solid mix of hex towards black
+  const key = hex + k;
+  let v = shadeCache.get(key);
+  if (!v) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (c) => Math.round(c * k).toString(16).padStart(2, '0');
+    v = `#${f(n >> 16)}${f((n >> 8) & 255)}${f(n & 255)}`;
+    shadeCache.set(key, v);
   }
-  ctx.restore();
-  return true;
+  return v;
+}
+// Deterministic hash -> 0..1, so the flesh at a given track position is
+// always the same while it scrolls.
+function hash(i, k) {
+  let h = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(k + 0x27d4eb2f, 0xc2b2ae35);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
 }
 
-// activeLane: lane the player is in, lit up so position is always obvious.
+// Stars: fixed positions, each layer scrolls at its own fraction of the track.
+const STARS = [];
+{
+  let sd = 7;
+  const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  const layers = [[0.12, '#2c2a38', 1, 34], [0.28, '#5a5670', 1, 22], [0.5, '#a8a4c4', 1.4, 12]];
+  for (const [sp, col, r, n] of layers) for (let i = 0; i < n; i++) STARS.push({ x: rnd() * W, y: rnd() * H, sp, col, r });
+}
+function drawStars() {
+  for (const st of STARS) {
+    const y = (st.y + scroll * st.sp) % H;
+    ctx.fillStyle = st.col;
+    ctx.fillRect(st.x, y, st.r, st.r);
+  }
+}
+
+// Side walls: 'line' (a thin neon edge, on trial) or 'flesh' (organic banks).
+const WALLS = 'line';
+
+// One bank of flesh. side 0 = left, 1 = right.
+const BLOB = 15;                  // spacing of the flesh lumps along the wall
+function drawFlesh(side, D, t) {
+  const body = dark(D.wall, 0.34), nod = dark(D.wall, 0.5);   // nodules stay dim: never read as enemy shots
+  const i0 = Math.floor(-scroll / BLOB) - 2, i1 = i0 + Math.ceil(H / BLOB) + 4;
+  const sx = (x) => (side ? W - x : x);
+  // body lumps: big overlapping circles hugging the wall
+  ctx.fillStyle = body;
+  for (let i = i0; i <= i1; i++) {
+    const y = i * BLOB + scroll;
+    const h = hash(i, side);
+    const r = (7 + h * 7) * (1 + Math.sin(t * 1.8 + i * 0.9) * 0.06);
+    const x = MARGIN - 10 + hash(i, side + 7) * 5;
+    ctx.beginPath(); ctx.arc(sx(x), y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  // nodules and the odd eye
+  for (let i = i0; i <= i1; i++) {
+    const h = hash(i, side + 13);
+    if (h > 0.45) continue;
+    const y = i * BLOB + scroll + 4;
+    const x = MARGIN - 6 + hash(i, side + 21) * 5;
+    if (h < 0.05) {
+      const r = 3.4;
+      ctx.fillStyle = '#c6ff1a'; ctx.beginPath(); ctx.arc(sx(x), y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#000'; ctx.beginPath(); ctx.roundRect(sx(x) - r * 0.65, y - r * 0.2, r * 1.3, r * 0.4, r * 0.2); ctx.fill();
+    } else {
+      ctx.fillStyle = nod;
+      ctx.beginPath(); ctx.arc(sx(x), y, 1.5 + h * 4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// Lane glow: when the player enters a lane it lights up and fades out.
+let glowLane = -1, glowT = 0, lastLane = -1, lastNow = 0;
+function laneGlow(activeLane) {
+  const now = performance.now() / 1000;
+  const dt = Math.min(0.1, now - lastNow);
+  lastNow = now;
+  if (activeLane !== lastLane) { if (lastLane >= 0 && activeLane >= 0) { glowLane = activeLane; glowT = 1; } lastLane = activeLane; }
+  if (glowT <= 0 || glowLane < 0) return;
+  glowT = Math.max(0, glowT - dt / 0.45);
+  const k = glowT * glowT;                         // ease out
+  ctx.fillStyle = dark('#19f0ff', 0.13 * k);
+  const x0 = MARGIN + glowLane * LANE_W;
+  ctx.beginPath(); ctx.roundRect(x0 + 3, 0, LANE_W - 6, H, 12); ctx.fill();
+}
+
 export function drawWorld(distance, activeLane = -1) {
   const di = districtIndex(distance);
   const D = DISTRICTS[di];
-  const tile = trackTile(di);
-  const off = scroll % TILE_H;
-  for (let y = off - TILE_H; y < H; y += TILE_H) ctx.drawImage(tile.canvas, 0, y, W, TILE_H);
-
-  // Cosmic currents: one plasma river per lane, flowing a bit faster than the
-  // track. Additive and faint: bullets and enemies must stay readable on top.
-  if (CURRENT.ready) {
-    const w = LANE_W * 1.05;
-    const h = (w * CURRENT.cellH) / CURRENT.cell;
-    const o = (scroll * 1.25) % h;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.imageSmoothingEnabled = true;
-    for (let i = 0; i < LANES; i++) {
-      ctx.globalAlpha = i === activeLane ? 0.3 : 0.13;
-      const x = laneX(i) - w / 2;
-      // neighbouring lanes flow out of phase so they do not look copy-pasted
-      const oi = (o + i * h * 0.37) % h;
-      for (let y = oi - h; y < H; y += h) ctx.drawImage(CURRENT.img, x, y, w, h);
-    }
-    ctx.restore();
+  const t = performance.now() / 1000;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+  laneGlow(activeLane);
+  if (WALLS === 'flesh') { drawFlesh(0, D, t); drawFlesh(1, D, t); }
+  else {
+    // Trial: just a thin neon line on each lane edge.
+    ctx.fillStyle = D.wall;
+    ctx.fillRect(MARGIN - 1.5, 0, 1.5, H);
+    ctx.fillRect(W - MARGIN, 0, 1.5, H);
   }
 
-  // Active lane: cyan floor glow and edge lights
-  if (activeLane >= 0) {
-    const x0 = MARGIN + activeLane * LANE_W;
-    const g = ctx.createLinearGradient(0, H, 0, 0);
-    g.addColorStop(0, 'rgba(25,240,255,0.16)');
-    g.addColorStop(1, 'rgba(25,240,255,0.03)');
-    ctx.fillStyle = g;
-    ctx.fillRect(x0 + 3, 0, LANE_W - 6, H);
-    line(x0 + 3, 0, x0 + 3, H, PAL.cyan, 1.5, 0.55);
-    line(x0 + LANE_W - 3, 0, x0 + LANE_W - 3, H, PAL.cyan, 1.5, 0.55);
-  }
-
-  // Darkness: only the area around the ship is lit; the far track sinks into black.
-  {
-    const lx = activeLane >= 0 ? laneX(activeLane) : W / 2;
-    const g = ctx.createRadialGradient(lx, PLAYER_ROW, 30, lx, PLAYER_ROW - 80, 520);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(0.3, 'rgba(4,0,3,0.3)');
-    g.addColorStop(0.75, 'rgba(4,0,3,0.66)');
-    g.addColorStop(1, 'rgba(2,0,2,0.85)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  drawBorders(di);
-
-  // Distance markers every 100 m on the walls
-  const step = 100 * PX_PER_M;
-  const mOff = (distance * PX_PER_M) % step;
-  for (let y = mOff - step; y < H; y += step) {
-    line(4, y, MARGIN - 4, y, PAL.cyan, 3, 0.9);
-    line(W - MARGIN + 4, y, W - 4, y, PAL.cyan, 3, 0.9);
-  }
-
-  // District border: a bright gate line that reaches the board exactly when
-  // the district switches.
+  // District border: a string of small circles that reaches the board
+  // exactly when the district switches.
   const next = (Math.floor(distance / DISTRICT_LEN) + 1) * DISTRICT_LEN;
   const yb = PLAYER_ROW - (next - distance) * PX_PER_M;
   if (yb > -20 && yb < H) {
     const N = DISTRICTS[districtIndex(next)];
-    line(0, yb, W, yb, N.wall, 3, 0.9);
-    line(0, yb + 4, W, yb + 4, N.wall, 1, 0.5);
-    text(N.name, W / 2, yb - 10, { color: N.wall, size: 10, align: 'center', alpha: 0.9 });
+    ctx.fillStyle = N.wall;
+    for (let x = MARGIN + 6; x < W - MARGIN; x += 12) { ctx.beginPath(); ctx.arc(x, yb, 2, 0, Math.PI * 2); ctx.fill(); }
+    text(N.name, W / 2, yb - 12, { color: N.wall, size: 11, align: 'center', font: 'display' });
   }
 }

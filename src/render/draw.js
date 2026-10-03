@@ -1,29 +1,6 @@
-// Neon primitives. Glow is pre-rendered to offscreen sprites and blitted, since
-// live shadowBlur is too slow on mobile.
-import { ctx, makeOffscreen } from '../core/canvas.js';
-
-const glowCache = new Map();
-
-// Returns an offscreen canvas holding a glowing disc of the given colour.
-export function glowSprite(color, radius, blur = radius * 1.5) {
-  const key = `${color}|${radius}|${blur}`;
-  let s = glowCache.get(key);
-  if (s) return s;
-  const pad = Math.ceil(blur * 2);
-  const size = Math.ceil(radius * 2 + pad * 2);
-  const off = makeOffscreen(size, size);
-  const c = off.ctx;
-  c.shadowColor = color;
-  c.shadowBlur = blur;
-  c.fillStyle = color;
-  c.beginPath();
-  c.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
-  c.fill();
-  c.fill(); // double fill = stronger glow
-  s = { canvas: off.canvas, size, half: size / 2 };
-  glowCache.set(key, s);
-  return s;
-}
+// Drawing primitives shared by the UI and the HUD. OLED style: no glow.
+import { ctx } from '../core/canvas.js';
+import { drawWord, wordWidth } from '../ui/glyphs.js';
 
 // Readability: the player's own layer (shots, beams, sparks) is drawn at DIM
 // when the screen gets crowded, so enemy shots always stand out. Every helper
@@ -31,14 +8,6 @@ export function glowSprite(color, radius, blur = radius * 1.5) {
 export let DIM = 1;
 export function setDim(k) { DIM = k; ctx.globalAlpha = k; }
 
-export function drawGlowDot(x, y, color, radius, alpha = 1) {
-  // Quantize to 0.5px so the sprite cache stays small (particles shrink every frame).
-  const r = Math.max(0.5, Math.round(radius * 2) / 2);
-  const s = glowSprite(color, r);
-  ctx.globalAlpha = alpha * DIM;
-  ctx.drawImage(s.canvas, x - s.half, y - s.half);
-  ctx.globalAlpha = DIM;
-}
 
 export function strokePoly(points, color, width = 2, close = true) {
   ctx.strokeStyle = color;
@@ -81,17 +50,25 @@ export function ring(x, y, r, color, width = 2, alpha = 1) {
   ctx.globalAlpha = DIM;
 }
 
-// Type: DotGothic16 (Japanese pixel font) for body text, Russo One (the logo's
-// block letters) for display text. Pass { font: 'display' } for headings.
-export const FONT_BODY = '"DotGothic16", "Courier New", monospace';
-export const FONT_DISPLAY = '"Russo One", Impact, sans-serif';
+// Type. Display text (titles, buttons, item names, numbers) is drawn in the
+// game's own monoline glyphs (ui/glyphs.js), the same hand as the logo. Body
+// text is Quicksand: geometric with rounded terminals, the logo's shapes at a
+// readable size.
+export const FONT_BODY = '"Quicksand", system-ui, sans-serif';
+export const FONT_DISPLAY = FONT_BODY;      // only for measuring fallbacks
+const CAP = 0.72;                           // glyph height per px of font size
 export function text(str, x, y, { color = '#fff', size = 12, align = 'left', alpha = 1, weight = 'normal', font = 'body', maxW = undefined } = {}) {
   if (alpha !== 1) ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
-  // Body text never goes below 9: smaller is unreadable on a phone.
-  ctx.font = font === 'display' ? `${size}px ${FONT_DISPLAY}` : `${weight} ${Math.round(Math.max(9, size) * 1.08)}px ${FONT_BODY}`;
-  ctx.textAlign = align;
-  ctx.textBaseline = 'middle';
-  ctx.fillText(str, x, y, maxW);
+  if (font === 'display') {
+    let h = size * CAP;
+    if (maxW) { const w = wordWidth(String(str), h); if (w > maxW) h *= maxW / w; }
+    drawWord(String(str), x, y - h / 2, h, color, { align, weight: 0.14 });
+  } else {
+    ctx.fillStyle = color;
+    ctx.font = `${weight === 'normal' ? 500 : 600} ${Math.max(9, size)}px ${FONT_BODY}`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(str, x, y, maxW);
+  }
   if (alpha !== 1) ctx.globalAlpha = 1;
 }

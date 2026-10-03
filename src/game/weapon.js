@@ -1,15 +1,12 @@
 // Player weapon. Reads the final stats object only, so every item combination
 // composes without special cases. Also resolves on-hit effects.
-import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, F_LATCH, SH_BOLT, SH_GLAIVE, SH_MINE, SH_LARVA, SH_STING, SH_LOB, SHOTS, K_DRONE, K_ECHOLET } from './bullets.js';
+import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, F_LATCH, SH_BOLT, SH_GLAIVE, SH_MINE, SH_LARVA, SH_STING, SH_LOB, K_DRONE, K_ECHOLET } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
 import { LANE_W, LANES, laneX } from './world.js';
-import { ctx, makeOffscreen } from '../core/canvas.js';
-import { sheet, drawCell } from '../render/images.js';
-import { enemySprite, drawSprite } from '../render/sprites.js';
+import * as FX from '../render/shots.js';
 import { PLAYER_Y } from './player.js';
 import { PAL, COLOR_PLAYER_BULLET as SHOT } from '../render/palette.js';
 import { burst, shake } from '../render/fx.js';
-import { line, ring, drawGlowDot, DIM } from '../render/draw.js';
 import { sfx } from '../audio/audio.js';
 
 // Short-lived visual effects owned by the weapon (lightning arcs, frag rings).
@@ -21,7 +18,6 @@ let cautFx = null;    // CAUTERIZE progress on the held target { e, k }
 const flash = (x, y, r, c = SHOT, t = 0.3) => flashes.push({ x, y, r, t, max: t, c });
 // Animated pixel explosions (fx_player.png): row 0 spore burst (8 frames),
 // row 1 nova flash (4) and stinger pop (3).
-const FXP = sheet('fx_player', 96);
 const POPS = { burst: [0, 0, 8, 0.42], nova: [1, 0, 4, 0.28], sting: [1, 4, 3, 0.2] };
 const pops = [];
 const pop = (x, y, kind, size) => { if (pops.length < 60) pops.push({ x, y, kind, size, t: 0 }); };
@@ -103,14 +99,7 @@ export function updateTrails(stats, dt, p) {
   }
 }
 function drawTrails() {
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (const t of trails) {
-    ctx.globalAlpha = 0.35 * (t.t / t.max) * DIM;
-    ctx.fillStyle = SHOT;
-    ctx.fillRect(t.x - 2.5, t.y - 2.5, 5, 5);
-  }
-  ctx.restore();
+  for (const t of trails) FX.trailBead(t.x, t.y, t.t / t.max);
 }
 
 // FISSION on a projectile: at the first hit the shot splits toward the side
@@ -169,11 +158,7 @@ function armadaSpecs(stats, mul) {
   return wingmen.map((w) => ({ lane: Math.max(0, Math.min(LANES - 1, Math.round((w.x - laneX(0)) / LANE_W))), mul, fromX: w.x }));
 }
 export function drawWingmen() {
-  for (const w of wingmen) {
-    const y = PLAYER_Y - 16 + Math.sin(w.t * 4) * 2;
-    drawSprite(enemySprite('drone', PAL.cyan), w.x, y, { sx: 0.55, sy: 0.55 });
-    for (const dx of [-6, 6]) line(w.x + dx - Math.cos(w.t * 30) * 3, y - 6, w.x + dx + Math.cos(w.t * 30) * 3, y - 6, PAL.white, 1, 0.5);
-  }
+  for (const w of wingmen) FX.wingman(w.x, PLAYER_Y - 16 + Math.sin(w.t * 4) * 2, w.t);
 }
 
 // Movement-driven shots
@@ -1326,127 +1311,39 @@ export function updateWeaponFx(dt) {
   if (cautFx && cautFx.e.dead) cautFx = null;
 }
 
-function poly(pts, color, width, alpha) {
-  if (pts.length < 4) return;
-  ctx.globalAlpha = alpha * DIM;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(pts[0], pts[1]);
-  for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-}
-
-// Beam texture: the living nerve-fibre slice from the shot sheet, as a
-// repeating pattern laid along every segment of the beam's path.
-let beamPat = null;
-function beamPattern() {
-  if (beamPat || !SHOTS.ready) return beamPat;
-  const c = SHOTS.cell;
-  const { canvas, ctx: g } = makeOffscreen(c, c);
-  g.drawImage(SHOTS.img, 5 * c, c, c, c, 0, 0, c, c);
-  beamPat = ctx.createPattern(canvas, 'repeat');
-  return beamPat;
-}
-function texturedBeam(pts, w, alpha, t) {
-  const pat = beamPattern();
-  if (!pat) return false;
-  const bw = w * 2.8;                       // the cord fills ~35% of the slice
-  const k = bw / SHOTS.cell;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = alpha * DIM;
-  ctx.fillStyle = pat;
-  let run = t * 260;                        // pattern flows up the beam
-  for (let i = 0; i + 3 < pts.length; i += 2) {
-    const x0 = pts[i], y0 = pts[i + 1], dx = pts[i + 2] - x0, dy = pts[i + 3] - y0;
-    const len = Math.hypot(dx, dy);
-    if (len < 0.5) continue;
-    ctx.save();
-    ctx.translate(x0, y0);
-    ctx.rotate(Math.atan2(dx, -dy));
-    pat.setTransform(new DOMMatrix().translateSelf(-bw / 2, run).scaleSelf(k, k));
-    ctx.fillRect(-bw / 2, -len - 1, bw, len + 2);
-    ctx.restore();
-    run -= len;
-  }
-  ctx.restore();
-  return true;
-}
-
-// Status overlays on enemies (fx_status.png): poisoned, branded, numbed,
-// frozen, slowed, locked. Rings round an empty centre: the enemy stays visible.
-const STATUS = sheet('fx_status', 96);
+// Status marks on enemies, from primitives (render/shots.js).
 function drawStatus(t) {
-  if (!STATUS.ready) return;
   for (const e of enemies) {
     if (e.dead) continue;
-    const sz = e.type === "boss" ? 90 : Math.max(56, Math.min(84, (e.r || 14) * 4.6));
-    if (e.poison > 0 && e.poisonT > 0) drawCell(STATUS, 0, Math.floor(t * 4 + e.id) % 2, e.x, e.y, sz, { alpha: 0.9 });
-    if (e.brandMul) drawCell(STATUS, 0, 2, e.x, e.y - sz * 0.15, sz, { alpha: 0.95 });
-    if (e.freezeT > 0) drawCell(STATUS, 0, 4, e.x, e.y, sz);
-    else if (e.slowT > 0 && e.slowK && e.slowK < 0.3) drawCell(STATUS, 0, 3, e.x, e.y, sz, { alpha: 0.85, rot: t * 0.5 });
-    else if (e.slowT > 0) drawCell(STATUS, 0, 5, e.x, e.y, sz, { alpha: 0.8 });
-    if (e.lockUntil > t) drawCell(STATUS, 0, 6, e.x, e.y, sz * 1.1, { rot: Math.sin(t * 3) * 0.15 });
+    const rr = e.type === 'boss' ? 34 : Math.max(14, (e.r || 14) + 7);
+    if (e.poison > 0 && e.poisonT > 0) FX.status('poison', e.x, e.y, rr, t, e.id);
+    if (e.brandMul) FX.status('brand', e.x, e.y, rr, t, e.id);
+    if (e.freezeT > 0) FX.status('freeze', e.x, e.y, rr, t, e.id);
+    else if (e.slowT > 0) FX.status('slow', e.x, e.y, rr, t, e.id);
+    if (e.lockUntil > t) FX.status('lock', e.x, e.y, rr, t, e.id);
   }
 }
 
 export function drawWeaponFx() {
   if (trails.length) drawTrails();
   const t = performance.now() / 1000;
-  for (const f of flashes) drawGlowDot(f.x, f.y, f.c, f.r * (1.2 - 0.4 * (f.t / f.max)), 0.5 * (f.t / f.max));
-  if (FXP.ready) for (const q of pops) {
-    const [row, col, n, dur] = POPS[q.kind];
-    drawCell(FXP, row, col + Math.min(n - 1, Math.floor((q.t / dur) * n)), q.x, q.y, q.size);
-  }
+  for (const f of flashes) FX.flash(f.x, f.y, f.r, f.c, f.t / f.max);
+  for (const q of pops) FX.pop(q.kind, q.x, q.y, q.size, Math.min(1, q.t / POPS[q.kind][3]));
   for (const nv of novas) {
     const a = nv.t / 0.4;
-    poly(nv.pts, SHOT, 40 * a + 6, 0.35 * a);
-    poly(nv.pts, '#ffffff', 14 * a + 2, 0.9 * a);
+    FX.path(nv.pts, SHOT, 30 * a + 2);
   }
   drawStatus(t);
-  // TARGET LOCK: a reticle on the marked enemy (vector until fx_status loads)
-  for (const e of enemies) {
-    if (STATUS.ready || e.dead || !(e.lockUntil > t)) continue;
-    const rr = (e.r || 14) + 8;
-    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(t * 2);
-    ctx.strokeStyle = SHOT; ctx.lineWidth = 2; ctx.globalAlpha = 0.9 * DIM;
-    for (let k = 0; k < 4; k++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(rr, -5); ctx.lineTo(rr, 0); ctx.lineTo(rr - 5, 0); ctx.stroke(); }
-    ctx.restore();
-  }
-  // CAUTERIZE: the charge filling on the held target
-  if (cautFx && !cautFx.e.dead && cautFx.k > 0.05) {
-    const e = cautFx.e, rr = (e.r || 14) + 6;
-    ctx.save(); ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 3; ctx.globalAlpha = 0.9 * DIM;
-    ctx.beginPath(); ctx.arc(e.x, e.y, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, cautFx.k)); ctx.stroke(); ctx.restore();
-    drawGlowDot(e.x, e.y, '#ffd27a', 4 + 8 * cautFx.k, 0.3 + 0.4 * cautFx.k);
-  }
+  // CAUTERIZE: the charge closing round the held target
+  if (cautFx && !cautFx.e.dead && cautFx.k > 0.05) FX.chargeArc(cautFx.e.x, cautFx.e.y, (cautFx.e.r || 14) + 6, cautFx.k);
   for (const b of beams) {
-    const flick = 0.85 + Math.random() * 0.15;
-    poly(b.pts, SHOT, b.w * 2.2 * flick, 0.22 * b.a);
-    if (!texturedBeam(b.pts, b.w * flick, b.a, t)) {
-      poly(b.pts, SHOT, b.w * flick, 0.6 * b.a);
-      poly(b.pts, '#f4ffd8', Math.max(1, b.w * 0.35), 0.95 * b.a);
-    }
-    if (b.white) poly(b.pts, '#ffffff', Math.max(1.5, b.w * 0.7 * b.white), 0.85 * b.white);   // SUPERNOVA charging
-    drawGlowDot(b.pts[0], b.pts[1], SHOT, 4 + b.w * 0.4, 0.9 * b.a);
+    FX.beam(b.pts, b.w, b.a, t);
+    if (b.white) FX.path(b.pts, '#f4ffd8', Math.max(1.5, b.w * 0.7 * b.white));   // SUPERNOVA charging: the cord whitens
   }
-  for (const r of rails) {
-    const a = r.t / 0.2;
-    poly(r.pts, SHOT, 14 * a * (0.5 + r.w * 0.5), 0.3 * a);
-    poly(r.pts, '#ffffff', 3 * a + 1, a);
-  }
-  for (const a of arcs) {
-    // jagged lightning
-    const mx = (a.x1 + a.x2) / 2 + (Math.random() - 0.5) * 20;
-    const my = (a.y1 + a.y2) / 2 + (Math.random() - 0.5) * 20;
-    line(a.x1, a.y1, mx, my, PAL.cyan, 2, a.t / 0.15);
-    line(mx, my, a.x2, a.y2, PAL.cyan, 2, a.t / 0.15);
-  }
+  for (const r of rails) FX.rail(r.pts, r.t / 0.2, r.w);
+  for (const a of arcs) FX.arc(a.x1, a.y1, a.x2, a.y2, a.t / 0.15);
   // your blast rings are pale green: orange belongs to threats (jump)
-  for (const r of rings) ring(r.x, r.y, r.r * (1 - r.t * 2), '#e6ff8a', 2, r.t / 0.25);
+  for (const r of rings) FX.blastRing(r.x, r.y, r.r, r.t / 0.25);
 }
 
 export function clearWeaponFx() { pops.length = 0; flashes.length = 0; novas.length = 0; cautFx = null; arcs.length = 0; rings.length = 0; wingmen.length = 0; beams.length = 0; rails.length = 0; trails.length = 0; }

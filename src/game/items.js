@@ -2,10 +2,11 @@
 // player and run read only the final stats, so any combination composes.
 import { PAL } from '../render/palette.js';
 
+// Rarity is the ONLY thing item colours mean: white, cyan, ultraviolet.
 export const RARITY = [
   { name: 'COMMON', color: PAL.white, weight: 60 },
   { name: 'RARE', color: PAL.cyan, weight: 30 },
-  { name: 'EPIC', color: PAL.magenta, weight: 10 },
+  { name: 'EPIC', color: PAL.violetNeon, weight: 10 },   // ultraviolet: magenta belongs to enemies
 ];
 
 export const CAT_COLOR = {
