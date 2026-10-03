@@ -347,7 +347,7 @@ function render(alpha) {
     drawHusks(r);
     setDim(1);
     drawEnemyBullets('low', alpha);   // low waves under the board: you jump over them
-    if (r.intro && !r.intro.regrow) drawIntro(r);
+    if (r.intro) { if (!r.intro.regrow) drawIntro(r); }   // the regrow is drawn over the HUD, below
     else if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
     else drawPlayerDeath(r.player, r.deadT);
     drawEnemyBullets('high', alpha);  // normal enemy bullets always on top: readability rule
