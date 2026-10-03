@@ -105,7 +105,12 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 let wheel = 0;
 canvas.addEventListener('wheel', (e) => { wheel += e.deltaY * (e.deltaMode === 1 ? 16 : 1); e.preventDefault(); }, { passive: false });
 
+// Keys held right now (for hold actions: Q holds END RUN on the pause screen).
+const held = new Set();
+export const keyHeld = (code) => held.has(code);
+window.addEventListener('keyup', (e) => held.delete(e.code));
 window.addEventListener('keydown', (e) => {
+  held.add(e.code);
   if (e.repeat) return;
   state.any = true;
   switch (e.code) {
@@ -121,7 +126,7 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 // Losing focus only ever pauses; it must never toggle a paused game back on.
-window.addEventListener('blur', () => { state.blur = true; });
+window.addEventListener('blur', () => { state.blur = true; held.clear(); });
 
 // A modal screen just opened: the finger already on the glass was steering the
 // symbiote, so nothing it does until it lifts may count on the new screen.

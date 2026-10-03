@@ -1,6 +1,6 @@
 import { ctx, W, H, UI_OFFSET } from './core/canvas.js';
 import { startLoop } from './core/loop.js';
-import { pollInput, discardGesture, setTapSlop, setEarlyTap, pointer, takeWheel } from './core/input.js';
+import { pollInput, discardGesture, setTapSlop, setEarlyTap, pointer, takeWheel, keyHeld } from './core/input.js';
 import { loadSave, writeSave } from './core/save.js';
 import { beginUi, endUi, hitTest, setUiOffset } from './core/ui.js';
 import { applyPost } from './render/post.js';
@@ -241,7 +241,7 @@ function update(dt) {
       // END RUN is a hold: it fills while the finger that pressed it stays
       // on it, and drains when it lets go, so a stray tap never ends a run.
       const p = pointer();
-      const holding = !locked && p.down && !p.consumed && hitTest(p.startX, p.startY) === 'endRun' && hitTest(p.x, p.y) === 'endRun';
+      const holding = !locked && ((p.down && !p.consumed && hitTest(p.startX, p.startY) === 'endRun' && hitTest(p.x, p.y) === 'endRun') || keyHeld('KeyQ'));
       run.holdT = holding ? (run.holdT || 0) + dt : Math.max(0, (run.holdT || 0) - dt * 3);
       run.holdHint = Math.max(0, (run.holdHint || 0) - dt);
       if (run.holdT >= END_HOLD) { run.holdT = 0; run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
@@ -339,7 +339,7 @@ function render(alpha) {
     if (r.mode === 'play') drawTutorial(r);
     if (r.mode === 'pick') centred(() => drawPick(r));
     else if (r.mode === 'pause') drawPause(r, save);
-    else if (r.mode === 'dead') centred(() => drawDead(r));
+    else if (r.mode === 'dead') drawDead(r);
   }
 
   ctx.restore();

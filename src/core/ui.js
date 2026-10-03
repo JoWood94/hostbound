@@ -3,7 +3,6 @@
 import { ctx } from './canvas.js';
 import { text } from '../render/draw.js';
 import { PAL } from '../render/palette.js';
-import { rtri } from '../render/oled.js';
 
 let rects = [];
 let nextRects = [];
@@ -48,26 +47,6 @@ export function button(id, x, y, w, h, label, { color = PAL.white, size = 14, fi
   const ty = sub ? y + h / 2 - 6 : y + h / 2 + 1;
   text(label, x + w / 2, ty, { color: c, size, align: 'center', font: 'display' });
   if (sub) text(sub, x + w / 2, y + h / 2 + 9, { color: PAL.mute, size: 10, align: 'center' });
-}
-
-// Square icon button: radius 14 like the rest, neon outline; `filled` turns it
-// solid with the icon knocked out in black. Icons: 'play' (a softly rounded
-// triangle, like the system play glyph) and 'x' (two capsules).
-export function iconButton(id, x, y, s, icon, color, { filled = false } = {}) {
-  nextRects.push({ id, x, y: y + offY, w: s, h: s });
-  ctx.save();
-  rrPath(x + 1, y + 1, s - 2, s - 2, 14);
-  if (filled) { ctx.fillStyle = color; ctx.fill(); }
-  else { ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke(); }
-  const ink = filled ? '#000' : color, cx = x + s / 2, cy = y + s / 2;
-  ctx.fillStyle = ink; ctx.strokeStyle = ink;
-  if (icon === 'play') { rtri(cx + s * 0.05, cy, s * 0.27, -Math.PI / 2, 0.18); ctx.fill(); }
-  else {
-    const d = s * 0.16;
-    ctx.lineWidth = s * 0.075; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(cx - d, cy - d); ctx.lineTo(cx + d, cy + d); ctx.moveTo(cx + d, cy - d); ctx.lineTo(cx - d, cy + d); ctx.stroke();
-  }
-  ctx.restore();
 }
 
 // Hold-to-confirm capsule: a white outline that fills from the left with

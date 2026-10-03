@@ -21,6 +21,8 @@ import { version } from '../../package.json';
 
 // Shown on the menu; single source of truth is package.json.
 const VERSION = `v${version}`;
+// Primary UI colour: the symbiote's pink (RUN, RESUME, RETRY, selection).
+const PINK = '#d83cd8';
 
 // Modal backdrop. OLED: menus sit on true black (a < 1 only while fading in).
 function dim(a = 1) {
@@ -87,8 +89,8 @@ function itemCard(id, x, y, w, it, L, { run = null, selected = false } = {}) {
   const rc = RARITY[it.rarity].color;
   // Minimal card: black, a thin rarity outline, white when selected.
   rrPath(x + 1, y + 1, w - 2, h - 2, 14);
-  ctx.fillStyle = selected ? '#120a16' : '#000'; ctx.fill();
-  ctx.strokeStyle = selected ? PAL.white : rc;
+  ctx.fillStyle = '#000'; ctx.fill();
+  ctx.strokeStyle = selected ? PINK : rc;
   ctx.lineWidth = selected ? 2.5 : 1.5;
   ctx.stroke();
   // A resonating item gets a magenta dot that beats in the top-right corner.
@@ -185,7 +187,6 @@ export function drawMenu(save, t, boardIdx, specimen) {
 // no card grid. Drawn in real screen coordinates (not centred), so the list
 // uses the whole height and the header sits under the notch.
 // ---------------------------------------------------------------------------
-const PINK = '#d83cd8';
 // Locked placeholders: a darker shade of the rarity colour (no alpha on OLED).
 const RARITY_DARK = ['#55505e', '#0f5d66', '#45307a'];
 const TRACK = '#241a2a';
@@ -441,8 +442,8 @@ export function drawArchive(save) {
 export function drawPick(run) {
   dim();
   const lvl = run.pickKind === 'level';
-  text(lvl ? `LEVEL ${run.level}` : 'BOSS DOWN', W / 2, 56, { color: lvl ? PAL.acid : PAL.magenta, size: 22, align: 'center', font: 'display' });
-  text(lvl ? 'THE MASS MUTATES · CHOOSE ONE' : 'CHOOSE ONE UPGRADE', W / 2, 82, { color: PAL.white, size: 11, align: 'center' });
+  text(lvl ? `LEVEL ${run.level}` : 'BOSS DOWN', W / 2, 56, { color: lvl ? PAL.acid : PINK, size: 22, align: 'center', font: 'display' });
+  text(lvl ? 'THE MASS MUTATES · CHOOSE ONE' : 'CHOOSE ONE UPGRADE', W / 2, 82, { color: PAL.white, size: 11, align: 'center', font: 'display' });
   const n = run.pickChoices.length;
   // Cards size to their text; shrink the type only if they would not fit.
   const top = 110, bottom = LH + UI_OFFSET - 56, cw = W - 28;
@@ -464,10 +465,24 @@ export function drawPick(run) {
     ctx.restore();
     cy += Ls[i].h + gap;
   });
-  if (run.pickSel >= 0) text('TAP AGAIN TO TAKE IT', W / 2, 100, { color: PAL.acid, size: 11, align: 'center', alpha: 0.6 + Math.sin(performance.now() / 120) * 0.4 });
-  else if (t > 0.45) text('TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 10, align: 'center' });
+  if (run.pickSel >= 0) text('TAP AGAIN TO TAKE IT', W / 2, 100, { color: PINK, size: 11, align: 'center', font: 'display' });
+  else if (t > 0.45) text('TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 11, align: 'center', font: 'display' });
   const full = run.player.hearts >= run.stats.maxHearts;
   button('skip', 90, cy - gap + 14, W - 180, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
+}
+
+// The build as icons in centred rows: a rarity capsule under each icon and
+// the stack count at its shoulder. Shared by pause and death.
+const BUILD_CS = 38;
+function buildIcons(stacks, ids, y, rows, per = Math.floor((W - 40) / BUILD_CS), cs = BUILD_CS) {
+  ids.slice(0, rows * per).forEach((id, i) => {
+    const it = ITEM_BY_ID[id], n = stacks[id];
+    const inRow = Math.min(per, ids.length - Math.floor(i / per) * per);
+    const x = W / 2 + ((i % per) - (inRow - 1) / 2) * cs, cy = y + Math.floor(i / per) * cs + 14;
+    if (!drawIcon(id, x, cy, 20)) text(it.code, x, cy + 1, { color: PAL.white, size: 9, align: 'center', font: 'display', maxW: 26 });
+    rrPath(x - 7, cy + 15, 14, 3, 1.5); ctx.fillStyle = RARITY[it.rarity].color; ctx.fill();
+    if (n > 1) text(`${n}`, x + 13, cy - 10, { color: RARITY[it.rarity].color, size: 9, align: 'center', font: 'display' });
+  });
 }
 
 // Pause: the home's composition. Your alien in the middle, where you are in
@@ -497,7 +512,7 @@ export function drawPause(run, save) {
 
   // Lay out the upper block first, then centre it in the space left.
   const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
-  const cs = 38, per = Math.floor((W - 40) / cs);
+  const cs = BUILD_CS, per = Math.floor((W - 40) / cs);
   const HEAD = 236;                       // title, status, hearts, alien
   const base = computeStats(run.board, {});
   const parts = [];
@@ -538,15 +553,7 @@ export function drawPause(run, save) {
       .forEach((l, i) => text(l, W / 2, y + 8 + i * 17, { color: PAL.mute, size: 12, align: 'center' }));
     return;
   }
-  // Build: icons in centred rows, a rarity capsule under each, stack count.
-  ids.slice(0, rows * per).forEach((id, i) => {
-    const it = ITEM_BY_ID[id], n = run.stacks[id];
-    const inRow = Math.min(per, ids.length - Math.floor(i / per) * per);
-    const x = W / 2 + ((i % per) - (inRow - 1) / 2) * cs, cy = y + Math.floor(i / per) * cs + 14;
-    if (!drawIcon(id, x, cy, 20)) text(it.code, x, cy + 1, { color: PAL.white, size: 9, align: 'center', font: 'display', maxW: 26 });
-    rrPath(x - 7, cy + 15, 14, 3, 1.5); ctx.fillStyle = RARITY[it.rarity].color; ctx.fill();
-    if (n > 1) text(`${n}`, x + 13, cy - 10, { color: RARITY[it.rarity].color, size: 9, align: 'center', font: 'display' });
-  });
+  buildIcons(run.stacks, ids, y, rows, per, cs);
   y += rows * cs + 10;
   // Shot, then only the stats this build moved (green up, red down).
   const shot = `${st.carrier}${st.hasScatter ? ' · fan' : ''}${st.hasSine ? ' · wave' : ''}${st.hasRocket && st.carrier !== 'rocket' ? ' · blast' : ''}`.toUpperCase();
@@ -568,39 +575,69 @@ export function drawPause(run, save) {
   }
 }
 
+// Death: same composition as pause. What killed you, how far you got, the
+// build you died with, then RETRY (primary pink) and MENU / SHARE pinned to
+// the bottom like the home's buttons. Real screen coordinates.
 export function drawDead(run) {
   // Freeze frame: for 0.6 s the world stays visible with what killed you
-  // circled and your lane lit, then the screen fades in.
+  // circled and your lane lit, then the screen fades to solid black.
   const k = run.lastHit;
   if (k && run.deadT < 1.4) {
-    ctx.save();
-    ctx.translate(0, -UI_OFFSET);                      // world coordinates
     const a = Math.min(1, 1.4 - run.deadT);
+    ctx.save();
     ctx.globalAlpha = 0.18 * a; ctx.fillStyle = k.color;
     ctx.fillRect(laneX(k.lane) - LANE_W / 2, 0, LANE_W, H);
     ctx.globalAlpha = a; ctx.strokeStyle = k.color; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(k.x, k.y, 22 + Math.sin(run.deadT * 14) * 3, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
-  dim(Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6));   // fades to solid black
-  const jitter = run.deadT < 0.5 ? (Math.random() - 0.5) * 6 : 0;
-  text('CONSUMED', W / 2 + jitter, 110, { color: PAL.red, size: 32, align: 'center', font: 'display' });
-  text(`${Math.floor(run.distance)}m`, W / 2, 158, { color: PAL.cyan, size: 30, align: 'center', font: 'display' });
-  if (run.daily) text(`DAILY ${run.dailyKey}${run.newDailyBest ? ' · NEW DAILY BEST' : ''}`, W / 2, 134, { color: PAL.magenta, size: 9, align: 'center' });
-  if (run.newBest) text('NEW BEST', W / 2, 186, { color: PAL.acid, size: 12, align: 'center', alpha: 0.6 + Math.sin(run.deadT * 6) * 0.4 });
-  const rs = run.rs;
-  text(`KILLS ${rs.kills}   BOSSES ${rs.bosses}   LV ${run.level}`, W / 2, 212, { color: PAL.white, size: 11, align: 'center' });
-  text(`BEST ${run.save.best}m`, W / 2, 230, { color: PAL.mute, size: 10, align: 'center' });
-  if (k && run.deadT > 0.6) text(`KILLED BY: ${k.what}`, W / 2, 248, { color: k.color, size: 10, align: 'center' });
-  if (run.newUnlocks.length) {
-    text('UNLOCKED', W / 2, 272, { color: PAL.acid, size: 12, align: 'center' });
-    [...new Set(run.newUnlocks)].slice(0, 6).forEach((n, i) => text(n, W / 2, 292 + i * 16, { color: PAL.magenta, size: 11, align: 'center' }));
-  }
+  dim(Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6));
+  if (run.deadT < 0.6) return;
+  const top = SAFE_TOP, bot = H - SAFE_BOTTOM, rs = run.rs;
+
+  // Bottom block first, so the upper block can centre in what is left.
+  const bx = 48, bw = W - 96, hw = (bw - 10) / 2;
+  const py = bot - 62, ry = py - 64;
   if (run.deadT > 0.8) {
-    button('retry', 48, 420, W - 96, 52, run.daily ? 'RETRY DAILY' : 'RETRY', { color: '#d83cd8', fill: true, size: 18 });
-    const hw = (W - 106) / 2;
-    button('menu', 48, 482, hw, 42, 'MENU', { color: PAL.white, size: 13 });
-    button('share', 58 + hw, 482, hw, 42, run.shareMsg || 'SHARE', { color: PAL.acid, size: 13 });
+    button('retry', bx, ry, bw, 54, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PINK, fill: true, size: 22 });
+    button('menu', bx, py, hw, 44, 'MENU', { color: PAL.white, size: 14 });
+    button('share', bx + hw + 10, py, hw, 44, run.shareMsg || 'SHARE', { color: PAL.acid, size: 14 });
+  }
+  const floor = ry - 20;
+
+  const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
+  const per = Math.floor((W - 40) / BUILD_CS);
+  const unl = [...new Set(run.newUnlocks)];
+  const HEAD = 196;
+  let rows = Math.ceil(ids.length / per);
+  const bodyH = (r) => (ids.length ? 20 + r * BUILD_CS : 0) + (unl.length ? 30 + Math.min(unl.length, 6) * 18 : 0);
+  while (rows > 1 && HEAD + bodyH(rows) > floor - top) rows--;
+  const y0 = top + Math.max(0, (floor - top - HEAD - bodyH(rows)) * 0.4);
+
+  const jitter = run.deadT < 0.9 ? (Math.random() - 0.5) * 5 : 0;
+  text('CONSUMED', W / 2 + jitter, y0 + 50, { color: PAL.red, size: 30, align: 'center', font: 'display' });
+  if (k) text(`BY ${k.what}`, W / 2, y0 + 80, { color: k.color, size: 11, align: 'center', font: 'display', maxW: W - 64 });
+  text(`${Math.floor(run.distance)}m`, W / 2, y0 + 120, { color: PAL.white, size: 34, align: 'center', font: 'display' });
+  // one line under the distance: a new record, or the record to beat
+  const rec = run.newBest ? 'NEW BEST' : run.daily && run.newDailyBest ? 'NEW DAILY BEST' : `BEST ${run.save.best}m`;
+  text(rec, W / 2, y0 + 150, { color: run.newBest || run.newDailyBest ? PAL.acid : PAL.mute, size: 12, align: 'center', font: 'display' });
+  text(`${rs.kills} KILLS · ${rs.bosses} BOSSES · LV ${run.level}${run.daily ? ` · DAILY ${run.dailyKey}` : ''}`, W / 2, y0 + 176, { color: PAL.white, size: 10, align: 'center', font: 'display', maxW: W - 48 });
+
+  let y = y0 + HEAD;
+  if (ids.length) {
+    y += 8;
+    buildIcons(run.stacks, ids, y, rows, per);
+    y += rows * BUILD_CS + 12;
+  }
+  if (unl.length) {
+    y += 10;
+    text('UNLOCKED', W / 2, y, { color: PAL.acid, size: 12, align: 'center', font: 'display' });
+    y += 22;
+    for (const n of unl.slice(0, 6)) {
+      if (y > floor) break;
+      text(n, W / 2, y, { color: PINK, size: 12, align: 'center', font: 'display', maxW: W - 64 });
+      y += 18;
+    }
   }
 }
 
