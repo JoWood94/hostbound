@@ -12,6 +12,7 @@ export const BLACK = '#000';
 // The pink of the original symbiote sprite.
 export const SYM_BODY = '#d83cd8';
 const SYM_IRIS = '#c6ff1a';
+const SYM_DEAD = '#6e2a6e';   // the pink drained (death screen)
 const CYAN = '#19f0ff';
 
 // ---------------------------------------------------------------------------
@@ -98,15 +99,20 @@ export function drawSymbiote(x, y, pose) {
   const swing = spring(st, 'swing', Math.max(-1, Math.min(1, -vx / 900)), dt, 120, 9);
   const ball = Math.max(0, Math.min(1, spring(st, 'ball', pose.air ? 1 : 0, dt, 520, 38)));
   const pill = Math.max(0, Math.min(1, spring(st, 'pill', phase ? 1 : 0, dt, 520, 38)));
+  // Dead (death screen): it rolls belly-up like a dead fish and floats there,
+  // rocking slowly; the pink drains and the arms drift, slow and loose.
+  const die = pose.dead ? spring(st, 'die', 1, dt, 60, 7) : 0;
+  const tw = pose.dead ? t * 0.45 : t * 3.2;          // arm wave clock
+  const wave = pose.dead ? 2.2 : 1;                    // arm wave amplitude: loose when dead
   const fold = Math.max(ball, pill);          // how far the genome folds away
-  const color = hit ? '#ffffff' : phase ? (pose.phaseColor || CYAN) : SYM_BODY;
+  const color = hit ? '#ffffff' : phase ? (pose.phaseColor || CYAN) : pose.dead ? SYM_DEAD : SYM_BODY;
   const sc = R * (1 + jh * 0.3);
   const P = sc * (1 - 0.85 * fold);          // positions collapse to the centre
   const Q = sc * (1 - 0.5 * fold);           // radii shrink less: parts sink into the shape
 
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(tilt + (pose.spin || 0));
+  ctx.rotate(tilt + (pose.spin || 0) + die * (Math.PI + Math.sin(t * 0.7) * 0.14));
   ctx.fillStyle = color;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -134,7 +140,7 @@ export function drawSymbiote(x, y, pose) {
       let x0 = rx * P, y0 = ry * P;
       let a = fan0 * (1 - fold * 0.6);
       for (let j = 0; j < segs.length; j++) {
-        a += swing * (0.55 - j * 0.08) + Math.sin(t * 3.2 + k * 1.7 - j * 1.1) * (0.12 + j * 0.06);
+        a += swing * (0.55 - j * 0.08) + Math.sin(tw + k * 1.7 - j * 1.1) * (0.12 + j * 0.06) * wave;
         const L = sc * segs[j] * (1 - fold);
         const x1 = x0 + Math.sin(a) * L, y1 = y0 + Math.cos(a) * L;
         capsule(x0, y0, x1, y1, sc * rr * (1 - j * 0.16) * (1 - fold * 0.5));
@@ -150,6 +156,12 @@ export function drawSymbiote(x, y, pose) {
     const lean = Math.max(-1, Math.min(1, tilt * 3));
     for (const [gx, gy, gr] of g.eyes) {
       const ex = gx * P, ey = gy * P, ir = gr * sc * (1 - 0.35 * ball);
+      if (pose.dead) {   // dead: a green X per eye, two crossed capsules
+        const d = ir * 0.7, w = Math.max(1.2, ir * 0.28);
+        capsule(ex - d, ey - d, ex + d, ey + d, w); ctx.fillStyle = SYM_IRIS; ctx.fill();
+        capsule(ex + d, ey - d, ex - d, ey + d, w); ctx.fill();
+        continue;
+      }
       ctx.beginPath(); ctx.arc(ex, ey, ir, 0, Math.PI * 2);
       ctx.fillStyle = hit ? '#ffffff' : SYM_IRIS; ctx.fill();
       const px = ex + lean * ir * 0.15, pw = ir * 0.7, ph = ir * 0.22;

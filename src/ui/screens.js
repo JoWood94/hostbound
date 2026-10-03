@@ -581,7 +581,9 @@ export function drawPause(run, save) {
 export function drawDead(run) {
   // Freeze frame: for 0.6 s the world stays visible with what killed you
   // circled and your lane lit, then the screen fades to solid black.
-  const k = run.lastHit;
+  // Ending the run from pause skips it: straight from the black pause to the
+  // black death screen, no flash of the track in between.
+  const k = run.quit ? null : run.lastHit;
   if (k && run.deadT < 1.4) {
     const a = Math.min(1, 1.4 - run.deadT);
     ctx.save();
@@ -591,7 +593,7 @@ export function drawDead(run) {
     ctx.beginPath(); ctx.arc(k.x, k.y, 22 + Math.sin(run.deadT * 14) * 3, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
-  dim(Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6));
+  dim(run.quit ? 1 : Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6));
   if (run.deadT < 0.6) return;
   const top = SAFE_TOP, bot = H - SAFE_BOTTOM, rs = run.rs;
 
@@ -608,13 +610,13 @@ export function drawDead(run) {
   const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
   const per = Math.floor((W - 40) / BUILD_CS);
   const unl = [...new Set(run.newUnlocks)];
-  const HEAD = 196;
+  const HEAD = 306;   // titles, distance, stats, the dead alien
   let rows = Math.ceil(ids.length / per);
   const bodyH = (r) => (ids.length ? 20 + r * BUILD_CS : 0) + (unl.length ? 30 + Math.min(unl.length, 6) * 18 : 0);
   while (rows > 1 && HEAD + bodyH(rows) > floor - top) rows--;
   const y0 = top + Math.max(0, (floor - top - HEAD - bodyH(rows)) * 0.4);
 
-  const jitter = run.deadT < 0.9 ? (Math.random() - 0.5) * 5 : 0;
+  const jitter = !run.quit && run.deadT < 0.9 ? (Math.random() - 0.5) * 5 : 0;
   text('CONSUMED', W / 2 + jitter, y0 + 50, { color: PAL.red, size: 30, align: 'center', font: 'display' });
   if (k) text(`BY ${k.what}`, W / 2, y0 + 80, { color: k.color, size: 11, align: 'center', font: 'display', maxW: W - 64 });
   text(`${Math.floor(run.distance)}m`, W / 2, y0 + 120, { color: PAL.white, size: 34, align: 'center', font: 'display' });
@@ -622,6 +624,12 @@ export function drawDead(run) {
   const rec = run.newBest ? 'NEW BEST' : run.daily && run.newDailyBest ? 'NEW DAILY BEST' : `BEST ${run.save.best}m`;
   text(rec, W / 2, y0 + 150, { color: run.newBest || run.newDailyBest ? PAL.acid : PAL.mute, size: 12, align: 'center', font: 'display' });
   text(`${rs.kills} KILLS · ${rs.bosses} BOSSES · LV ${run.level}${run.daily ? ` · DAILY ${run.dailyKey}` : ''}`, W / 2, y0 + 176, { color: PAL.white, size: 10, align: 'center', font: 'display', maxW: W - 48 });
+
+  // This run's alien, dead: it keels over, drained, with X eyes.
+  run.deadSym = run.deadSym || {};
+  // Animated like the menu alien: it bobs and sways, just slower and limp.
+  const tt = performance.now() / 1000;
+  drawSymbiote(W / 2, y0 + 250 + Math.sin(tt * 1.1) * 5, { R: 38, bank: Math.sin(tt * 0.5) * 0.1, t: tt, hit: false, genome: run.player.specimen, state: run.deadSym, dead: true });
 
   let y = y0 + HEAD;
   if (ids.length) {
