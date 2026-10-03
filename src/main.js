@@ -258,7 +258,7 @@ function update(dt) {
     }
     case 'dead':
       updateDead(run, dt);
-      if (run.deadT > 0.8) {
+      if (run.deadT > 0.8 && run.deadReady) {
         // The goo becomes the next specimen (already grown, so its shape
         // is known) in one move, onto the track or back to the menu spot.
         const from = run.deadPose || { x: W / 2, y: H / 2, R: 50 }, oldG = run.player.specimen;

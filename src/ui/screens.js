@@ -616,11 +616,6 @@ export function drawDead(run) {
   // Bottom block first, so the upper block can centre in what is left.
   const bx = 48, bw = W - 96, hw = (bw - 10) / 2;
   const py = bot - 62, ry = py - 64;
-  if (run.deadT > 0.8) {
-    button('retry', bx, ry, bw, 54, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PINK, fill: true, size: 22 });
-    button('menu', bx, py, hw, 44, 'MENU', { color: PAL.white, size: 14 });
-    button('share', bx + hw + 10, py, hw, 44, run.shareMsg || 'SHARE', { color: PAL.acid, size: 14 });
-  }
   const floor = ry - 20;
 
   const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
@@ -645,11 +640,20 @@ export function drawDead(run) {
   }
   const from = run.gooFrom, GOO_S = 0.95;
   const to = run.deadPose = { x: W / 2, y: y0 + 250, R: DEAD_R };
-  drawDeathGoo(p.specimen, (now - run.gooStart) / 1000 / GOO_S, from, to, tt);
-  if (run.deadT < 0.6) return;   // the freeze frame: only the goo so far
+  const since = (now - run.gooStart) / 1000;
+  drawDeathGoo(p.specimen, since / GOO_S, from, to, tt);
+  // The words and buttons wait for the goo to land, then fade in, so the
+  // glide never crosses them.
+  const ui = Math.min(1, Math.max(0, (since - GOO_S * 0.85) / 0.3));
+  run.deadReady = ui > 0.5;   // main.js takes RETRY / MENU only from here on
+  if (ui <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = ui;
+  button('retry', bx, ry, bw, 54, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PINK, fill: true, size: 22 });
+  button('menu', bx, py, hw, 44, 'MENU', { color: PAL.white, size: 14 });
+  button('share', bx + hw + 10, py, hw, 44, run.shareMsg || 'SHARE', { color: PAL.acid, size: 14 });
 
-  const jitter = !run.quit && run.deadT < 0.9 ? (Math.random() - 0.5) * 5 : 0;
-  text('CONSUMED', W / 2 + jitter, y0 + 50, { color: PAL.red, size: 30, align: 'center', font: 'display' });
+  text('CONSUMED', W / 2, y0 + 50, { color: PAL.red, size: 30, align: 'center', font: 'display' });
   if (k) text(`BY ${k.what}`, W / 2, y0 + 80, { color: k.color, size: 11, align: 'center', font: 'display', maxW: W - 64 });
   text(`${Math.floor(run.distance)}m`, W / 2, y0 + 120, { color: PAL.white, size: 34, align: 'center', font: 'display' });
   // one line under the distance: a new record, or the record to beat
@@ -673,6 +677,7 @@ export function drawDead(run) {
       y += 18;
     }
   }
+  ctx.restore();
 }
 
 export { heart };
