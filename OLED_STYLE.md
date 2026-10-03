@@ -35,7 +35,8 @@ redesign; follow them when anything new is drawn.
 ## World
 - No lane dividers; the lane you enter glows faintly, then fades. Tiny parallax stars run underneath.
 - Side walls: a thin neon line in the district colour (`WALLS` in `world.js`; `'flesh'` keeps the organic banks for comparison).
-- Obstacles: one primitive each, and the shape is the meaning. Solid magenta capsule = dodge, dotted orange row = jump, hollow cyan capsule = phase. Same-type neighbours on a row merge into one shape. No eyes or dots on obstacles.
+- Obstacles: one primitive each, and the shape is the meaning; the motion tells the action. Solid magenta capsule = dodge, which BOILS (black bubbles open inside it, drift to the rim and burst). Dotted orange row = jump, which HOPS all together on a 1 s beat (0.45 in the air, a squash on landing, then rest). Hollow cyan capsule = phase, with the player's phase pill (and its two dark echoes) sliding down THROUGH it in every lane, clipped to a band round the line; once passed it turns dark cyan and the pill stops. Motions are fixed functions of time and world x (learnable). Same-type neighbours on a row merge into one shape. No eyes on obstacles.
+- Pickups: a cell is a dividing cell (two acid halves joined by a capsule neck that pinches and refills). A heart is two capsules leaning in to a round tip (`heartShape` in pickups.js, also the HUD), beating lub-dub as a pickup.
 - Enemy lane warnings: only two thin edges, no fill.
 
 ## Enemies and bosses
@@ -46,6 +47,7 @@ redesign; follow them when anything new is drawn.
 
 ## Shots and effects
 - `src/render/shots.js`: every projectile is one flat colour. Beams and rails bend with a rounded radius (no sharp corners). Sparks die by thinning.
+- Enemy high shot: magenta rounded triangle (R 2.3 r) along its flight, the enemies' pale pupil inside (`#ffbff3`) and two shrinking beads behind it. Player bolt: plump acid capsule drawn at `BOLT_K` 1.12 x its radius, which already grows with damage (only the drawing scales, not the hitbox).
 
 ## UI
 - Every button is a neon-outlined capsule; the primary has a heavier outline. Settings use iOS switches, and tabs are labels with a capsule underline.
@@ -62,4 +64,5 @@ redesign; follow them when anything new is drawn.
 - `specimens.html` shows a grid of 12 generated aliens, for tuning the genome rules (`?s=N` pages through more).
 - `bosses.html` shows the three boss sheets live side by side; `?full&b=<id>` shows every frame of one boss.
 - `rebirth.html` shows the death goo and the rebirth sampled in rows: death glide (melt + grow + rise), simmer, regrow in place (menu), regrow down a fall (retry); `?live` loops the whole cycle.
+- `sprites.html` compares sprite options side by side (cells, hearts, obstacles, shots); `?obs` and `?obs2` are the obstacle rounds, `?shots` the shot sizes.
 - `bestiary.html` shows every enemy sheet: a live preview cycling idle, telegraph, shot, hit and death, next to 8 sampled frames of each row.

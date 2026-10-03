@@ -38,18 +38,19 @@ export function spawnVeil(y = -30) {
 }
 
 // ---------------------------------------------------------------------------
-// Drawing: flat OLED shapes, drawn live (render/oled.js). Orange wire = jump,
-// magenta mass = dodge, cyan tear = phase.
+// Drawing: flat OLED shapes, drawn live (render/oled.js). Orange row that
+// hops = jump, boiling magenta mass = dodge, cyan membrane the phase pill
+// slips through = phase.
 // ---------------------------------------------------------------------------
 const VEIL_X0 = laneX(0) - LANE_W / 2, VEIL_X1 = laneX(LANES - 1) + LANE_W / 2;
 // Same-type obstacles side by side on one row are drawn as one shape.
 const MERGE_INSET = 4;   // each shape stops this far inside its outer lanes
-export function drawObstacles(alpha) {
+export function drawObstacles(alpha, t = 0) {
   const rows = [];
   for (const o of obstacles) {
     if (o.dead) continue;
     const y = o.prevY + (o.y - o.prevY) * alpha;
-    if (o.type === 'veil') { drawRift(VEIL_X0 + 6, VEIL_X1 - 6, y, o.phased ? 0.35 : 1); continue; }
+    if (o.type === 'veil') { drawRift(VEIL_X0 + 6, VEIL_X1 - 6, y, o.phased ? 0.35 : 1, t); continue; }
     rows.push({ type: o.type, lane: o.lane, y, phased: o.phased });
   }
   rows.sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : a.y - b.y || a.lane - b.lane));
@@ -59,9 +60,9 @@ export function drawObstacles(alpha) {
     while (j < rows.length && rows[j].type === r0.type && Math.abs(rows[j].y - r0.y) < 2 && rows[j].lane === rows[j - 1].lane + 1) j++;
     const last = rows[j - 1];
     const x0 = laneX(r0.lane) - LANE_W / 2 + MERGE_INSET, x1 = laneX(last.lane) + LANE_W / 2 - MERGE_INSET;
-    if (r0.type === 'low') drawWire(x0, x1, r0.y);
-    else if (r0.type === 'rift') drawRift(x0, x1, r0.y, r0.phased ? 0.35 : 1);
-    else drawBarrier(x0, x1, r0.y);
+    if (r0.type === 'low') drawWire(x0, x1, r0.y, t);
+    else if (r0.type === 'rift') drawRift(x0, x1, r0.y, r0.phased ? 0.35 : 1, t);
+    else drawBarrier(x0, x1, r0.y, t);
     i = j;
   }
 }

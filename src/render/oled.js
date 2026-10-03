@@ -164,33 +164,75 @@ export function drawSymbiote(x, y, pose) {
 
 
 // ---------------------------------------------------------------------------
-// Obstacles: one primitive family each, and the shape carries the meaning:
-//   magenta = dodge: SOLID capsule (it blocks)
-//   orange = jump  : DOTTED row of solid circles (low, step over it)
-//   cyan = phase   : HOLLOW capsule (you pass through it)
+// Obstacles: one primitive family each, and the shape carries the meaning;
+// the motion tells the action:
+//   magenta = dodge: SOLID capsule that boils, black bubbles rising inside it
+//   orange = jump  : DOTTED row of solid circles that hops all together
+//   cyan = phase   : HOLLOW capsule that the phase pill keeps slipping through
 // Each draw spans x0..x1: neighbours of the same type on the same row are
-// merged by the caller into one longer shape. A passed phase obstacle turns
-// dark cyan, never transparent.
+// merged by the caller into one longer shape. Every motion is a fixed
+// function of time and position, so every obstacle of a type moves the same.
+// A passed phase obstacle turns dark cyan, never transparent.
 // ---------------------------------------------------------------------------
 const ORANGE = '#ff6a00', MAG = '#ff2bd6', CYAN_DIM = '#0b4a50';
+const TAU = Math.PI * 2;
+const hash = (i) => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5; return v - Math.floor(v); };
 
-export function drawWire(x0, x1, y) {
+// Hop: 0.45 of the beat in the air (height 0..1), 0.15 squashing on landing.
+const HOP_S = 1.0;
+function hop(t) {
+  const u = (t / HOP_S) % 1;
+  if (u < 0.45) { const k = u / 0.45; return [4 * k * (1 - k), 0]; }
+  if (u < 0.6) return [0, Math.sin(((u - 0.45) / 0.15) * Math.PI)];
+  return [0, 0];
+}
+export function drawWire(x0, x1, y, t = 0) {
   const r = 3.4, gap = 10;
   const n = Math.max(2, Math.round((x1 - x0 - r * 2) / gap));
   const step = (x1 - x0 - r * 2) / n;
+  const [h, sq] = hop(t);
   ctx.fillStyle = ORANGE;
   ctx.globalAlpha = DIM;
-  for (let i = 0; i <= n; i++) { ctx.beginPath(); ctx.arc(x0 + r + i * step, y, r, 0, Math.PI * 2); ctx.fill(); }
+  for (let i = 0; i <= n; i++) {
+    const px = x0 + r + i * step;
+    if (sq > 0) capsule(px - sq * 1.4, y + sq, px + sq * 1.4, y + sq, r - sq * 0.8);
+    else { ctx.beginPath(); ctx.arc(px, y - h * 6, r * (1 + h * 0.2), 0, TAU); }
+    ctx.fill();
+  }
 }
 
-export function drawBarrier(x0, x1, y) {
+// Black bubbles, one per ~16 px, each on its own period: it opens inside the
+// mass, drifts to the rim and closes as it bursts. Seeded by world position,
+// so a merged row boils the same as its single lanes.
+export function drawBarrier(x0, x1, y, t = 0) {
   capsule(x0 + 9, y, x1 - 9, y, 9);
   fill(MAG);
+  const n = Math.max(2, Math.round((x1 - x0) / 16)), seed = Math.round(x0 / 16);
+  for (let i = 0; i < n; i++) {
+    const id = seed + i;
+    const u = (t / (1.1 + hash(id + 3) * 0.5) + hash(id + 5)) % 1;
+    const px = x0 + 14 + (i + hash(id + 7) * 0.6) * (x1 - x0 - 28) / n;
+    const r = 0.6 + 3 * Math.sin(u * Math.PI);
+    ctx.beginPath(); ctx.arc(px, y + (id % 2 ? 1 : -1) * u * 4, r, 0, TAU);
+    fill('#000');
+  }
 }
 
-export function drawRift(x0, x1, y, a = 1) {
+// The membrane, and in each lane the player's phase pill (with its two dark
+// echoes) sliding down through it, clipped to a band around the line.
+export function drawRift(x0, x1, y, a = 1, t = 0) {
   capsule(x0 + 8, y, x1 - 8, y, 8);
   stroke(a < 1 ? CYAN_DIM : CYAN, 2);
+  if (a < 1) return;
+  const lanes = Math.max(1, Math.round((x1 - x0) / 64)), w = (x1 - x0) / lanes;
+  for (let l = 0; l < lanes; l++) {
+    const px = x0 + (l + 0.5) * w, py = y - 22 + ((t * 0.7 + (Math.round(px / 64) * 0.37)) % 1) * 44;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(px - 20, y - 24, 40, 48); ctx.clip();
+    for (let e = 2; e >= 1; e--) { capsule(px, py - 5 - e * 5, px, py + 5 - e * 5, 3.2); fill(CYAN_DIM); }
+    capsule(px, py - 5, px, py + 5, 3.2); fill(CYAN);
+    ctx.restore();
+  }
 }
 
 // ---------------------------------------------------------------------------

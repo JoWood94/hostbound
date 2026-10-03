@@ -4,7 +4,7 @@ import { PAL } from '../render/palette.js';
 import { H } from '../core/canvas.js';
 import { text } from '../render/draw.js';
 import { ctx } from '../core/canvas.js';
-import { rtri } from '../render/oled.js';
+import { capsule } from '../render/oled.js';
 const TAU = Math.PI * 2;
 import { laneX } from './world.js';
 
@@ -56,19 +56,18 @@ export function updatePickups(dt, speed, player, playerY, magnetLanes) {
 }
 
 // Pickups from primitives, flat colour, no glow; motion is all easing.
-//   cell  : one flat acid disc that breathes (no nucleus, no shade)
-//   heart : two circles and a rounded triangle, pulsing (red, or blue shield)
+//   cell  : a dividing cell, two acid halves joined by a capsule neck that
+//           pinches and refills (mitosis), each on its own phase and axis
+//   heart : two capsules meeting at a round tip, beating lub-dub (red, or blue shield)
 //   corrupted item: a hollow magenta ring with a glitching "?"
 export function drawPickups(alpha, time) {
   for (const p of pickups) {
     const x = p.prevX + (p.x - p.prevX) * alpha;
     const y = p.prevY + (p.y - p.prevY) * alpha;
     if (p.kind === 'coin') {
-      const r = 5.2 * (1 + Math.sin(time * 5 + p.v * 2.1 + y * 0.03) * 0.1);
-      ctx.fillStyle = PAL.acid;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+      cellShape(x, y, time + y * 0.01, p.v);
     } else if (p.kind === 'heart' || p.kind === 'blue') {
-      const s = 1 + Math.sin(time * 8) * 0.08;
+      const s = 1 + lubdub(time) * 0.12;
       ctx.fillStyle = p.kind === 'heart' ? PAL.red : PAL.blue;
       heartShape(x, y, 8 * s);
     } else if (p.kind === 'corrupt') {
@@ -80,12 +79,29 @@ export function drawPickups(alpha, time) {
   }
 }
 
-// Heart from primitives: two circles on a rounded triangle pointing down.
+// Two-beat heart pulse (lub-dub), 0..~1, period 1.1 s.
+function lubdub(t) {
+  const p = t % 1.1;
+  return Math.exp(-(((p - 0.08) / 0.06) ** 2)) + 0.6 * Math.exp(-(((p - 0.3) / 0.06) ** 2));
+}
+
+// Cell: two halves of radius 3.8 on an axis set by v, the gap and the neck
+// breathing together (apart = thin neck, together = full capsule).
+function cellShape(x, y, t, v) {
+  const k = 0.5 + 0.5 * Math.sin(t * 3 + v * 2);
+  const d = 2.2 + k * 1.6, a = 0.5 + v;
+  const dx = Math.cos(a) * d, dy = Math.sin(a) * d;
+  ctx.fillStyle = PAL.acid;
+  capsule(x - dx, y - dy, x + dx, y + dy, 3.8 - k * 1.6); ctx.fill();
+  ctx.beginPath(); ctx.arc(x - dx, y - dy, 3.8, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + dx, y + dy, 3.8, 0, TAU); ctx.fill();
+}
+
+// Heart from primitives: two capsules leaning in, meeting at a round tip.
 export function heartShape(x, y, s) {
-  const r = s * 0.52;
-  ctx.beginPath(); ctx.arc(x - r * 0.95, y - r * 0.35, r, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.arc(x + r * 0.95, y - r * 0.35, r, 0, TAU); ctx.fill();
-  rtri(x, y + s * 0.05, s * 1.05, 0); ctx.fill();
+  const r = s * 0.46, by = y + s * 0.5, ty = y - s * 0.22, tx = s * 0.5;
+  capsule(x, by, x - tx, ty, r); ctx.fill();
+  capsule(x, by, x + tx, ty, r); ctx.fill();
 }
 
 export function clearPickups() { pickups.length = 0; }

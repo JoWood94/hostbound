@@ -320,7 +320,7 @@ function render(alpha) {
     drawWorld(r.distance, r.player.lane);
     drawTelegraphs();
     drawBossTelegraph(r.boss);
-    drawObstacles(alpha);
+    drawObstacles(alpha, r.time);
     drawPickups(alpha, r.time);
     // Readability: the more of your own stuff is on screen, the dimmer it is
     // drawn (down to 45%), so enemy shots on top always stand out.

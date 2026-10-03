@@ -1,8 +1,8 @@
 // Shots and their effects, drawn live from primitives (capsules, circles,
 // rounded triangles), solid colours only: no sprite sheets, no glow, no alpha
 // fades. Motion and life are shown by size and easing, never by transparency.
-// Every shot is ONE flat colour: player shots acid green; enemy shots are magenta orbs
-// (high, dodge) and orange dotted waves (low, jump), the same language as the
+// Every shot is ONE flat colour: player shots acid green; enemy shots are magenta
+// eyed triangles (high, dodge) and orange dotted waves (low, jump), the same language as the
 // obstacles.
 import { ctx } from '../core/canvas.js';
 import { DIM } from './draw.js';
@@ -24,8 +24,12 @@ function dir(vx, vy) { const s = Math.hypot(vx, vy) || 1; return [vx / s, vy / s
 // Player projectiles
 // ---------------------------------------------------------------------------
 // Base shot: one flat, plump capsule along its flight; piercing = longer, thinner.
+// r already grows with the damage (weapon.js dmgScale); BOLT_K only scales the
+// drawing on top of that, so the damage-to-size curve keeps its shape.
+const BOLT_K = 1.12;
 export function bolt(x, y, vx, vy, r, needle = false) {
   const [dx, dy] = dir(vx, vy);
+  r *= BOLT_K;
   const len = r * (needle ? 3 : 1.1), w = r * (needle ? 0.7 : 1.05);
   capsule(x - dx * len, y - dy * len, x + dx * len * 0.25, y + dy * len * 0.25, w); fill(ACID);
 }
@@ -116,13 +120,19 @@ export function lob(x, y, r, k) {
 // ---------------------------------------------------------------------------
 // Enemy projectiles
 // ---------------------------------------------------------------------------
-// High shot: a flat magenta rounded triangle pointing where it flies. The
-// triangle is the enemy shape (the Drone), so it never reads as one of your
-// capsules or a cell. It breathes a little; drawn on top of everything.
+// High shot: a flat magenta rounded triangle pointing where it flies, with
+// the enemies' pale pupil inside (a tiny enemy) and two beads shrinking
+// behind it that show the way it travels. The triangle is the enemy shape
+// (the Drone), so it never reads as one of your capsules or a cell. Drawn on
+// top of everything.
+const PALE_MAG = '#ffbff3';   // MAG mixed 70% towards white, like the enemy pupils
 export function enemyOrb(x, y, r, t, i, vx = 0, vy = 1) {
-  const k = 1 + Math.sin(t * 14 + i) * 0.06;
-  rtri(x, y, r * 2.2 * k, Math.atan2(vy, vx) - Math.PI / 2);
+  const [dx, dy] = dir(vx, vy);
+  dot(x - dx * r * 2.6, y - dy * r * 2.6, r * 0.6, MAG);
+  dot(x - dx * r * 4, y - dy * r * 4, r * 0.38, MAG);
+  rtri(x, y, r * 2.3, Math.atan2(dy, dx) - Math.PI / 2);
   fill(MAG);
+  dot(x - dx * r * 0.2, y - dy * r * 0.2, r * 0.55, PALE_MAG);
 }
 // Low wave: a dotted orange row (the same mark as a jump obstacle), rippling.
 export function enemyLowWave(x, y, w, t, i) {
