@@ -422,7 +422,8 @@ function gooBody(x, y, R, t, b, col, ph) {
 export function drawGoo(genome, k, x, y, R, t) {
   const g = genome || FIRST_SPECIMEN;
   const { parts, eyes } = genomeParts(g, t);
-  const m = easeIO(clamp01(k));
+  // ease-out: it gives way at once (an ease-in start read as a delay)
+  const m = 1 - (1 - clamp01(k)) ** 3;
   const col = SYM_BODY;
   ctx.save();
   ctx.globalAlpha = DIM;

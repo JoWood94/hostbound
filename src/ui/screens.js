@@ -637,7 +637,7 @@ export function drawDead(run) {
   const gx = W / 2, gy = y0 + 250, gR = 50;
   if (rb) drawMelt(run.player.specimen, Math.min(1, (now - rb.start) / (REBORN_S * 1000)), rb.x, rb.y, rb.R, tt, rb.ph0);
   else {
-    drawGoo(run.player.specimen, (now - run.gooStart) / 900, gx, gy, gR, tt);
+    drawGoo(run.player.specimen, (now - run.gooStart) / 750, gx, gy, gR, tt);
     run.deadPose = { x: gx, y: gy, R: gR, ph0: tt * 1.3 };
   }
 

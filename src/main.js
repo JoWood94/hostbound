@@ -255,7 +255,7 @@ function update(dt) {
       const holding = !locked && ((p.down && !p.consumed && hitTest(p.startX, p.startY) === 'endRun' && hitTest(p.x, p.y) === 'endRun') || keyHeld('KeyQ'));
       run.holdT = holding ? (run.holdT || 0) + dt : Math.max(0, (run.holdT || 0) - dt * 3);
       run.holdHint = Math.max(0, (run.holdHint || 0) - dt);
-      if (run.holdT >= END_HOLD) { run.holdT = 0; run.quit = true; run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
+      if (run.holdT >= END_HOLD) { run.holdT = 0; run.quit = true; run.gooStart = performance.now(); run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
       if (locked) break;
       if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; run.holdT = 0; sfx.select(); }
       else if (id === 'skipTutorial' && run.tutorial) { finishTutorial(run); run.mode = 'play'; sfx.select(); }
