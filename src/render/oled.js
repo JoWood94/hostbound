@@ -12,7 +12,6 @@ export const BLACK = '#000';
 // The pink of the original symbiote sprite.
 export const SYM_BODY = '#d83cd8';
 const SYM_IRIS = '#c6ff1a';
-const SYM_DEAD = '#6e2a6e';   // the pink drained (death screen)
 const CYAN = '#19f0ff';
 
 // ---------------------------------------------------------------------------
@@ -385,21 +384,15 @@ export function drawLiquidMorph(genome, u, ax, ay, aR, bx, by, bR, t, premelted 
 }
 
 // ---------------------------------------------------------------------------
-// Rebirth (death screen -> RETRY or MENU). drawMelt: the dead alien turns
-// upright while it melts into a round pool and its drained pink comes back
-// alive; the X eyes shrink and come back as green beads. It ends on exactly
+// Rebirth (death screen -> RETRY or MENU). drawMelt: the dead goo rounds up
+// into a pool; the X eyes close back into green beads. It ends on exactly
 // the pool drawLiquidMorph(..., premelted) starts from, so RETRY can pour it
 // onto the track. drawReform: the pool glides to the menu spot and the new
 // genome grows out of it.
 // ---------------------------------------------------------------------------
-function mixHex(a, b, k) {
-  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
-  const ch = (sh) => Math.round(((pa >> sh) & 255) + ((((pb >> sh) & 255) - ((pa >> sh) & 255)) * k));
-  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
-}
 const POOL = 0.72;   // pool radius / alien radius, as drawLiquidMorph starts
 
-// The dead alien as goo: its parts slump and melt into one drained puddle
+// The dead alien as goo: its parts slump and melt into one pink puddle
 // (k 0..1 over the collapse) that keeps simmering: a slow lumpy wobble,
 // bubbles that swell and pop, the X eyes adrift on top.
 const GOO_SX = 1.7, GOO_SY = 0.55;
@@ -430,7 +423,7 @@ export function drawGoo(genome, k, x, y, R, t) {
   const g = genome || FIRST_SPECIMEN;
   const { parts, eyes } = genomeParts(g, t);
   const m = easeIO(clamp01(k));
-  const col = mixHex(SYM_BODY, SYM_DEAD, m);
+  const col = SYM_BODY;
   ctx.save();
   ctx.globalAlpha = DIM;
   // the puddle spreads under the body while the parts slump into it
@@ -439,9 +432,9 @@ export function drawGoo(genome, k, x, y, R, t) {
   ctx.fillStyle = col;
   if (m < 1) tiedParts(parts, x, y, R, m, 0.9);
   // bubbles on the rim: swell, then pop
-  if (m > 0.6) for (let i = 0; i < 3; i++) {
-    const c = (t * 0.55 + i * 0.37) % 1, a = -Math.PI * (0.25 + i * 0.25);
-    const r = Rs * 0.2 * Math.sin(c * Math.PI) * (c < 0.92 ? 1 : 0);
+  if (m > 0.6) for (let i = 0; i < 4; i++) {
+    const c = (t * 0.55 + i * 0.29) % 1, a = -Math.PI * (0.2 + i * 0.2);
+    const r = Rs * 0.26 * Math.sin(c * Math.PI) * (c < 0.92 ? 1 : 0);
     if (r > 0.5) { ctx.beginPath(); ctx.arc(x + Math.cos(a) * Rs * sx * 0.82, cy + Math.sin(a) * Rs * sy * 0.82, r, 0, Math.PI * 2); ctx.fill(); }
   }
   // eyes: slide off the body and drift on the surface, as Xs
@@ -456,15 +449,15 @@ export function drawGoo(genome, k, x, y, R, t) {
 }
 
 // RETRY / MENU: the goo comes alive. It rounds up into the pool that
-// drawLiquidMorph(..., premelted) and drawReform() start from, the drained
-// pink returns, the Xs shrink and the eyes surface as green beads.
+// drawLiquidMorph(..., premelted) and drawReform() start from; the Xs close
+// and the eyes surface as green beads.
 export function drawMelt(genome, u, x, y, R, t, ph0) {
   const g = genome || FIRST_SPECIMEN;
   const { eyes } = genomeParts(g, t);
   const m = easeIO(clamp01(u));
   ctx.save();
   ctx.globalAlpha = DIM;
-  const { Rs, sx, sy, cy } = gooBody(x, y, R, t, m, mixHex(SYM_DEAD, SYM_BODY, m), ph0 * (1 - m));
+  const { Rs, sx, sy, cy } = gooBody(x, y, R, t, m, SYM_BODY, ph0 * (1 - m));
   eyes.forEach((p, i) => {
     const gx = x + gooEyeX(i, eyes.length, Rs, sx) + Math.sin(t * 0.8 + i * 2) * Rs * 0.08 * (1 - m);
     const gy = cy - Rs * sy * 0.15 + Math.sin(t * 1.1 + i * 1.7) * Rs * 0.07 * (1 - m);
