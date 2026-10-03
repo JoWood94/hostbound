@@ -21,10 +21,24 @@
     body { min-height: inherit; height: 100%; }
     body { display: flex; align-items: center; justify-content: center; touch-action: none; -webkit-user-select: none; user-select: none; }
     canvas { display: block; position: fixed; top: 0; left: 0; image-rendering: pixelated; }
+    /* Portrait only. The manifest asks for it, but iOS ignores that, so a
+       phone or tablet held sideways gets this screen instead of the game. */
+    #rotate { display: none; position: fixed; inset: 0; z-index: 10; background: #000; color: #d83cd8;
+      flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+      font: 700 15px Quicksand, system-ui, sans-serif; letter-spacing: 0.12em; }
+    #rotate svg { width: 64px; height: 64px; animation: turn 1.8s cubic-bezier(.6,0,.3,1) infinite; }
+    @keyframes turn { 0%, 25% { transform: rotate(-90deg); } 60%, 100% { transform: rotate(0deg); } }
+    @media (orientation: landscape) and (hover: none) and (pointer: coarse) { #rotate { display: flex; } }
   </style>
 </head>
 <body>
   <canvas id="game"></canvas>
+  <div id="rotate">
+    <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <rect x="20" y="6" width="24" height="52" rx="8" /><line x1="29" y1="51" x2="35" y2="51" />
+    </svg>
+    ROTATE TO PORTRAIT
+  </div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

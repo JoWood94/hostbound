@@ -22,7 +22,10 @@ export function viewport() {
   return { w, h: h || 640 };
 }
 const VP = viewport();
-const aspect = VP.h / VP.w;
+// Launched on a phone held sideways (index.html asks to rotate): size for the
+// portrait screen it will become, not the landscape one.
+const sideways = window.matchMedia?.('(orientation: landscape) and (hover: none) and (pointer: coarse)').matches;
+const aspect = sideways ? VP.w / VP.h : VP.h / VP.w;
 export const H = Math.max(600, Math.min(820, Math.round(W * aspect)));
 export const UI_OFFSET = Math.round((H - 640) / 2);
 

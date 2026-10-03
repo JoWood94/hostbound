@@ -156,6 +156,14 @@ function toMenu(morph = null) {
   setMusic('menu');
 }
 
+// Portrait only: lock where the browser allows it (Android, installed app);
+// elsewhere index.html covers the game when it's held sideways, so pause.
+window.screen.orientation?.lock?.('portrait').catch(() => {});
+const SIDEWAYS = matchMedia('(orientation: landscape) and (hover: none) and (pointer: coarse)');
+SIDEWAYS.addEventListener('change', () => {
+  if (SIDEWAYS.matches && run && run.mode === 'play') run.mode = 'pause';
+});
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (run && run.mode === 'play') run.mode = 'pause';
