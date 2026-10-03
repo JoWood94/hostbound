@@ -216,23 +216,23 @@ export function spawnEnemy(type, lane, difficulty, rng, { power = 1, elite = fal
 // ---------------------------------------------------------------------------
 // Rhythm. Every regular enemy fires on one shared metronome, so shots from
 // different enemies land on the same grid and a volley has a steady pulse.
-// One TICK is half a beat; the tempo steps up once per district (1000 m), like
-// a track changing BPM, instead of drifting continuously.
+// One TICK is half a beat; the tempo climbs slowly and continuously with
+// distance (core/tempo.js), like a DJ set creeping up.
 // ---------------------------------------------------------------------------
 const TICK = TICK_BASE;
 // The reaction rule. A lane lights up TELE_TICKS before the first shot leaves,
 // and every shot needs travelTicks(d) to reach you, whatever enemy fired it and
 // from whatever height (its speed adapts). So "lit lane" always means the same
-// time to react: learnable, with or without sound. It shortens only when the
-// tempo steps up (one step per district).
+// time to react: learnable, with or without sound. It shortens slowly as the
+// tempo climbs.
 export const TELE_TICKS = 4;
 // PREMONITION: lanes light up earlier (the enemy fires that much later).
 let teleBonus = 0;
 export function setTeleBonus(n) { teleBonus = n; }
 export const teleBonusNow = () => teleBonus;
 // Shots get there faster as the run goes: 7 ticks, 6 from district 3, 5 from
-// district 6. Warning + travel: 2.2 s at the start, 1.6 s at district 3,
-// 1.2 s at district 6 (230 BPM: 1.17 s, the floor).
+// district 6. Warning + travel: 2.3 s at the start (130 BPM), 1.9 s at 3000 m,
+// 1.5 s at 6000 m, 1.0 s at the 270 BPM ceiling (~15600 m).
 const travelTicks = (d) => (d >= 15 ? 5 : d >= 7.5 ? 6 : 7);
 // Speed of a shot fired at height y: it reaches the player row in travelTicks.
 // Bosses use it too, so a boss shoots exactly as fast as the district's mobs.
@@ -268,11 +268,18 @@ export function onGridSpeed(speed, dist, d) {
 }   // ticks; the director schedules on it
 export const TICK_SEC = TICK;
 // 0 when a lane lights up, 1 when its first shot leaves.
-const teleProgress = (e) => (e.state === 'telegraph' ? Math.max(0, Math.min(1, 1 - (e.fireAt - clock) / (TELE_TICKS + teleBonus))) : 1);
+// `at` is the clock to read it on: the renderer passes the clock interpolated
+// between sim steps, so the lane light ramps every frame at 120 Hz too.
+const teleProgress = (e, at = clock) => (e.state === 'telegraph' ? Math.max(0, Math.min(1, 1 - (e.fireAt - at) / (TELE_TICKS + teleBonus))) : 1);
+let prevClock = 0;
 const ticksOf = (sec) => Math.max(1, Math.round(sec / TICK));
 // Lane -> { until, color }: lanes stay lit while a fired volley is still on its
 // way, so the light means "danger now", not "danger was announced".
+// It holds at full strength (no dip when the volley leaves) and then fades
+// out over DANGER_FADE instead of snapping off.
 const danger = new Map();
+const DANGER_FADE = 0.22;
+let prevSimT = 0;
 const MOUTH = 18;         // shots leave from the creature's mouth, not its belly
 
 function fire(e, st, d) {
@@ -318,9 +325,11 @@ function allSequenceLanes(e) {
 
 export function updateEnemies(dt, difficulty) {
   const d = difficulty;
+  prevClock = clock;
   clock += (dt * timeMul(d)) / TICK;
+  prevSimT = simT;
   simT += dt;
-  for (const [l, v] of danger) if (v.until < simT) danger.delete(l);
+  for (const [l, v] of danger) if (v.until + DANGER_FADE < simT) danger.delete(l);
   for (const [k, j] of jumps) if (j.tick < clock - 8) jumps.delete(k);
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
@@ -468,27 +477,44 @@ export function damageEnemy(e, dmg) {
   return false;
 }
 
-// Glowing lane strips for telegraphed shots, under everything else.
-// Marks a whole lane as a warning: only its two thin edges, in a shade of the
-// threat colour that brightens as the shot nears. The lane itself stays
-// black, so the shots inside keep full contrast. No fill, no alpha.
+// Lane warnings for telegraphed shots, under everything else: a COMB, short
+// ticks slanting inward and up from both lane edges that scroll down toward you, in a
+// shade of the threat colour that brightens as the shot nears. The inside of
+// the lane stays pure black, so a magenta shot in a magenta lane keeps its full
+// contrast; no continuous line, so it never reads as a beam or a laser. No
+// countdown (the timing is learned), no fill, no alpha.
+// Continuous shade (no brightness steps: a quantized tint jumped visibly while
+// the warning ramped). Cached per 1/255 level, i.e. per distinct output colour.
 const tintCache = new Map();
 function tint(hex, k) {
-  const key = hex + (k * 20 | 0);
+  const q = Math.round(k * 255);
+  const key = hex + q;
   let v = tintCache.get(key);
   if (!v) {
-    const n = parseInt(hex.slice(1), 16), q = (k * 20 | 0) / 20;
-    const f = (c) => Math.round(c * q).toString(16).padStart(2, '0');
+    const n = parseInt(hex.slice(1), 16);
+    const f = (c) => Math.round((c * q) / 255).toString(16).padStart(2, '0');
     v = `#${f(n >> 16)}${f((n >> 8) & 255)}${f(n & 255)}`;
     tintCache.set(key, v);
   }
   return v;
 }
-export function glowLane(l, color, a) {
-  const x = laneX(l) - LANE_W / 2 + 4, w = LANE_W - 8;
-  ctx.fillStyle = tint(color, 0.3 + 0.7 * Math.min(1, a));
-  ctx.beginPath(); ctx.roundRect(x, 0, 2, H, 1); ctx.fill();
-  ctx.beginPath(); ctx.roundRect(x + w - 2, 0, 2, H, 1); ctx.fill();
+const COMB_GAP = 20, COMB_DX = 6, COMB_DY = -5, COMB_W = 2, COMB_SPEED = 140;   // px, px/s
+// a: 0.25..1, how close the shot is. fade: 0..1 brightness scale, for lanes
+// going dark.
+export function glowLane(l, color, a, fade = 1) {
+  const x0 = laneX(l) - LANE_W / 2 + 3, w = LANE_W - 6;
+  const L = x0 + 1.5, R = x0 + w - 1.5;
+  const off = ((performance.now() / 1000) * COMB_SPEED) % COMB_GAP;   // wall clock: smooth at any refresh rate
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = tint(color, (0.3 + 0.4 * Math.min(1, a)) * fade);
+  ctx.lineWidth = COMB_W; ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let y = off - COMB_GAP; y < H; y += COMB_GAP) {
+    // slanted inward and up: each pair reads as a chevron pointing up the lane
+    ctx.moveTo(L, y); ctx.lineTo(L + COMB_DX, y + COMB_DY);
+    ctx.moveTo(R, y); ctx.lineTo(R - COMB_DX, y + COMB_DY);
+  }
+  ctx.stroke();
 }
 function rgbaHex(hex, a) {
   let h = hex.slice(1);
@@ -497,18 +523,24 @@ function rgbaHex(hex, a) {
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${Math.max(0, Math.min(1, a))})`;
 }
 
-export function drawTelegraphs() {
+export function drawTelegraphs(alpha = 1) {
+  const at = prevClock + (clock - prevClock) * alpha;
   // Strongest warning per lane wins; drawn once each.
   const lit = new Map();
   for (const e of enemies) {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
-    const prog = teleProgress(e);
+    const prog = teleProgress(e, at);
     const a = 0.25 + prog * 0.75;
-    for (const l of e.telegraphLanes) if (!lit.has(l) || lit.get(l).a < a) lit.set(l, { a, color: e.T.color });
+    for (const l of e.telegraphLanes) if (!lit.has(l) || lit.get(l).a < a) lit.set(l, { a, fade: 1, color: e.T.color });
   }
   // Volleys in flight keep their lanes lit until the shots pass you.
-  for (const [l, v] of danger) if (!lit.has(l) || lit.get(l).a < 0.75) lit.set(l, { a: 0.75, color: v.color });
-  for (const [l, { a, color }] of lit) glowLane(l, color, a);
+  const now = prevSimT + (simT - prevSimT) * alpha;
+  for (const [l, v] of danger) {
+    const fade = Math.max(0, Math.min(1, 1 - (now - v.until) / DANGER_FADE));
+    const cur = lit.get(l);
+    if (!cur || cur.a * cur.fade < fade) lit.set(l, { a: 1, fade, color: v.color });
+  }
+  for (const [l, { a, fade, color }] of lit) if (fade !== 0) glowLane(l, color, a, fade ?? 1);
   // Trackers resting: an arrow to the lane they will step into.
   for (const e of enemies) {
     if (e.state !== 'rest' || !e.track) continue;
@@ -521,7 +553,7 @@ export function drawTelegraphs() {
   }
   for (const e of enemies) {
     if (e.type === 'boss' || !e.telegraphLanes.length) continue;
-    const prog = teleProgress(e);
+    const prog = teleProgress(e, at);
     const a = 0.12 + prog * 0.4;
     const lowLanes = new Set();
     for (const st of e.steps) if (st.low) for (const l of st.lanes) lowLanes.add(l);

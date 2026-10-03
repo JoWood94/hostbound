@@ -18,7 +18,7 @@ redesign; follow them when anything new is drawn.
 | Secondary (UI, HOST, tagline) | neon green `PAL.acid` |
 | Player shots | acid `#c6ff1a` |
 | Enemy shots / dodge | magenta `#ff2bd6` (rounded triangles) |
-| Jump | orange `#ff6a00` (dotted rows) |
+| Jump | orange `#ff6a00` (hollow bars, dotted low shots) |
 | Phase | cyan `#19f0ff` (hollow shapes) |
 | Item rarity (the ONLY meaning of item colours) | common white, rare cyan, epic ultraviolet `#9b5cff` |
 | Tertiary (spare, not on the home screen) | neon yellow `#ffe81a` |
@@ -35,9 +35,9 @@ redesign; follow them when anything new is drawn.
 ## World
 - No lane dividers; the lane you enter glows faintly, then fades. Tiny parallax stars run underneath.
 - Side walls: a thin neon line in the district colour (`WALLS` in `world.js`; `'flesh'` keeps the organic banks for comparison).
-- Obstacles: one primitive each, and the shape is the meaning; the motion tells the action. Solid magenta capsule = dodge, which BOILS (black bubbles open inside it, drift to the rim and burst). Dotted orange row = jump, which HOPS all together on a 1 s beat (0.45 in the air, a squash on landing, then rest). Hollow cyan capsule = phase, with the player's phase pill (and its two dark echoes) sliding down THROUGH it in every lane, clipped to a band round the line; once passed it turns dark cyan and the pill stops. Motions are fixed functions of time and world x (learnable). Same-type neighbours on a row merge into one shape. No eyes on obstacles.
+- Obstacles: one primitive each, and the shape is the meaning; the motion tells the action. Solid magenta capsule = dodge, with a black drop (the player's lane-hop shape) sliding side to side inside it in every lane, stretching as it travels. Hollow orange bar with SQUARER corners (radius 4, so it never reads as the phase pill) = jump, with the player's jump sphere (and two dark echoes) rising UP over it in every lane, swelling as it crosses the line: the opposite direction of the phase pill. Both hints (sphere and phase pill) run TWICE per lane, at 30% of the lane width left and right of the middle and half a beat apart, so they never cover the cells in the lane centre. All lanes share the beat (no per-lane offset): a merged row alternates all left hints with all right ones, a checkerboard; per-lane offsets read as chaos. Hollow cyan capsule = phase, with the player's phase pill (and its two dark echoes) sliding down THROUGH it in every lane, clipped to a band round the line; once passed it turns dark cyan and the pill stops. Motions are fixed functions of time and world x (learnable). Same-type neighbours on a row merge into one shape. No eyes on obstacles.
 - Pickups: a cell is a dividing cell (two acid halves joined by a capsule neck that pinches and refills). A heart is two capsules leaning in to a round tip (`heartShape` in pickups.js, also the HUD), beating lub-dub as a pickup.
-- Enemy lane warnings: only two thin edges, no fill.
+- Enemy lane warnings (`glowLane`): a COMB, short ticks slanting inward and up (45°) from both lane edges that scroll down toward the player, in a shade of the threat colour that brightens as the shot nears (smooth every frame) and fades out after the volley. The lane inside stays pure black so magenta shots keep full contrast. Never a continuous line (reads as a laser) and never stripes or fill (killed the shot contrast). Options compared in `telegraph.html`.
 
 ## Enemies and bosses
 - Enemies (`src/render/bestiary.js`) have fixed designs so they can be learned, in the Drone's vocabulary: one tracking eye, and a silhouette that tells the move. Telegraph = the body swells and the pupil turns white. White flash only on a hit.

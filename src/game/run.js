@@ -4,6 +4,7 @@
 import { W, H, ctx } from '../core/canvas.js';
 import { makeRng, randomSeed } from '../core/rng.js';
 import { writeSave } from '../core/save.js';
+import { onKeys } from '../core/input.js';
 import { PAL } from '../render/palette.js';
 import { burst, shake, updateFx, consumeHitStop } from '../render/fx.js';
 import { husk } from '../render/shots.js';
@@ -19,6 +20,7 @@ import { pickups, spawnPickup, dropCoins, updatePickups, clearPickups } from './
 import { ITEMS, ITEM_BY_ID, computeStats, rollItems, RARITY, powerRatio, activeEvolutions } from './items.js';
 import { activeCombos } from './combos.js';
 import * as B from './balance.js';
+import { runBpm } from '../core/tempo.js';
 import { BOARD_BY_ID } from './boards.js';
 import { makeBoss, updateBoss, BOSSES } from './boss.js';
 import { updateWeapon, steerBullets, resolvePlayerHits, tickPoison, updateWeaponFx, clearWeaponFx, currentDamage, updateWingmen, groundPound, slipBurst, addRing, updateModeBullets, updateTrails, airRaid, flashLine, heartbeat, updateBioShots, hatch } from './weapon.js';
@@ -158,7 +160,7 @@ export function acquire(run, id, silent = false) {
   if (!silent) {
     sfx.pickup();
     toast(run, it.name, it.desc.length < 44 ? it.desc : '', RARITY[it.rarity].color);
-    if (it.cat === 'active') toast(run, 'ACTIVE ITEM', 'Kills fill the orange button: tap it when full', PAL.orange, 4.5);
+    if (it.cat === 'active') toast(run, 'ACTIVE ITEM', onKeys() ? 'Kills fill the orange button: press Space when full' : 'Kills fill the orange button: tap it when full', PAL.orange, 4.5);
   }
 
   // Combos: first time ever = discovery (named, explained, remembered forever).
@@ -593,7 +595,7 @@ function spawnChunk(run, d) {
 function startBoss(run) {
   run.warnT = 2.2;
   sfx.bossWarn();
-  setMusic('boss', difficulty(run));
+  setMusic('warn', difficulty(run));
 }
 
 export function pickItem(run, i) {
@@ -656,11 +658,11 @@ function addCoins(run, n) {
     const need = run.stats.hiveMind ? 15 : run.stats.cellWall > 1 ? 18 : 25;
     while (run.cellWallN >= need) { run.cellWallN -= need; run.player.blueHearts++; toast(run, 'CELL WALL +1', '', PAL.blue, 1.4); }
   }
-  while (run.xp >= B.xpNeed(run.level)) {
-    run.xp -= B.xpNeed(run.level);
-    run.level++;
-    run.levelUps++;
-  }
+  // A full bar queues a level but stays full: the XP is spent and the level
+  // goes up only when the pick opens, so the bar empties under the pick.
+  let x = run.xp, lv = run.level, queued = 0;
+  while (x >= B.xpNeed(lv)) { x -= B.xpNeed(lv); lv++; queued++; }
+  run.levelUps = queued;
 }
 
 const LEVEL_WAIT = 25;
@@ -795,7 +797,6 @@ export function updateRun(run, input, dt) {
   const P_ = PAUSE_BTN;
   if (input.pause || input.blur || (input.tap && input.tapX >= P_.x - 6 && input.tapX <= P_.x + P_.w + 6 && input.tapY >= P_.y - 6 && input.tapY <= P_.y + P_.h + 6)) {
     run.mode = 'pause';
-    if (run.tutorial) run.tutorial.paused = true;
     return;
   }
   // Active item: only the button (or E on keyboard), never a stray tap.
@@ -821,6 +822,8 @@ export function updateRun(run, input, dt) {
   // and no obstacle near is enough.
   if (run.levelUps > 0) run.levelWaitT = (run.levelWaitT || 0) + dt;
   if (run.levelUps > 0 && (!run.tutorial || run.tutorial.allowPick) && run.pickDelay <= 0 && run.warnT <= 0 && !p.dead && (calmBetweenSections(run) || (run.levelWaitT > LEVEL_WAIT && nothingIncoming()))) {
+    run.xp -= B.xpNeed(run.level);
+    run.level++;
     run.levelUps--;
     if (!run.levelUps) run.levelWaitT = 0;
     if (st.parasite && p.hearts > 1) { p.hearts--; toast(run, 'PARASITE FEEDS', '-1 heart', PAL.red, 1.6); }
@@ -874,9 +877,10 @@ export function updateRun(run, input, dt) {
   }
 
   // Player + weapon
-  if (run.time > 0.5) tip(run, 'lanes', 'SWIPE OR TAP LEFT / RIGHT', 'Change lane. Lit lanes are about to be shot');
-  if (run.time > 8) tip(run, 'phase', 'SWIPE DOWN TO PHASE', 'Pass through shots and cyan tears, not walls');
+  if (run.time > 0.5) tip(run, 'lanes', onKeys() ? 'PRESS LEFT / RIGHT' : 'SWIPE OR TAP LEFT / RIGHT', 'Change lane. Lit lanes are about to be shot');
+  if (run.time > 8) tip(run, 'phase', onKeys() ? 'PRESS DOWN TO PHASE' : 'SWIPE DOWN TO PHASE', 'Pass through shots and cyan tears, not walls');
   p.airMul = B.timeMul(0) / B.timeMul(d);        // jumps last the same in ticks as the clock speeds up
+  p.phaseMul = Math.min(1, 240 / runBpm(d));      // phase: 8 beats always cover the cooldown
   updatePlayer(p, input, dt, st);
   if (p.ev.jump) sfx.jump();
   if (p.ev.lane) sfx.lane();
@@ -1074,8 +1078,8 @@ export function updateRun(run, input, dt) {
   }
   // Phase hint: a veil will reach me within ~0.5s and I am not phased.
   run.phaseHint = p.phaseT <= 0 && obstacles.some((o) => (o.type === 'veil' || (o.type === 'rift' && o.lane === p.lane)) && !o.dead && o.y < PLAYER_Y && (PLAYER_Y - o.y) / Math.max(1, run.speed) < 0.5);
-  if (run.phaseHint) tip(run, 'veil', 'SWIPE DOWN TO PHASE', 'Cyan tears cannot be dodged or jumped: phase through them');
-  if (run.jumpHint) tip(run, 'jump', 'SWIPE UP TO JUMP', 'Jump clears orange low waves and barriers only');
+  if (run.phaseHint) tip(run, 'veil', onKeys() ? 'PRESS DOWN TO PHASE' : 'SWIPE DOWN TO PHASE', 'Cyan tears fill every lane: phase through them');
+  if (run.jumpHint) tip(run, 'jump', onKeys() ? 'PRESS UP TO JUMP' : 'SWIPE UP TO JUMP', 'Jump clears orange low waves and barriers only');
 
   // Pickups
   const got = updatePickups(edt, run.speed, p, PLAYER_Y, st.magnet);
@@ -1177,7 +1181,7 @@ export function updateRun(run, input, dt) {
       run.active.charge = Math.min(run.active.max, run.active.charge + 1);
       if (run.active.charge === run.active.max && !run.active.told) {
         run.active.told = true;
-        toast(run, `${ITEM_BY_ID[run.active.id].name} READY`, 'Tap the orange button', PAL.orange, 2.5);
+        toast(run, `${ITEM_BY_ID[run.active.id].name} READY`, onKeys() ? 'Press Space' : 'Tap the orange button', PAL.orange, 2.5);
         sfx.select();
       }
     }
@@ -1199,7 +1203,12 @@ export function updateRun(run, input, dt) {
 
   for (let i = 0; i < run.toasts.length; i++) { run.toasts[i].t -= dt; if (run.toasts[i].t <= 0) { run.toasts.splice(i, 1); i--; } }
 
-  setMusic(run.boss || run.warnT > 0 ? 'boss' : 'run', d);
+  // The arrangement follows the district: breakdown after a boss, build-up
+  // with the heat, tension on courses, peak on the boss (audio/music.js).
+  // Music heat: 0 for 150 m after a boss, then a straight climb to the
+  // checkpoint (the gameplay heat plateaus earlier; the music must not).
+  const mHeat = Math.max(0, Math.min(1, ((run.distance % EVENT_EVERY) - 150) / (EVENT_EVERY - 150)));
+  setMusic(run.boss ? 'boss' : run.warnT > 0 ? 'warn' : 'run', d, { heat: mHeat, kind: run.lastKind, pending: !!run.pending });
 
   // SYMBIONT EGG: once per run, death hatches you again
   if (p.dead && st.egg && !run.eggUsed) {

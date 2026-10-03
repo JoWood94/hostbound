@@ -2,7 +2,8 @@ import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { ring } from '../render/draw.js';
 import { burst, shake, hitStop } from '../render/fx.js';
-import { drawSymbiote, SYM_BODY, capsule } from '../render/oled.js';
+import { drawSymbiote, SYM_BODY, capsule, blobPath } from '../render/oled.js';
+const SYM_SHADOW = '#3c113c';   // SYM_BODY at 28%, solid: the jump shadow
 
 const SYM_R = 19;   // body radius of the procedural symbiote
 import { LANES, laneX } from './world.js';
@@ -67,6 +68,7 @@ export function updatePlayer(p, input, dt, stats) {
     if (next !== p.lane) {
       p.tapUndo = input.fromTap ? { lane: p.lane, refund: 0, stillT: p.stillT, laneTimes: p.laneTimes, t: 0.25 } : null;
       p.laneFromX = p.x;
+      p.dashDir = dir;                                 // the body smears along the hop (oled.js)
       // TWIN LINK keeps firing from the lane just left for a moment
       p.twinLane = p.lane; p.twinT = stats.twinTime || 0.6;
       p.slingT = 0.35; p.slingDir = dir;                // SLINGSHOT window
@@ -136,7 +138,9 @@ export function updatePlayer(p, input, dt, stats) {
   if (p.phaseT > 0) p.phaseT -= dt;
   else if (phaseInput && p.phaseCd <= 0) {
     p.phaseT = stats.phaseTime;
-    p.phaseCd = stats.phaseCd;
+    // above 240 BPM the cooldown follows the beat (run.js sets phaseMul)
+    p.phaseCdMax = stats.phaseCd * (p.phaseMul || 1);
+    p.phaseCd = p.phaseCdMax;
     // no i-frames: phase passes only shots, enemy bodies and cyan tears /
     // veils (run.js); barriers and wires still hit (dodge / jump them)
     p.ev.phase = true;
@@ -215,7 +219,7 @@ export function jumpHeight(p) {
 export function drawPlayer(p, alpha, stats) {
   const x = p.prevX + (p.x - p.prevX) * alpha + p.bump * 40;
   const jh = jumpHeight(p);
-  const y = PLAYER_Y - jh * 12;
+  const y = PLAYER_Y - jh * 16;
   const blink = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 20) % 2 === 0;
   const c = p.color;
 
@@ -225,7 +229,7 @@ export function drawPlayer(p, alpha, stats) {
 
   // Phase cooldown under the body: a capsule that fills up.
   if (p.phaseCd > 0) {
-    const w = 26 * (1 - p.phaseCd / stats.phaseCd);
+    const w = 26 * Math.max(0, 1 - p.phaseCd / (p.phaseCdMax || stats.phaseCd));
     capsule(x - 13, PLAYER_Y + 32, x - 13 + w, PLAYER_Y + 32, 1.5); ctx.fillStyle = PAL.mute; ctx.fill();
   }
   // KICKFLIP recharge: cyan when full = the next landing wipes the lane.
@@ -253,13 +257,18 @@ function drawSymbioteLive(p, x, y, jh, stats) {
   p.bank = (p.bank || 0) + (Math.max(-0.3, Math.min(0.3, vx * 0.08)) - (p.bank || 0)) * 0.3;
   const hit = p.iframes > 0 && p.phaseT <= 0 && Math.floor(p.iframes * 18) % 2 === 0;
   p.oled = p.oled || {};
-  const pose = { R, bank: p.bank, squash: p.squash, jh, phase: false, hit, t, state: p.oled, genome: p.specimen, air: p.jumpT > 0 };
+  const pose = { R, bank: p.bank, squash: p.squash, jh, phase: false, hit, t, state: p.oled, genome: p.specimen, air: p.jumpT > 0, dash: p.laneT < 1 ? p.dashDir || 0 : 0 };
   if (p.jumpT > 0) {
-    // JUMP: the body rolls into a sphere (oled.drawSymbiote) and somersaults;
-    // a ring left on the track shrinks under it, so the height reads top-down.
+    // JUMP: the body folds into a blob (oled.drawSymbiote) that stretches on
+    // takeoff, sways in the air and squashes on landing. Its shadow, a flat
+    // dark blob right under it, shrinks with the height, so it reads top-down.
     const k = 1 - p.jumpT / p.jumpDur;
-    pose.spin = (1 - (1 - k) ** 3) * Math.PI * 2 * (p.bank < 0 ? -1 : 1);
-    ring(x, PLAYER_Y + 4, R * (1.1 - jh * 0.45), SYM_BODY, 1.5, 1);
+    pose.spin = Math.sin(k * Math.PI) * 0.35 * (p.bank < 0 ? -1 : 1);
+    const sq = p.squash || 0;
+    const w = R * 1.05 * (1 - jh * 0.35) * (sq > 0 ? 1 + 0.22 * sq : 1 - 0.18 * -sq);   // as wide as the body
+    ctx.fillStyle = SYM_SHADOW;
+    blobPath(x, PLAYER_Y + R * 0.9, w, w * 0.28, t, 0.5, 0.03);
+    ctx.fill();
   }
   if (p.phaseT > 0) {
     // PHASE: out of step with the world. Two dark-cyan echoes slide apart on

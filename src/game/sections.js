@@ -84,7 +84,7 @@ export const SECTIONS = [
 // combat sections (the director alternates the two). Read the track, weave
 // through it. Rows at least 2 beats apart; the free lane moves at most one
 // lane per beat; phase obstacles (P rows, veils) at least 8 beats apart, so
-// the phase is always recharged (2 s) even at the top tempo (220 BPM). No course leaves
+// the phase is always recharged (2 s) at any tempo (above 240 BPM the cooldown shrinks with the beat). No course leaves
 // the centre lane free all the way. Cells trace the line.
 export const COURSES = [
   { id: 'c-first-wire', to: 1500, from: 60, events: [c(2, 2, 3), r(8, '..T..'), r(12, '.TTT.')] },

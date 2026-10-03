@@ -1,8 +1,11 @@
 // Unifies touch, mouse and keyboard into one-shot intents:
 //   left, right : change lane
-//   jump        : swipe up / Space
-//   phase       : swipe down / Shift
+//   jump        : swipe up / Up / W
+//   phase       : swipe down / Down / S / Shift
 //   tap         : pointer down+up without movement, or Enter
+//   active      : Space / E (the bottom-left item button; confirms on choice screens)
+//   navUp/Down  : arrow keys only, to move a selection through stacked cards
+//   quit        : X (ends the run from pause)
 //   pause       : Esc / P / window blur
 import { canvas, toLogical } from './canvas.js';
 
@@ -25,6 +28,12 @@ let lastX = 0, lastY = 0;
 let earlyTimer = 0;
 export function setEarlyTap(on) { earlyTaps = on; }
 
+// Playing on a computer (keyboard or mouse) rather than a touch screen: the
+// on-screen hints then name keys instead of gestures. Starts from the device's
+// main pointer and follows whatever was used last.
+let keysUI = typeof matchMedia === 'function' && matchMedia('(hover: hover) and (pointer: fine)').matches;
+export const onKeys = () => keysUI;
+
 const state = { untap: false, left: false, right: false, jump: false, phase: false, tap: false, tapX: -1, tapY: -1, pause: false, down: false, any: false };
 
 let pointerId = null;
@@ -35,6 +44,7 @@ let swiped = false;
 let consumed = false;      // the gesture in progress belongs to the previous screen
 
 function onDown(e) {
+  keysUI = e.pointerType !== 'touch';
   if (pointerId !== null) return;
   pointerId = e.pointerId;
   canvas.setPointerCapture(pointerId);
@@ -112,15 +122,19 @@ window.addEventListener('keyup', (e) => held.delete(e.code));
 window.addEventListener('keydown', (e) => {
   held.add(e.code);
   if (e.repeat) return;
+  keysUI = true;
   state.any = true;
   switch (e.code) {
     case 'ArrowLeft': case 'KeyA': state.left = true; break;
     case 'ArrowRight': case 'KeyD': state.right = true; break;
-    case 'ArrowUp': case 'KeyW': case 'Space': state.jump = true; break;
-    case 'ArrowDown': case 'KeyS': case 'ShiftLeft': case 'ShiftRight': state.phase = true; break;
+    case 'ArrowUp': state.navUp = true; state.jump = true; break;
+    case 'KeyW': state.jump = true; break;
+    case 'ArrowDown': state.navDown = true; state.phase = true; break;
+    case 'KeyS': case 'ShiftLeft': case 'ShiftRight': state.phase = true; break;
     case 'Escape': case 'KeyP': state.pause = true; break;
     case 'Enter': state.tap = true; state.tapX = -1; state.tapY = -1; break;
-    case 'KeyE': state.active = true; break;
+    case 'Space': case 'KeyE': state.active = true; break;
+    case 'KeyX': state.quit = true; break;
     default: return;
   }
   e.preventDefault();
@@ -132,7 +146,7 @@ window.addEventListener('blur', () => { state.blur = true; held.clear(); });
 // symbiote, so nothing it does until it lifts may count on the new screen.
 export function discardGesture() {
   if (pointerId !== null) consumed = true;
-  state.left = state.right = state.jump = state.phase = state.tap = state.untap = false;
+  state.left = state.right = state.jump = state.phase = state.tap = state.untap = state.navUp = state.navDown = state.active = state.quit = false;
 }
 // Choice screens use a larger tap tolerance, so a short swipe is never a tap.
 export function setTapSlop(px) { tapSlop = px; }
@@ -147,6 +161,6 @@ export function takeWheel() { const w = wheel; wheel = 0; return w; }
 // Read and reset one-shot intents. Call once per logic step.
 export function pollInput() {
   const out = { ...state };
-  state.left = state.right = state.jump = state.phase = state.tap = state.untap = state.pause = state.any = state.active = state.blur = false;
+  state.left = state.right = state.jump = state.phase = state.tap = state.untap = state.pause = state.any = state.active = state.blur = state.navUp = state.navDown = state.quit = false;
   return out;
 }

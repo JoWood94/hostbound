@@ -2,7 +2,7 @@
 // composes without special cases. Also resolves on-hit effects.
 import { playerBullets, spawn, kill, BIG, F_EXPLODE, F_WAVE, F_RANGE, F_ROCKET, F_FISSION, F_FISSION2, F_TOXIC, F_SLOW, F_ECHO, F_LATCH, SH_BOLT, SH_GLAIVE, SH_MINE, SH_LARVA, SH_STING, SH_LOB, K_DRONE, K_ECHOLET } from './bullets.js';
 import { enemies, damageEnemy } from './enemies.js';
-import { LANE_W, LANES, laneX } from './world.js';
+import { LANE_W, LANES, laneX, ARENA } from './world.js';
 import * as FX from '../render/shots.js';
 import { PLAYER_Y } from './player.js';
 import { PAL, COLOR_PLAYER_BULLET as SHOT } from '../render/palette.js';
@@ -700,7 +700,7 @@ export function updateBioShots(p, stats, dt, hit) {
       const nb = (pb.flags[i] >> 10) & 7;
       const v = 420 * stats.shotSpeed;
       const bounce = () => { pb.flags[i] = (pb.flags[i] & ~(7 << 10)) | ((nb + 1) << 10); pb.lastHit[i] = -1; pb.lane[i] = -1; pb.vx[i] = 0; };
-      if (pb.vy[i] < 0 && pb.y[i] < 12) { pb.vy[i] = v; bounce(); }
+      if (pb.vy[i] < 0 && pb.y[i] < ARENA.top + 12) { pb.vy[i] = v; bounce(); }
       else if (pb.vy[i] > 0 && pb.y[i] > ENEMY_LINE + 40 && nb < 2) { pb.vy[i] = -v; bounce(); }
       else if (pb.vy[i] < 0) pb.vy[i] = -v;
       continue;
@@ -862,7 +862,7 @@ function fireRail(p, stats, hit, beat = 0) {
           if (side.length) tx = laneX(side[0]);
         }
         const rpts = [];
-        for (let yy = 0; yy < ENEMY_LINE + 60; yy += 12) rpts.push(x + (tx - x) * Math.min(1, yy / (ENEMY_LINE - 50)), yy);
+        for (let yy = ARENA.top; yy < ENEMY_LINE + 60; yy += 12) rpts.push(x + (tx - x) * Math.min(1, (yy - ARENA.top) / Math.max(30, ENEMY_LINE - 50 - ARENA.top)), yy);
         for (const h of hitsAlong(rpts, 6, 99).hits) onHit(h.e, dmg * spec.mul * 0.35, stats, hit, false);
         rails.push({ pts: rpts, t: 0.2, w: spec.mul * 0.4 });
         x = tx;
@@ -896,7 +896,7 @@ function updateBeam(p, stats, dt, rateMul, hit) {
     const on = cyc < 0.28;
     surge = on ? 2.6 : 0.65;
     widthMul = on ? 2 : 0.6;
-    if (on && cyc < dt * 1.5) { sfx.rail(); shake(1.5, 0.05); }
+    if (on && cyc < dt * 1.5) { sfx.railPulse(); shake(1.5, 0.05); }
   }
   if (stats.echo) {
     p.surgeCd = (p.surgeCd || 0) - dt;
@@ -1000,14 +1000,15 @@ export function updateModeBullets(stats, dt) {
       pb.vx[i] += (want - pb.vx[i]) * Math.min(1, dt * 7);
       if (pb.y[i] < ENEMY_LINE) pb.lane[i] = -1;
     }
-    // RICOCHET: bounce off the top edge back down (count in flag bits 10-12);
+    // RICOCHET: bounce off the far wall (under the HUD) back down (count in flag bits 10-12);
     // PINBALL bounces back up from just below the enemy line too. A shot on its
     // way down never reaches the player row.
     if (stats.ricochet && pb.lane[i] !== -2 && (pb.shape[i] === SH_BOLT || pb.shape[i] === SH_STING) && !(f & F_LATCH)) {
       const nb = (f >> 10) & 7;
-      if (pb.vy[i] < 0 && pb.y[i] < 6 && nb < stats.bounces * 2 - 1) {
+      if (pb.vy[i] < 0 && pb.y[i] < ARENA.top + pb.r[i] + 2 && nb < stats.bounces * 2 - 1) {
         pb.vy[i] = Math.abs(pb.vy[i]) * 0.9;
-        pb.y[i] = 6;
+        pb.y[i] = ARENA.top + pb.r[i] + 2;
+        if (flashes.length < 40) flash(pb.x[i], ARENA.top, 5, SHOT, 0.15);   // a spark where it meets the wall
         pb.lastHit[i] = -1;
         pb.dmg[i] *= 0.45;                               // a bounced shot is spent
         pb.flags[i] = (f & ~(7 << 10)) | (Math.min(7, nb + 1) << 10);

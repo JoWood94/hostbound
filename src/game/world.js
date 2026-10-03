@@ -1,8 +1,7 @@
 // Scrolling tunnel with 5 discrete lanes, Subway Surfers style.
 // Every DISTRICT_LEN metres the city district changes palette. Enemy bullet
 // colours never change (readability rule); only the environment does.
-import { ctx, W, H } from '../core/canvas.js';
-import { text } from '../render/draw.js';
+import { ctx, W, H, SAFE_TOP, BACK } from '../core/canvas.js';
 
 export const LANES = 5;
 export const PX_PER_M = 10;
@@ -10,7 +9,25 @@ const MARGIN = 16;                         // side walls
 export const LANE_W = (W - MARGIN * 2) / LANES;
 export const laneX = (i) => MARGIN + LANE_W * (i + 0.5);
 export const DISTRICT_LEN = 1000;
-const PLAYER_ROW = H * 0.8;   // = player.js PLAYER_Y
+// The arena: between the side walls, open at the top. Under the HUD the track
+// sinks into black (drawArenaFade): solid behind the hearts row, clear by
+// SAFE_TOP + 64, so things rise out of the dark instead of hitting a wall.
+// ARENA.top is the far edge inside that fade, where RICOCHET bounces.
+export const ARENA = { left: MARGIN, right: W - MARGIN, get top() { return SAFE_TOP + 56; } };
+const FADE0 = 38, FADE1 = 64;   // from SAFE_TOP: solid black above FADE0, clear below FADE1
+export function clipArena() {
+  ctx.beginPath(); ctx.rect(ARENA.left, SAFE_TOP + FADE0, ARENA.right - ARENA.left, H); ctx.clip();
+}
+export function drawArenaFade() {
+  const y0 = SAFE_TOP + FADE0, y1 = SAFE_TOP + FADE1;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, -H, W, H + y0);
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, 'rgba(0,0,0,1)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y0, W, y1 - y0);
+}
 
 export const DISTRICTS = [
   { name: 'NEON ROW', bg: '#060004', floor: 'rgba(255,43,214,0.025)', sleeper: '#3a1030', rail: '#7b3fd6', wall: '#ff2bd6', wallFill: '#14020f' },
@@ -33,7 +50,7 @@ export function updateWorld(dt, speed) {
 //   walls  - banks of breathing flesh: overlapping circles in a dark shade of
 //            the district colour, brighter nodules, now and then a small
 //            green eye (the player's own iris and slit)
-//   lanes  - no dividers; the lane you enter glows faintly, then fades
+//   lanes  - no dividers; a lane change leaves two echoes of the body (player.js)
 const shadeCache = new Map();
 function dark(hex, k) {           // solid mix of hex towards black
   const key = hex + k;
@@ -62,11 +79,45 @@ const STARS = [];
   const layers = [[0.12, '#2c2a38', 1, 34], [0.28, '#5a5670', 1, 22], [0.5, '#a8a4c4', 1.4, 12]];
   for (const [sp, col, r, n] of layers) for (let i = 0; i < n; i++) STARS.push({ x: rnd() * W, y: rnd() * H, sp, col, r });
 }
-function drawStars() {
+// Also drawn by the pause and death screens over their solid black, as on
+// the home screen.
+export function drawStars() {
   for (const st of STARS) {
     const y = (st.y + scroll * st.sp) % H;
     ctx.fillStyle = st.col;
     ctx.fillRect(st.x, y, st.r, st.r);
+  }
+}
+
+// Backdrop (desktop): the same three star layers, same density and scroll,
+// carried out to the window edges on the full-window canvas behind the game.
+const SIDE = [];
+let sideFor = -1;
+function sideStars() {
+  const span = Math.ceil(BACK.left);
+  if (span === sideFor) return;
+  sideFor = span;
+  SIDE.length = 0;
+  let sd = 11;
+  const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  const layers = [[0.12, '#2c2a38', 1, 34], [0.28, '#5a5670', 1, 22], [0.5, '#a8a4c4', 1.4, 12]];
+  for (const [sp, col, r, n] of layers) {
+    const m = Math.round(n * span / W);
+    for (let i = 0; i < m; i++) {
+      SIDE.push({ x: -span + rnd() * span, y: rnd() * H, sp, col, r });
+      SIDE.push({ x: W + rnd() * span, y: rnd() * H, sp, col, r });
+    }
+  }
+}
+export function drawBackdrop() {
+  if (BACK.left < 1) return;     // phone: the game already fills the screen
+  sideStars();
+  const b = BACK.ctx;
+  b.fillStyle = '#000';
+  b.fillRect(-BACK.left, 0, BACK.w, H);
+  for (const st of SIDE) {
+    b.fillStyle = st.col;
+    b.fillRect(st.x, (st.y + scroll * st.sp) % H, st.r, st.r);
   }
 }
 
@@ -105,21 +156,6 @@ function drawFlesh(side, D, t) {
   }
 }
 
-// Lane glow: when the player enters a lane it lights up and fades out.
-let glowLane = -1, glowT = 0, lastLane = -1, lastNow = 0;
-function laneGlow(activeLane) {
-  const now = performance.now() / 1000;
-  const dt = Math.min(0.1, now - lastNow);
-  lastNow = now;
-  if (activeLane !== lastLane) { if (lastLane >= 0 && activeLane >= 0) { glowLane = activeLane; glowT = 1; } lastLane = activeLane; }
-  if (glowT <= 0 || glowLane < 0) return;
-  glowT = Math.max(0, glowT - dt / 0.45);
-  const k = glowT * glowT;                         // ease out
-  ctx.fillStyle = dark('#19f0ff', 0.13 * k);
-  const x0 = MARGIN + glowLane * LANE_W;
-  ctx.beginPath(); ctx.roundRect(x0 + 3, 0, LANE_W - 6, H, 12); ctx.fill();
-}
-
 export function drawWorld(distance, activeLane = -1) {
   const di = districtIndex(distance);
   const D = DISTRICTS[di];
@@ -127,23 +163,11 @@ export function drawWorld(distance, activeLane = -1) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   drawStars();
-  laneGlow(activeLane);
   if (WALLS === 'flesh') { drawFlesh(0, D, t); drawFlesh(1, D, t); }
   else {
     // Trial: just a thin neon line on each lane edge.
     ctx.fillStyle = D.wall;
     ctx.fillRect(MARGIN - 1.5, 0, 1.5, H);
     ctx.fillRect(W - MARGIN, 0, 1.5, H);
-  }
-
-  // District border: a string of small circles that reaches the board
-  // exactly when the district switches.
-  const next = (Math.floor(distance / DISTRICT_LEN) + 1) * DISTRICT_LEN;
-  const yb = PLAYER_ROW - (next - distance) * PX_PER_M;
-  if (yb > -20 && yb < H) {
-    const N = DISTRICTS[districtIndex(next)];
-    ctx.fillStyle = N.wall;
-    for (let x = MARGIN + 6; x < W - MARGIN; x += 12) { ctx.beginPath(); ctx.arc(x, yb, 2, 0, Math.PI * 2); ctx.fill(); }
-    text(N.name, W / 2, yb - 12, { color: N.wall, size: 11, align: 'center', font: 'display' });
   }
 }

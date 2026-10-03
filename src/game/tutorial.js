@@ -7,26 +7,30 @@
 import { ctx, W, H, SAFE_TOP } from '../core/canvas.js';
 import { writeSave } from '../core/save.js';
 import { PAL } from '../render/palette.js';
-import { text, strokePoly } from '../render/draw.js';
+import { text } from '../render/draw.js';
+import { rtri } from '../render/oled.js';
 import { burst, shake } from '../render/fx.js';
 import { enemyBullets, clearPool } from './bullets.js';
 import { enemies, spawnEnemy, clearEnemies, beatClock } from './enemies.js';
 import { obstacles, spawnObstacle, spawnVeil, clearObstacles } from './obstacles.js';
 import { pickups, spawnPickup } from './pickups.js';
-import { LANES, LANE_W, laneX } from './world.js';
+import { LANES, laneX } from './world.js';
 import { PLAYER_Y } from './player.js';
 import { xpNeed } from './balance.js';
-import { ACTIVE_BTN, PAUSE_BTN } from '../ui/hud.js';
+import { ACTIVE_BTN } from '../ui/hud.js';
+import { onKeys } from '../core/input.js';
 
 const STEPS = [
-  { id: 'move', title: 'SWIPE OR TAP ◄ ►', sub: ['Swipe, or tap the left / right half:', 'one lane per move. Reach the lit lane'], color: PAL.cyan },
+  { id: 'move', title: 'SWIPE OR TAP ◄ ►', sub: ['Swipe, or tap the left / right half:', 'one lane per move. Reach the lit lane'], color: PAL.cyan,
+    keys: { title: 'PRESS LEFT / RIGHT', sub: ['Arrow keys or A / D:', 'one lane per press. Reach the lit lane'] } },
   { id: 'dodge', title: 'MAGENTA = DODGE', sub: ['Barriers block their lane:', 'move to the gap'], color: PAL.magenta },
-  { id: 'jump', title: 'SWIPE UP TO JUMP', sub: ['ORANGE = JUMP', 'Jump over the low wires'], color: PAL.orange },
-  { id: 'phase', title: 'SWIPE DOWN TO PHASE', sub: ['CYAN = PHASE: tears cannot be dodged', 'or jumped. Phase also passes shots,', 'never barriers or wires'], color: PAL.cyan },
+  { id: 'jump', title: 'SWIPE UP TO JUMP', sub: ['ORANGE = JUMP', 'Jump over the low wires'], color: PAL.orange,
+    keys: { title: 'PRESS UP TO JUMP', sub: ['ORANGE = JUMP (Up arrow or W)', 'Jump over the low wires'] } },
+  { id: 'phase', title: 'SWIPE DOWN TO PHASE', sub: ['CYAN = PHASE: cyan tears fill every lane,', 'only phase gets through. Shots: dodge', 'or phase them. Never barriers or wires'], color: PAL.cyan,
+    keys: { title: 'PRESS DOWN TO PHASE', sub: ['CYAN = PHASE (Down arrow, S or Shift):', 'cyan tears fill every lane, only phase gets', 'through. Shots: dodge or phase them'] } },
   { id: 'shots', title: 'LIT LANE = SHOT INCOMING', sub: ['When your lane lights up, leave it.', 'You fire on your own: line up to hit'], color: PAL.magenta },
   { id: 'cells', title: 'GRAB THE GREEN CELLS', sub: ['Cells fill the bar on top.', 'Full bar = level up: pick a mutation'], color: PAL.acid },
   { id: 'hearts', title: 'HEARTS', sub: ['Every hit costs one.', 'No hearts left: consumed'], color: PAL.red },
-  { id: 'pause', title: 'TAP ‖ TO PAUSE', sub: ['Bottom right, any time.', 'Try it now, then resume'], color: PAL.white },
   { id: 'go', title: 'YOU ARE READY', sub: ['The run starts now'], color: PAL.acid },
 ];
 
@@ -35,7 +39,7 @@ const RETRY = 1.3;        // s of TRY AGAIN before the step repeats
 const NICE = 0.9;         // s of NICE before the next step
 
 export function makeTutorial() {
-  return { step: 0, phase: 'intro', t: 0, failed: false, paused: false, allowPick: false, targets: [], wave: 0 };
+  return { step: 0, phase: 'intro', t: 0, failed: false, allowPick: false, targets: [], wave: 0 };
 }
 
 export const tutorialStep = (run) => (run.tutorial ? STEPS[run.tutorial.step] : null);
@@ -127,7 +131,6 @@ function passed(run) {
       }
       return null;
     case 'hearts': return tu.t > 3.2 ? true : null;
-    case 'pause': return tu.paused ? true : null;
     case 'go': return tu.t > 2.2 ? true : null;
     default: return true;
   }
@@ -163,7 +166,7 @@ export function updateTutorial(run, dt) {
   }
   // nice
   if (tu.t < NICE) return false;
-  tu.step++; tu.phase = 'intro'; tu.t = 0; tu.paused = false;
+  tu.step++; tu.phase = 'intro'; tu.t = 0;
   return false;
 }
 
@@ -203,22 +206,26 @@ export function drawTutorial(run) {
 
   // Step pointers
   if (st.id === 'move' && tu.phase === 'test' && tu.targets.length) {
+    // the target spot: a hairline cyan ring on the player row, breathing,
+    // under a solid rounded pointer that bobs down onto it
     const x = laneX(tu.targets[0]);
-    // the target lane: two cyan edges, like a lane warning
+    const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+    ctx.save();
+    ctx.strokeStyle = PAL.cyan; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, PLAYER_Y, 24 + pulse * 4, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = PAL.cyan;
-    ctx.beginPath(); ctx.roundRect(x - LANE_W / 2 + 4, 0, 2, H, 1); ctx.fill();
-    ctx.beginPath(); ctx.roundRect(x + LANE_W / 2 - 6, 0, 2, H, 1); ctx.fill();
-    const bob = Math.sin(t * 7) * 5;
-    strokePoly([x - 12, PLAYER_Y - 58 + bob, x, PLAYER_Y - 44 + bob, x + 12, PLAYER_Y - 58 + bob], PAL.cyan, 3, false);
+    rtri(x, PLAYER_Y - 54 + pulse * 6, 13);
+    ctx.fill();
+    ctx.restore();
   }
-  if (st.id === 'hearts') frame(2, 6 + SAFE_TOP, 20 * run.stats.maxHearts + 4, 26, PAL.red, t);
-  if (st.id === 'pause') { const b = PAUSE_BTN; frame(b.x - 5, b.y - 5, b.w + 10, b.h + 10, PAL.white, t); }
-  if (st.id === 'cells' && tu.phase !== 'intro') frame(4, SAFE_TOP - 1, W - 8, 10, PAL.acid, t);
+  if (st.id === 'hearts') frame(2, 20 + SAFE_TOP, 20 * run.stats.maxHearts + 4, 24, PAL.red, t);
+  if (st.id === 'cells' && tu.phase !== 'intro') frame(4, SAFE_TOP + 1, W - 8, 10, PAL.acid, t);
 
   // Instruction panel
   const y0 = H * 0.16 + SAFE_TOP;   // above where the tests become readable
   const a = tu.phase === 'intro' ? Math.min(1, tu.t * 4) : 1;
-  const lines = st.sub.length;
+  const say = onKeys() && st.keys ? st.keys : st;   // keys instead of gestures on a computer
+  const lines = say.sub.length;
   // a black card outlined in the step's colour
   ctx.save();
   ctx.beginPath(); ctx.roundRect(18.75, y0 - 33.25, W - 37.5, 56.5 + lines * 13, 14);
@@ -226,10 +233,10 @@ export function drawTutorial(run) {
   ctx.strokeStyle = st.color; ctx.lineWidth = 1.5; ctx.stroke();
   ctx.restore();
   text(`TUTORIAL ${tu.step + 1}/${STEPS.length}`, W / 2, y0 - 20, { color: PAL.mute, size: 9, align: 'center', alpha: a, font: 'display' });
-  text(st.title, W / 2, y0, { color: st.color, size: 17, align: 'center', alpha: a, font: 'display' });
-  st.sub.forEach((l, i) => text(l, W / 2, y0 + 17 + i * 13, { color: PAL.white, size: 11, align: 'center', alpha: a }));
+  text(say.title, W / 2, y0, { color: st.color, size: 17, align: 'center', alpha: a, font: 'display' });
+  say.sub.forEach((l, i) => text(l, W / 2, y0 + 17 + i * 13, { color: PAL.white, size: 11, align: 'center', alpha: a }));
 
-  const yr = y0 + 34 + lines * 13;
+  const yr = y0 + 54 + lines * 13;   // clear of the card's bottom edge
   if (tu.phase === 'retry') {
     const k = Math.min(1, tu.t * 5);
     text('TRY AGAIN', W / 2, yr, { color: PAL.red, size: 20, align: 'center', alpha: k, font: 'display' });

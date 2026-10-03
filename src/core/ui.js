@@ -36,29 +36,33 @@ export function rrPath(x, y, w, h, r) {
 
 // Neon capsule buttons: every button is a capsule outlined in its neon
 // colour, so it reads as tappable; the primary action (`fill`) has a heavier
-// outline and a bigger label. No glow, no fill.
-export function button(id, x, y, w, h, label, { color = PAL.white, size = 14, fill = false, disabled = false, sub = null } = {}) {
+// outline and a bigger label. No glow, no fill, except the keyboard `focus`:
+// filled in its colour with a black label.
+export function button(id, x, y, w, h, label, { color = PAL.white, size = 14, fill = false, disabled = false, sub = null, focus = false } = {}) {
   nextRects.push({ id, x, y: y + offY, w, h });
   const c = disabled ? PAL.dim : color;
   ctx.save();
   rrPath(x + 1, y + 1, w - 2, h - 2, h / 2);
+  if (focus) { ctx.fillStyle = c; ctx.fill(); }
   ctx.strokeStyle = c; ctx.lineWidth = fill ? 2.5 : 1.5; ctx.stroke();
   ctx.restore();
   const ty = sub ? y + h / 2 - 6 : y + h / 2 + 1;
-  text(label, x + w / 2, ty, { color: c, size, align: 'center', font: 'display' });
-  if (sub) text(sub, x + w / 2, y + h / 2 + 9, { color: PAL.mute, size: 10, align: 'center' });
+  text(label, x + w / 2, ty, { color: focus ? '#000' : c, size, align: 'center', font: 'display' });
+  if (sub) text(sub, x + w / 2, y + h / 2 + 9, { color: focus ? '#000' : PAL.mute, size: 10, align: 'center' });
 }
 
 // Hold-to-confirm capsule: a white outline that fills from the left with
 // `color` while the finger stays on it (k 0..1); the label flips to black
 // where the fill has reached it.
-export function holdButton(id, x, y, w, h, label, k, { color = PAL.red, size = 13 } = {}) {
+export function holdButton(id, x, y, w, h, label, k, { color = PAL.red, size = 13, focus = false } = {}) {
   nextRects.push({ id, x, y: y + offY, w, h });
   const ty = y + h / 2 + 1;
   ctx.save();
   rrPath(x + 1, y + 1, w - 2, h - 2, h / 2);
+  // keyboard focus: filled white like a focused button
+  if (focus && k <= 0) { ctx.fillStyle = PAL.white; ctx.fill(); }
   ctx.strokeStyle = k > 0 ? color : PAL.white; ctx.lineWidth = 1.5; ctx.stroke();
-  text(label, x + w / 2, ty, { color: PAL.white, size, align: 'center', font: 'display' });
+  text(label, x + w / 2, ty, { color: focus && k <= 0 ? '#000' : PAL.white, size, align: 'center', font: 'display' });
   if (k > 0) {
     // clip to the capsule (rebuilt: text() left the glyph strokes as the
     // current path), then to the filled part
@@ -71,8 +75,10 @@ export function holdButton(id, x, y, w, h, label, k, { color = PAL.red, size = 1
 }
 
 // iOS-style switch: label on the left, a capsule track with a round knob.
-export function toggle(id, x, y, w, h, label, on, { color = PAL.acid } = {}) {
+export function toggle(id, x, y, w, h, label, on, { color = PAL.acid, focus = false } = {}) {
   nextRects.push({ id, x, y: y + offY, w, h });
+  // keyboard focus: a white capsule border around label and switch
+  if (focus) { rrPath(x - 12, y - 4, w + 20, h + 8, (h + 8) / 2); ctx.strokeStyle = PAL.white; ctx.lineWidth = 1.5; ctx.stroke(); }
   text(label, x, y + h / 2 + 1, { color: PAL.white, size: 12, font: 'display' });
   const tw = 38, th = 22, tx = x + w - tw, ty = y + (h - th) / 2;
   ctx.save();

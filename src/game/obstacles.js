@@ -38,9 +38,9 @@ export function spawnVeil(y = -30) {
 }
 
 // ---------------------------------------------------------------------------
-// Drawing: flat OLED shapes, drawn live (render/oled.js). Orange row that
-// hops = jump, boiling magenta mass = dodge, cyan membrane the phase pill
-// slips through = phase.
+// Drawing: flat OLED shapes, drawn live (render/oled.js). Hollow orange bar
+// the jump sphere rises over = jump, magenta mass with a drop sliding sideways
+// = dodge, cyan membrane the phase pill slips through = phase.
 // ---------------------------------------------------------------------------
 const VEIL_X0 = laneX(0) - LANE_W / 2, VEIL_X1 = laneX(LANES - 1) + LANE_W / 2;
 // Same-type obstacles side by side on one row are drawn as one shape.

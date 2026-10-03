@@ -33,7 +33,7 @@ export const bossSpeed = (index) => Math.min(2.2, 1 + 0.12 * index);
 // 2 the volleys and beams come with low waves in the lanes they leave free.
 export const bossLayer = (d) => Math.max(0, Math.floor((d * 400 / 700 - 1.4) / 1.6));
 
-// Enemy timing follows the gameplay clock's tempo (core/tempo.js): one step per district.
+// Enemy timing follows the gameplay clock's tempo (core/tempo.js): a slow continuous climb.
 export const timeMul = (d) => runBpm(d) / BASE_BPM;
 
 // Elites: tougher, faster, one extra volley, more cells. Start around 1000 m.

@@ -19,7 +19,7 @@ npm install
 npm run dev        # http://localhost:5173/hostbound/ (also on LAN, --host is on)
 npm run build      # dist/
 npm run preview    # serve the production build
-node scripts/make-icons.mjs   # regenerate PWA icons
+python3 scripts/icons-oled.py # regenerate PWA icons
 node scripts/balance.mjs      # print the balance report (player DPS vs enemy/boss HP)
 ```
 

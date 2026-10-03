@@ -8,7 +8,7 @@
 // JUMP_BEATS between them. P: must phase, two phases need PHASE_BEATS. A
 // phase may follow a jump at once: a swipe down in the air drops and phases.
 export const JUMP_BEATS = 3;     // a jump (0.45 s at the start, the same in ticks later) + reaction, at any tempo <= 270 BPM
-export const PHASE_BEATS = 8;    // phase cooldown 2 s: 8 beats = 2.18 s at 220 BPM
+export const PHASE_BEATS = 8;    // phase cooldown 2 s: 8 beats = 2 s at 240 BPM; above it the cooldown follows the beat
 const NEG = -1e9;
 
 export function survivable(rows) {

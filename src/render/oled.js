@@ -79,8 +79,30 @@ function spring(o, key, target, dt, k = 260, damp = 18) {
 // grown per run (render/specimen.js). The arms trail behind on springs, so a
 // lane change swings them out and they settle with an eased overshoot.
 // ---------------------------------------------------------------------------
-// pose: { R, bank, squash, jh, phase, hit, t, state, genome, spin, phaseColor, air }
+// pose: { R, bank, squash, jh, phase, hit, t, state, genome, spin, phaseColor, air, dash }
+// dash: -1/1 while hopping lanes (direction), 0 otherwise
 const MENU_STATE = {};
+
+// Closed organic outline around (cx, cy): an ellipse whose radius wobbles with
+// two slow sines, smoothed through the midpoints. shape(a) scales the radius
+// at angle a (drop tails, phase ripples).
+const BLOB_N = 28;
+export function blobPath(cx, cy, rx, ry, t, seed, amp, shape) {
+  ctx.beginPath();
+  let px = 0, py = 0;
+  for (let i = 0; i <= BLOB_N + 1; i++) {
+    const a = ((i % BLOB_N) / BLOB_N) * Math.PI * 2;
+    let r = 1 + amp * (0.6 * Math.sin(3 * a + 2.3 * t + seed) + 0.4 * Math.sin(5 * a - 3.1 * t + seed * 2));
+    if (shape) r *= shape(a);
+    const qx = cx + Math.cos(a) * rx * r, qy = cy + Math.sin(a) * ry * r;
+    if (i > 0) {
+      const mx = (px + qx) / 2, my = (py + qy) / 2;
+      if (i === 1) ctx.moveTo(mx, my); else ctx.quadraticCurveTo(px, py, mx, my);
+    }
+    px = qx; py = qy;
+  }
+  ctx.closePath();
+}
 
 export function drawSymbiote(x, y, pose) {
   const { R, bank = 0, jh = 0, phase = false, hit = false, t } = pose;
@@ -89,33 +111,57 @@ export function drawSymbiote(x, y, pose) {
   st.lastT = t;
 
   // Springs, evaluated every frame: the body tilts with the bank, the arms
-  // swing against the motion; in the air the body rolls into a SPHERE, in
-  // phase it folds into a tall PILL. Both are springs, so any genome morphs
-  // smoothly into the same shape and back.
+  // swing against the motion. In the air, in phase and while hopping lanes the
+  // genome partly folds into a BLOB: a wobbling outline, never a perfect ball
+  // or pill, with the folded parts still pressing on its edge. Every fold is a
+  // soft spring, so the body overshoots and jiggles back into shape.
   const vx = st.px === undefined ? 0 : (x - st.px) / dt;
   st.px = x;
   const tilt = spring(st, 'tilt', bank * 0.9, dt, 220, 17);
   const swing = spring(st, 'swing', Math.max(-1, Math.min(1, -vx / 900)), dt, 120, 9);
-  const ball = Math.max(0, Math.min(1, spring(st, 'ball', pose.air ? 1 : 0, dt, 520, 38)));
-  const pill = Math.max(0, Math.min(1, spring(st, 'pill', phase ? 1 : 0, dt, 520, 38)));
-  const fold = Math.max(ball, pill);          // how far the genome folds away
+  const ball = Math.max(0, Math.min(1, spring(st, 'ball', pose.air ? 1 : 0, dt, 420, 26)));
+  const pp = Math.max(0, spring(st, 'pill', phase ? 1 : 0, dt, 420, 22));
+  // Lane hop: a drop. Its tail lags behind on a second spring; on landing the
+  // stretch overshoots below zero (narrow and tall) and settles: the jiggle.
+  // Once the stretch has crossed zero after the hop it may only jiggle on the
+  // narrow side: a swing back above zero would flash the wide drop again.
+  if (pose.dash) { st.dashDir = pose.dash; st.dashSettle = false; }
+  let ds = Math.max(-0.4, Math.min(1.2, spring(st, 'dash', pose.dash ? 1 : 0, dt, 700, 22)));
+  if (!pose.dash && ds <= 0) st.dashSettle = true;
+  if (st.dashSettle) ds = Math.min(0, ds);
+  const dp = Math.max(0, ds);
+  if (st.lagX === undefined) st.lagX = x;
+  const lagX = spring(st, 'lagX', x, dt, 500, 30);
+  const tail = Math.max(-R * 2, Math.min(R * 2, x - lagX));
+  const fold = Math.max(ball * 0.7, Math.min(1, pp) * 0.75, dp * 0.55);   // how far the genome folds away
   const color = hit ? '#ffffff' : phase ? (pose.phaseColor || CYAN) : SYM_BODY;
   const sc = R * (1 + jh * 0.3);
   const P = sc * (1 - 0.85 * fold);          // positions collapse to the centre
   const Q = sc * (1 - 0.5 * fold);           // radii shrink less: parts sink into the shape
+  // Squash and stretch: takeoff tall, landing wide (pose.squash), hop wide.
+  const sq = pose.squash || 0;
+  const sx = (sq > 0 ? 1 + 0.22 * sq : 1 - 0.18 * -sq) * (1 + 0.4 * ds);
+  const sy = (sq > 0 ? 1 - 0.2 * sq : 1 + 0.25 * -sq) * (1 - 0.22 * ds);
 
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(tilt + (pose.spin || 0));
+  ctx.scale(sx, sy);
   ctx.fillStyle = color;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   ctx.globalAlpha = DIM;
 
-  // The same shape for every alien: a sphere in the air, a tall pill in phase.
-  // It grows as the genome folds into it.
-  if (ball > 0.01) { ctx.beginPath(); ctx.arc(0, 0, sc * 0.78 * ball, 0, Math.PI * 2); ctx.fill(); }
-  if (pill > 0.01) { capsule(0, -sc * 1.0 * pill, 0, sc * 1.0 * pill, sc * 0.5 * pill); ctx.fill(); }
+  // The blobs, one per fold, same colour, so they merge where they overlap.
+  if (ball > 0.02) { blobPath(0, 0, sc * 0.82 * ball, sc * 0.82 * ball, t * 1.6, 2.1, 0.09); ctx.fill(); }
+  if (pp > 0.02) {
+    const wave = (a) => 1 + 0.12 * Math.min(1, pp) * Math.sin(Math.sin(a) * 6 - t * 9);
+    blobPath(0, 0, sc * (0.62 - 0.12 * pp), sc * (0.75 + 0.55 * pp), t * 1.4, 0.7, 0.07 * Math.min(1, pp), wave); ctx.fill();
+  }
+  if (dp > 0.03) {
+    const back = Math.sign(-tail) || -(st.dashDir || 1), k = Math.min(1, Math.abs(tail) / 25);
+    blobPath(-tail * 0.35, 0, sc * 0.7, sc * 0.75, t, 1.3, 0.06, (a) => 1 + 0.35 * Math.max(0, Math.cos(a) * back) * k); ctx.fill();
+  }
 
   // The body comes from the run's genome (render/specimen.js), in body units.
   const g = pose.genome || FIRST_SPECIMEN;
@@ -145,7 +191,7 @@ export function drawSymbiote(x, y, pose) {
   }
 
   // Eyes: green iris, black horizontal slit that leans with the tilt. Hidden
-  // in phase (a pure silhouette), carried on the sphere in the air.
+  // in phase (a pure silhouette), carried on the blob in the air.
   if (!phase) {
     const lean = Math.max(-1, Math.min(1, tilt * 3));
     for (const [gx, gy, gr] of g.eyes) {
@@ -166,8 +212,8 @@ export function drawSymbiote(x, y, pose) {
 // ---------------------------------------------------------------------------
 // Obstacles: one primitive family each, and the shape carries the meaning;
 // the motion tells the action:
-//   magenta = dodge: SOLID capsule that boils, black bubbles rising inside it
-//   orange = jump  : DOTTED row of solid circles that hops all together
+//   magenta = dodge: SOLID capsule, a black drop sliding side to side inside
+//   orange = jump  : HOLLOW bar with squarer corners, the jump sphere rising over it
 //   cyan = phase   : HOLLOW capsule that the phase pill keeps slipping through
 // Each draw spans x0..x1: neighbours of the same type on the same row are
 // merged by the caller into one longer shape. Every motion is a fixed
@@ -176,62 +222,70 @@ export function drawSymbiote(x, y, pose) {
 // ---------------------------------------------------------------------------
 const ORANGE = '#ff6a00', MAG = '#ff2bd6', CYAN_DIM = '#0b4a50';
 const TAU = Math.PI * 2;
-const hash = (i) => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5; return v - Math.floor(v); };
 
-// Hop: 0.45 of the beat in the air (height 0..1), 0.15 squashing on landing.
-const HOP_S = 1.0;
-function hop(t) {
-  const u = (t / HOP_S) % 1;
-  if (u < 0.45) { const k = u / 0.45; return [4 * k * (1 - k), 0]; }
-  if (u < 0.6) return [0, Math.sin(((u - 0.45) / 0.15) * Math.PI)];
-  return [0, 0];
-}
+// The phase membrane's sibling: a hollow bar with squarer corners (radius 4,
+// not a pill), and in each lane the player's jump SPHERE (with two dark
+// echoes) rising UP over it, the opposite of the phase pill sliding down. The
+// sphere swells as it crosses the line: it is in the air, over the bar.
+// Like the phase pill it runs twice per lane, left and right of the middle
+// (HINT_OFF of the lane width) and half a beat apart, so the hints never
+// cover the cells in the middle of the lane. Every lane keeps the same beat,
+// so a merged row alternates all its left hints with all its right ones.
+const ORANGE_DIM = '#4d2000', HINT_OFF = 0.3;
 export function drawWire(x0, x1, y, t = 0) {
-  const r = 3.4, gap = 10;
-  const n = Math.max(2, Math.round((x1 - x0 - r * 2) / gap));
-  const step = (x1 - x0 - r * 2) / n;
-  const [h, sq] = hop(t);
-  ctx.fillStyle = ORANGE;
-  ctx.globalAlpha = DIM;
-  for (let i = 0; i <= n; i++) {
-    const px = x0 + r + i * step;
-    if (sq > 0) capsule(px - sq * 1.4, y + sq, px + sq * 1.4, y + sq, r - sq * 0.8);
-    else { ctx.beginPath(); ctx.arc(px, y - h * 6, r * (1 + h * 0.2), 0, TAU); }
-    ctx.fill();
+  rrect((x0 + x1) / 2, y, (x1 - x0) / 2, 7, 4);
+  ctx.lineJoin = 'round';
+  stroke(ORANGE, 2);
+  const lanes = Math.max(1, Math.round((x1 - x0) / 64)), w = (x1 - x0) / lanes;
+  for (let l = 0; l < lanes; l++) {
+    const lx = x0 + (l + 0.5) * w, u0 = t * 0.7;
+    for (const side of [-1, 1]) {
+      const px = lx + side * w * HINT_OFF, u = (u0 + (side > 0 ? 0.5 : 0)) % 1;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(px - 12, y - 24, 24, 48); ctx.clip();
+      for (let e = 2; e >= 0; e--) {
+        const ue = u - e * 0.09, k = Math.sin(Math.max(0, Math.min(1, ue)) * Math.PI);
+        ctx.beginPath(); ctx.arc(px, y + 22 - ue * 44 - k * 4, 3.4 * (1 + 0.55 * k) * (e ? 0.85 : 1), 0, TAU);
+        fill(e ? ORANGE_DIM : ORANGE);
+      }
+      ctx.restore();
+    }
   }
 }
 
-// Black bubbles, one per ~16 px, each on its own period: it opens inside the
-// mass, drifts to the rim and closes as it bursts. Seeded by world position,
-// so a merged row boils the same as its single lanes.
+// In each lane a black drop (the player's lane-hop shape) slides side to side
+// inside the mass, stretching as it travels: dodge sideways. Phased by world
+// position, so a merged row moves the same as its single lanes.
 export function drawBarrier(x0, x1, y, t = 0) {
   capsule(x0 + 9, y, x1 - 9, y, 9);
   fill(MAG);
-  const n = Math.max(2, Math.round((x1 - x0) / 16)), seed = Math.round(x0 / 16);
-  for (let i = 0; i < n; i++) {
-    const id = seed + i;
-    const u = (t / (1.1 + hash(id + 3) * 0.5) + hash(id + 5)) % 1;
-    const px = x0 + 14 + (i + hash(id + 7) * 0.6) * (x1 - x0 - 28) / n;
-    const r = 0.6 + 3 * Math.sin(u * Math.PI);
-    ctx.beginPath(); ctx.arc(px, y + (id % 2 ? 1 : -1) * u * 4, r, 0, TAU);
+  const lanes = Math.max(1, Math.round((x1 - x0) / 64)), w = (x1 - x0) / lanes;
+  for (let l = 0; l < lanes; l++) {
+    const cx = x0 + (l + 0.5) * w, ph = t * 2.4 + Math.round(cx / 64) * 1.3;
+    const px = cx + Math.sin(ph) * (w / 2 - 14), len = 2 + Math.abs(Math.cos(ph)) * 5;
+    capsule(px - len, y, px + len, y, 3.6);
     fill('#000');
   }
 }
 
 // The membrane, and in each lane the player's phase pill (with its two dark
-// echoes) sliding down through it, clipped to a band around the line.
+// echoes) sliding down through it, clipped to a band around the line. Twice
+// per lane, off the middle and half a beat apart, like the jump sphere.
 export function drawRift(x0, x1, y, a = 1, t = 0) {
   capsule(x0 + 8, y, x1 - 8, y, 8);
   stroke(a < 1 ? CYAN_DIM : CYAN, 2);
   if (a < 1) return;
   const lanes = Math.max(1, Math.round((x1 - x0) / 64)), w = (x1 - x0) / lanes;
   for (let l = 0; l < lanes; l++) {
-    const px = x0 + (l + 0.5) * w, py = y - 22 + ((t * 0.7 + (Math.round(px / 64) * 0.37)) % 1) * 44;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(px - 20, y - 24, 40, 48); ctx.clip();
-    for (let e = 2; e >= 1; e--) { capsule(px, py - 5 - e * 5, px, py + 5 - e * 5, 3.2); fill(CYAN_DIM); }
-    capsule(px, py - 5, px, py + 5, 3.2); fill(CYAN);
-    ctx.restore();
+    const lx = x0 + (l + 0.5) * w, u0 = t * 0.7;
+    for (const side of [-1, 1]) {
+      const px = lx + side * w * HINT_OFF, py = y - 22 + ((u0 + (side > 0 ? 0 : 0.5)) % 1) * 44;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(px - 12, y - 24, 24, 48); ctx.clip();
+      for (let e = 2; e >= 1; e--) { capsule(px, py - 5 - e * 5, px, py + 5 - e * 5, 3.2); fill(CYAN_DIM); }
+      capsule(px, py - 5, px, py + 5, 3.2); fill(CYAN);
+      ctx.restore();
+    }
   }
 }
 

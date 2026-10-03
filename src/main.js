@@ -10,7 +10,7 @@ import { drawPlayerBullets, drawEnemyBullets, enemyBullets, playerBullets, LOW }
 import { drawPlayer, symRadius } from './game/player.js';
 import { drawLiquidMorph, drawRegrow } from './render/oled.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
-import { drawWorld, updateWorld } from './game/world.js';
+import { drawWorld, updateWorld, clipArena, drawArenaFade, drawBackdrop } from './game/world.js';
 import { drawObstacles, spawnObstacle, obstacles } from './game/obstacles.js';
 import { drawPickups, pickups } from './game/pickups.js';
 import { drawBoss, drawBossTelegraph, drawBossBar, makeBoss } from './game/boss.js';
@@ -29,11 +29,11 @@ import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickIt
 import { drawHud } from './ui/hud.js';
 import { drawTutorial, finishTutorial } from './game/tutorial.js';
 import { makeSpecimen } from './render/specimen.js';
-import { MENU_SYM, menuBob, REGROW_S, regrowFade } from './ui/screens.js';
+import { MENU_SYM, menuBob, REGROW_S, regrowFade, FOCUS_ROWS, FOCUS } from './ui/screens.js';
 import { randomSeed } from './core/rng.js';
 import { drawMenu, drawArchive, ARCH, archiveTab, archiveSelect, tickArchive, drawPick, drawPause, drawDead, END_HOLD } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
-import { startMusic, setMusic } from './audio/music.js';
+import { startMusic, setMusic, holdMusic } from './audio/music.js';
 
 // ---------------------------------------------------------------------------
 // Top-level state: menu | archive | run
@@ -171,19 +171,45 @@ document.addEventListener('visibilitychange', () => {
 const MODAL_LOCK = 0.45;
 let lastMode = null;
 let modalT = 0;
+// Keyboard focus: up/down move between the screen's rows, left/right
+// inside a row. `wide` = the focused row has more than one button, so
+// left/right were spent on it.
+function navFocus(scr, r, input) {
+  const rows = FOCUS_ROWS[scr](r);
+  let row = rows.findIndex((x) => x.includes(FOCUS[scr]));
+  if (row < 0) { row = 0; FOCUS[scr] = rows[0][0]; }
+  const wide = rows[row].length > 1;
+  let moved = false;
+  if (input.navUp || input.navDown) {
+    FOCUS[scr] = rows[(row + (input.navDown ? 1 : rows.length - 1)) % rows.length][0];
+    moved = true;
+  } else if (wide && (input.left || input.right)) {
+    const x = rows[row];
+    FOCUS[scr] = x[(x.indexOf(FOCUS[scr]) + (input.right ? 1 : x.length - 1)) % x.length];
+    moved = true;
+  }
+  if (moved) sfx.lane();
+  return { moved, wide };
+}
+
 function update(dt) {
   const input = pollInput();
   if (input.any) ensureAudio();
   updateShake(dt);
-  const id = input.tap ? (input.tapX >= 0 ? hitTest(input.tapX, input.tapY) : 'enter') : null;
+  let id = input.tap ? (input.tapX >= 0 ? hitTest(input.tapX, input.tapY) : 'enter') : null;
 
   if (screen === 'menu') {
     menuT += dt;
     updateWorld(dt, 60);
     const unlocked = unlockedBoards(save).includes(BOARDS[boardIdx].id);
-    if (id === 'boardPrev' || input.left) { boardIdx = (boardIdx + BOARDS.length - 1) % BOARDS.length; sfx.lane(); }
-    else if (id === 'boardNext' || input.right) { boardIdx = (boardIdx + 1) % BOARDS.length; sfx.lane(); }
-    else if ((id === 'run' || id === 'enter' || input.jump) && unlocked) startRun(false, false, true);
+    // Keyboard: arrows move the focus (left/right flip the board on
+    // single-button rows), Enter/Space press the focused button.
+    const nav = navFocus('menu', null, input), wide = nav.wide;
+    if (!nav.moved && (id === 'enter' || input.active)) id = FOCUS.menu;
+    if (nav.moved) { /* only the focus moved */ }
+    else if (id === 'boardPrev' || (!wide && input.left)) { boardIdx = (boardIdx + BOARDS.length - 1) % BOARDS.length; sfx.lane(); }
+    else if (id === 'boardNext' || (!wide && input.right)) { boardIdx = (boardIdx + 1) % BOARDS.length; sfx.lane(); }
+    else if (id === 'run' && unlocked) startRun(false, false, true);
     else if (id === 'daily') startRun(true, false, true);
     else if (id === 'tutorial') startRun(false, true, true);
     else if (id === 'archive') { screen = 'archive'; archiveTab('items'); sfx.select(); }
@@ -216,14 +242,16 @@ function update(dt) {
   // progress and ignore input for MODAL_LOCK s, so a swipe meant for the
   // symbiote can never choose a card.
   if (run.mode !== lastMode) {
-    if (run.mode !== 'play') { discardGesture(); modalT = 0; run.pickSel = -1; }
+    if (run.mode !== 'play') { discardGesture(); modalT = 0; run.pickSel = -1; FOCUS.pause = 'resume'; FOCUS.dead = 'retry'; }
     setTapSlop(run.mode === 'play' ? 8 : 14);
     setEarlyTap(run.mode === 'play');
     lastMode = run.mode;
   }
   modalT += dt;
   run.modalT = modalT;
+  if (run.mode === 'pause' || run.mode === 'dead') updateWorld(dt, 60);   // stars drift as on the home screen
   const locked = run.mode !== 'play' && modalT < MODAL_LOCK;
+  holdMusic(run.mode !== 'play');   // picks, pause, death: the music runs on, muffled
   switch (run.mode) {
     case 'play':
       updateRun(run, input, dt);
@@ -231,14 +259,16 @@ function update(dt) {
     case 'pick': {
       if (locked) break;
       // Two taps: the first selects a card, the second (on the same card) takes it.
+      // Keyboard: arrows move the selection (index n = SKIP), Enter/Space take it.
       const n = run.pickChoices.length;
+      const step = input.navDown || input.right ? 1 : input.navUp || input.left ? -1 : 0;
       if (id && id.startsWith('pick:')) {
         const i = Number(id.slice(5));
         if (run.pickSel === i) pickItem(run, i);
         else { run.pickSel = i; sfx.lane(); }
       } else if (id === 'skip') skipPick(run);
-      else if (input.left || input.right) { run.pickSel = run.pickSel < 0 ? 0 : (run.pickSel + (input.right ? 1 : n - 1)) % n; sfx.lane(); }
-      else if (id === 'enter' && run.pickSel >= 0) pickItem(run, run.pickSel);
+      else if (step) { run.pickSel = run.pickSel < 0 ? (step > 0 ? 0 : n - 1) : (run.pickSel + step + n + 1) % (n + 1); sfx.lane(); }
+      else if ((id === 'enter' || input.active) && run.pickSel >= 0) { if (run.pickSel === n) skipPick(run); else pickItem(run, run.pickSel); }
       break;
     }
     case 'pause': {
@@ -248,9 +278,13 @@ function update(dt) {
       const holding = !locked && ((p.down && !p.consumed && hitTest(p.startX, p.startY) === 'endRun' && hitTest(p.x, p.y) === 'endRun') || keyHeld('KeyQ'));
       run.holdT = holding ? (run.holdT || 0) + dt : Math.max(0, (run.holdT || 0) - dt * 3);
       run.holdHint = Math.max(0, (run.holdHint || 0) - dt);
-      if (run.holdT >= END_HOLD) { run.holdT = 0; run.quit = true; run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
+      if (run.holdT >= END_HOLD || (!locked && input.quit)) { run.holdT = 0; run.quit = true; run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
       if (locked) break;
-      if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; run.holdT = 0; sfx.select(); }
+      if (!navFocus('pause', run, input).moved && (id === 'enter' || input.active)) {
+        id = FOCUS.pause;
+        if (id === 'endRun') { run.holdT = 0; run.quit = true; run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
+      }
+      if (id === 'resume' || input.pause) { run.mode = 'play'; run.holdT = 0; sfx.select(); }
       else if (id === 'skipTutorial' && run.tutorial) { finishTutorial(run); run.mode = 'play'; sfx.select(); }
       else if (id === 'sfx' || id === 'music') toggleSetting(id);
       else if (id === 'endRun') { run.holdHint = 1.4; sfx.deny(); }   // a tap: say it needs a hold
@@ -262,13 +296,18 @@ function update(dt) {
         // The goo becomes the next specimen (already grown, so its shape
         // is known) in one move, onto the track or back to the menu spot.
         const from = run.deadPose || { x: W / 2, y: H / 2, R: 50 }, oldG = run.player.specimen;
-        if (id === 'retry' || id === 'enter' || input.jump) {
+        if (!navFocus('dead', run, input).moved && id === 'enter') id = FOCUS.dead;
+        if (id === 'retry' || input.jump || input.active) {
           startRun(run.daily);
           run.intro = { regrow: true, start: performance.now(), dur: REGROW_S.retry, from, oldG };
-        } else if (id === 'menu') {
+        } else if (id === 'menu' || input.pause) {
           toMenu({ start: performance.now(), from: { ...from, y: from.y - UI_OFFSET }, oldG });
           sfx.select();
         } else if (id === 'share') shareRun(run);
+        else if (id && id.startsWith('item:')) {
+          const sid = id.slice(5);
+          run.deadSel = run.deadSel === sid ? null : sid; run.deadSelK = 0; sfx.lane();
+        } else if (input.tap && run.deadSel) run.deadSel = null;   // the card or empty space closes it
       }
       break;
   }
@@ -318,8 +357,9 @@ function render(alpha) {
     const r = run;
     look.x = r.player.x; look.y = PLAYER_Y;
     drawWorld(r.distance, r.player.lane);
-    drawTelegraphs();
-    drawBossTelegraph(r.boss);
+    ctx.save(); clipArena();   // the play layer stays between the walls
+    drawTelegraphs(alpha);
+    drawBossTelegraph(r.boss, alpha);
     drawObstacles(alpha, r.time);
     drawPickups(alpha, r.time);
     // Readability: the more of your own stuff is on screen, the dimmer it is
@@ -347,9 +387,13 @@ function render(alpha) {
     drawHusks(r);
     setDim(1);
     drawEnemyBullets('low', alpha);   // low waves under the board: you jump over them
+    ctx.restore();
     if (r.intro) { if (!r.intro.regrow) drawIntro(r); }   // the regrow is drawn over the HUD, below
     else if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);   // dead: drawDead melts it into goo
+    ctx.save(); clipArena();
     drawEnemyBullets('high', alpha);  // normal enemy bullets always on top: readability rule
+    ctx.restore();
+    drawArenaFade();   // the track sinks into black under the HUD
     drawBossBar(r.boss);
     drawHud(r);
     if (r.intro && r.intro.regrow) drawIntro(r);   // over the HUD: its fade covers it too
@@ -365,6 +409,7 @@ function render(alpha) {
     ? (run.mode === 'dead' ? Math.max(0, 0.6 - run.deadT) : run.player.glitch)
     : 0;
   applyPost(glitch);
+  drawBackdrop();
 }
 
 setMusic('menu');

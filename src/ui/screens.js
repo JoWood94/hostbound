@@ -7,11 +7,12 @@ const LH = 640;
 import { PAL } from '../render/palette.js';
 import { text, line, strokePoly, FONT_BODY } from '../render/draw.js';
 import { button, area, wrap, toggle, segmented, rrPath, holdButton } from '../core/ui.js';
+import { onKeys } from '../core/input.js';
 import { drawWord, wordWidth } from './glyphs.js';
 import { drawIcon } from '../render/icons.js';
 import { ITEMS, ITEM_BY_ID, RARITY, SYNERGIES, STAT_DEFS, statDelta, computeStats } from '../game/items.js';
 import { BOARDS } from '../game/boards.js';
-import { laneX, LANE_W } from '../game/world.js';
+import { laneX, LANE_W, drawStars } from '../game/world.js';
 import { PLAYER_Y, symRadius } from '../game/player.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
@@ -29,9 +30,12 @@ const DEAD_R = 36;
 const PINK = '#d83cd8';
 
 // Modal backdrop. OLED: menus sit on true black (a < 1 only while fading in).
-function dim(a = 1) {
+// `stars`: the parallax stars stay over the black (pause, death), fading in
+// with it so the ones on the track never blink.
+function dim(a = 1, stars = false) {
   ctx.fillStyle = `rgba(0,0,0,${a})`;
   ctx.fillRect(0, -H, W, H * 3);   // centred or not, cover the whole canvas
+  if (stars && a > 0) { ctx.save(); ctx.globalAlpha *= a; drawStars(); ctx.restore(); }
 }
 
 // Wrap by measured width, in the same font text() uses.
@@ -155,6 +159,18 @@ export const menuBob = (t) => Math.sin(t * 2) * 3;
 export const REGROW_S = { retry: 1.0, menu: 0.9 };
 export function regrowFade(u) { const k = 1 - Math.min(1, u / 0.55); return k * k * (3 - 2 * k); }
 
+// Keyboard focus on home, pause and death: arrows move it through the
+// screen's rows (main.js navFocus), Enter or Space presses it. Shown only
+// when playing with keys: the focused button fills with its colour, a
+// focused switch gets a border.
+export const FOCUS_ROWS = {
+  menu: () => [['run'], ['daily'], ['archive', 'tutorial'], ['sfx', 'music']],
+  pause: (run) => [['resume'], ...(run.tutorial ? [['skipTutorial']] : []), ['endRun'], ['sfx', 'music']],
+  dead: () => [['retry'], ['menu', 'share']],
+};
+export const FOCUS = { menu: 'run', pause: 'resume', dead: 'retry' };
+const focused = (id, scr = 'menu') => FOCUS[scr] === id && onKeys();
+
 export function drawMenu(save, t, boardIdx, specimen, morph = null) {
   dim(0.55);
   drawLogo(t);
@@ -168,16 +184,16 @@ export function drawMenu(save, t, boardIdx, specimen, morph = null) {
   }
   // One primary action; everything else is an outline.
   const bx = 48, bw = W - 96;
-  button('run', bx, 352, bw, 54, 'RUN', { color: '#d83cd8', fill: true, size: 22, disabled: !unlocked });
+  button('run', bx, 352, bw, 54, 'RUN', { color: '#d83cd8', fill: true, size: 22, disabled: !unlocked, focus: focused('run') });
   const dBest = save.daily.date === todayKey() ? save.daily.best : 0;
-  button('daily', bx, 416, bw, 44, 'DAILY RUN', { color: PAL.acid, size: 15, sub: dBest ? `today ${dBest}m` : null });
+  button('daily', bx, 416, bw, 44, 'DAILY RUN', { color: PAL.acid, size: 15, sub: dBest ? `today ${dBest}m` : null, focus: focused('daily') });
   const hb = (bw - 10) / 2;
-  button('archive', bx, 470, hb, 40, 'ARCHIVE', { color: PAL.white, size: 14 });
-  button('tutorial', bx + hb + 10, 470, hb, 40, 'TUTORIAL', { color: PAL.white, size: 14 });
+  button('archive', bx, 470, hb, 40, 'ARCHIVE', { color: PAL.white, size: 14, focus: focused('archive') });
+  button('tutorial', bx + hb + 10, 470, hb, 40, 'TUTORIAL', { color: PAL.white, size: 14, focus: focused('tutorial') });
 
   const st = save.settings;
-  toggle('sfx', bx + 6, 522, hb - 16, 30, 'SFX', st.sfx);
-  toggle('music', bx + hb + 20, 522, hb - 16, 30, 'MUSIC', st.music);
+  toggle('sfx', bx + 6, 522, hb - 16, 30, 'SFX', st.sfx, { focus: focused('sfx') });
+  toggle('music', bx + hb + 20, 522, hb - 16, 30, 'MUSIC', st.music, { focus: focused('music') });
 
   const nUnl = unlockedItems(save).length;
   if (save.best > 0) text(`BEST ${save.best}m`, W / 2, 572, { color: PAL.acid, size: 12, align: 'center', font: 'display' });
@@ -481,22 +497,28 @@ export function drawPick(run) {
     ctx.restore();
     cy += Ls[i].h + gap;
   });
-  if (run.pickSel >= 0) text('TAP AGAIN TO TAKE IT', W / 2, 100, { color: PINK, size: 11, align: 'center', font: 'display' });
-  else if (t > 0.45) text('TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 11, align: 'center', font: 'display' });
+  const keys = onKeys();
+  if (run.pickSel >= 0) text(keys ? 'ENTER OR SPACE TO TAKE IT' : run.pickSel < n ? 'TAP AGAIN TO TAKE IT' : '', W / 2, 100, { color: PINK, size: 11, align: 'center', font: 'display' });
+  else if (t > 0.45) text(keys ? 'ARROWS TO SELECT · ENTER TO TAKE' : 'TAP A CARD TO SELECT', W / 2, 100, { color: PAL.mute, size: 11, align: 'center', font: 'display' });
   const full = run.player.hearts >= run.stats.maxHearts;
-  button('skip', 90, cy - gap + 14, W - 180, 40, 'SKIP', { color: PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
+  button('skip', 90, cy - gap + 14, W - 180, 40, 'SKIP', { color: run.pickSel === n ? PINK : PAL.mute, size: 12, sub: full ? 'nothing' : '+1 heart' });
 }
 
 // The build as icons in centred rows: a rarity capsule under each icon and
 // the stack count at its shoulder. Shared by pause and death.
 const BUILD_CS = 38;
-function buildIcons(stacks, ids, y, rows, per = Math.floor((W - 40) / BUILD_CS), cs = BUILD_CS) {
+// `tap` (death screen): no rarity bar, each icon is a tap target and the
+// selected one gets a pink ring.
+function buildIcons(stacks, ids, y, rows, per = Math.floor((W - 40) / BUILD_CS), cs = BUILD_CS, { tap = false, sel = null } = {}) {
   ids.slice(0, rows * per).forEach((id, i) => {
     const it = ITEM_BY_ID[id], n = stacks[id];
     const inRow = Math.min(per, ids.length - Math.floor(i / per) * per);
     const x = W / 2 + ((i % per) - (inRow - 1) / 2) * cs, cy = y + Math.floor(i / per) * cs + 14;
     if (!drawIcon(id, x, cy, 20)) text(it.code, x, cy + 1, { color: PAL.white, size: 9, align: 'center', font: 'display', maxW: 26 });
-    rrPath(x - 7, cy + 15, 14, 3, 1.5); ctx.fillStyle = RARITY[it.rarity].color; ctx.fill();
+    if (tap) {
+      area(`item:${id}`, x - cs / 2, cy - cs / 2 + 2, cs, cs);
+      if (sel === id) { ctx.beginPath(); ctx.arc(x, cy, 17, 0, Math.PI * 2); ctx.strokeStyle = PINK; ctx.lineWidth = 2; ctx.stroke(); }
+    } else { rrPath(x - 7, cy + 15, 14, 3, 1.5); ctx.fillStyle = RARITY[it.rarity].color; ctx.fill(); }
     if (n > 1) text(`${n}`, x + 13, cy - 10, { color: RARITY[it.rarity].color, size: 9, align: 'center', font: 'display' });
   });
 }
@@ -507,7 +529,7 @@ function buildIcons(stacks, ids, y, rows, per = Math.floor((W - 40) / BUILD_CS),
 // Drawn in real screen coordinates so the buttons hug the bottom edge.
 export const END_HOLD = 0.8;
 export function drawPause(run, save) {
-  dim();
+  dim(1, true);
   const top = SAFE_TOP, bot = H - SAFE_BOTTOM;
   const t = performance.now() / 1000;
   const st = run.stats, p = run.player;
@@ -515,16 +537,17 @@ export function drawPause(run, save) {
   // Bottom block, anchored to the bottom edge like the home's buttons.
   const bx = 48, bw = W - 96, hb = (bw - 10) / 2;
   const ty = bot - 48;
-  toggle('sfx', bx + 6, ty, hb - 16, 30, 'SFX', save.settings.sfx);
-  toggle('music', bx + hb + 20, ty, hb - 16, 30, 'MUSIC', save.settings.music);
+  toggle('sfx', bx + 6, ty, hb - 16, 30, 'SFX', save.settings.sfx, { focus: focused('sfx', 'pause') });
+  toggle('music', bx + hb + 20, ty, hb - 16, 30, 'MUSIC', save.settings.music, { focus: focused('music', 'pause') });
   const ey = ty - 58;
   const k = Math.min(1, (run.holdT || 0) / END_HOLD);
-  const label = k > 0 ? 'KEEP HOLDING' : run.holdHint > 0 ? 'HOLD IT DOWN' : 'HOLD TO END RUN';
-  holdButton('endRun', bx, ey, bw, 44, label, k, { color: PAL.red, size: 13 });
+  const keys = onKeys();
+  const label = k > 0 ? 'KEEP HOLDING' : run.holdHint > 0 ? (keys ? 'HOLD IT DOWN · OR PRESS X' : 'HOLD IT DOWN') : keys ? 'END RUN · PRESS X' : 'HOLD TO END RUN';
+  holdButton('endRun', bx, ey, bw, 44, label, k, { color: PAL.red, size: 13, focus: focused('endRun', 'pause') });
   const ry = ey - 66;
-  button('resume', bx, ry, bw, 54, 'RESUME', { color: PINK, fill: true, size: 22 });
+  button('resume', bx, ry, bw, 54, keys ? 'RESUME · ESC' : 'RESUME', { color: PINK, fill: true, size: 22, focus: focused('resume', 'pause') });
   let floor = ry - 20;
-  if (run.tutorial) { button('skipTutorial', bx + 40, ry - 46, bw - 80, 34, 'SKIP TUTORIAL', { color: PAL.white, size: 11 }); floor = ry - 64; }
+  if (run.tutorial) { button('skipTutorial', bx + 40, ry - 46, bw - 80, 34, 'SKIP TUTORIAL', { color: PAL.white, size: 11, focus: focused('skipTutorial', 'pause') }); floor = ry - 64; }
 
   // Lay out the upper block first, then centre it in the space left.
   const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
@@ -610,7 +633,7 @@ export function drawDead(run) {
     ctx.beginPath(); ctx.arc(k.x, k.y, 22 + Math.sin(run.deadT * 14) * 3, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
-  dim(run.quit ? 1 : Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6));
+  dim(run.quit ? 1 : Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6), true);
   const top = SAFE_TOP, bot = H - SAFE_BOTTOM, rs = run.rs;
 
   // Bottom block first, so the upper block can centre in what is left.
@@ -620,7 +643,7 @@ export function drawDead(run) {
 
   const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
   const per = Math.floor((W - 40) / BUILD_CS);
-  const unl = [...new Set(run.newUnlocks)];
+  const unl = [...new Set(run.newUnlocks)].map((n) => ITEMS.find((it) => it.name === n)).filter(Boolean);
   const HEAD = 292;   // titles, distance, stats, the dead goo
   let rows = Math.ceil(ids.length / per);
   const bodyH = (r) => (ids.length ? 20 + r * BUILD_CS : 0) + (unl.length ? 30 + Math.min(unl.length, 6) * 18 : 0);
@@ -642,16 +665,18 @@ export function drawDead(run) {
   const to = run.deadPose = { x: W / 2, y: y0 + 250, R: DEAD_R };
   const since = (now - run.gooStart) / 1000;
   drawDeathGoo(p.specimen, since / GOO_S, from, to, tt);
-  // The words and buttons wait for the goo to land, then fade in, so the
-  // glide never crosses them.
-  const ui = Math.min(1, Math.max(0, (since - GOO_S * 0.65) / 0.2));   // starts with the goo ~90% there
+  // Everything (words, build, unlocks, buttons) waits for the goo to clear
+  // the build row, then fades in together, landing with the goo.
+  const ui = Math.min(1, Math.max(0, (since - GOO_S * 0.8) / 0.2));   // starts with the goo ~96% there
   run.deadReady = ui > 0.5;   // main.js takes RETRY / MENU only from here on
   if (ui <= 0) return;
   ctx.save();
   ctx.globalAlpha = ui;
-  button('retry', bx, ry, bw, 54, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PINK, fill: true, size: 22 });
-  button('menu', bx, py, hw, 44, 'MENU', { color: PAL.white, size: 14 });
-  button('share', bx + hw + 10, py, hw, 44, run.shareMsg || 'SHARE', { color: PAL.acid, size: 14 });
+  const keys = onKeys();
+  const retry = run.daily ? 'RETRY DAILY' : 'RETRY';
+  button('retry', bx, ry, bw, 54, keys ? `${retry} · SPACE` : retry, { color: PINK, fill: true, size: keys && run.daily ? 16 : 22, focus: focused('retry', 'dead') });
+  button('menu', bx, py, hw, 44, keys ? 'MENU · ESC' : 'MENU', { color: PAL.white, size: 14, focus: focused('menu', 'dead') });
+  button('share', bx + hw + 10, py, hw, 44, run.shareMsg || 'SHARE', { color: PAL.acid, size: 14, focus: focused('share', 'dead') });
 
   text('CONSUMED', W / 2, y0 + 50, { color: PAL.red, size: 30, align: 'center', font: 'display' });
   if (k) text(`BY ${k.what}`, W / 2, y0 + 80, { color: k.color, size: 11, align: 'center', font: 'display', maxW: W - 64 });
@@ -661,21 +686,32 @@ export function drawDead(run) {
   text(rec, W / 2, y0 + 150, { color: run.newBest || run.newDailyBest ? PAL.acid : PAL.mute, size: 12, align: 'center', font: 'display' });
   text(`${rs.kills} KILLS · ${rs.bosses} BOSSES · LV ${run.level}${run.daily ? ` · DAILY ${run.dailyKey}` : ''}`, W / 2, y0 + 176, { color: PAL.white, size: 10, align: 'center', font: 'display', maxW: W - 48 });
 
+  const sel = run.deadSel;
   let y = y0 + HEAD;
   if (ids.length) {
     y += 8;
-    buildIcons(run.stacks, ids, y, rows, per);
+    buildIcons(run.stacks, ids, y, rows, per, BUILD_CS, { tap: true, sel });
     y += rows * BUILD_CS + 12;
   }
   if (unl.length) {
     y += 10;
     text('UNLOCKED', W / 2, y, { color: PAL.acid, size: 12, align: 'center', font: 'display' });
     y += 22;
-    for (const n of unl.slice(0, 6)) {
+    for (const it of unl.slice(0, 6)) {
       if (y > floor) break;
-      text(n, W / 2, y, { color: PINK, size: 12, align: 'center', font: 'display', maxW: W - 64 });
+      area(`item:${it.id}`, 40, y - 9, W - 80, 18);
+      text(it.name, W / 2, y, { color: sel === it.id ? PAL.white : PINK, size: 12, align: 'center', font: 'display', maxW: W - 64 });
       y += 18;
     }
+  }
+  // A tapped item: its archive card, pinned just above RETRY, over the list.
+  // Tapping it, the same item again or empty space closes it.
+  if (sel && ITEM_BY_ID[sel]) {
+    const it = ITEM_BY_ID[sel], cw = W - 40;
+    const L = cardLayout(it, cw, null, 12);
+    run.deadSelK = (run.deadSelK || 0) + (1 - (run.deadSelK || 0)) * 0.25;
+    ctx.globalAlpha = ui * run.deadSelK;
+    itemCard('deadCard', 20, floor - L.h + 8 - (1 - run.deadSelK) * 10, cw, it, L);
   }
   ctx.restore();
 }

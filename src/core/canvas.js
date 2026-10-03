@@ -48,6 +48,15 @@ function measureSafe(vh) {
 }
 measureSafe(VP.h);
 
+// Backdrop: a full-window canvas behind the game. On screens wider than the
+// game (desktop) the parallax stars keep going out to the window edges.
+const back = document.createElement('canvas');
+back.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;';
+document.body.insertBefore(back, document.body.firstChild);
+const backCtx = back.getContext('2d', { alpha: false });
+// Logical span of the window, in game units: x from -left to W + left.
+export const BACK = { ctx: backCtx, left: 0, w: W, scale: 1 };
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 
@@ -70,6 +79,12 @@ export function resize() {
   canvas.height = Math.round(H * sy * dpr);
   ctx.setTransform(sx * dpr, 0, 0, sy * dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
+  back.width = Math.round(vw * dpr);
+  back.height = Math.round(vh * dpr);
+  BACK.left = (vw - W * sx) / 2 / sx;
+  BACK.w = vw / sx;
+  BACK.scale = sx;
+  backCtx.setTransform(sx * dpr, 0, 0, sy * dpr, BACK.left * sx * dpr, 0);
 }
 
 // Convert a client (CSS pixel) coordinate to logical game space.

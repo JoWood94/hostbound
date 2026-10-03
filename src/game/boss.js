@@ -15,10 +15,11 @@ import { LANES, LANE_W, laneX } from './world.js';
 import { enemies, newId } from './enemies.js';
 import { obstacles, spawnObstacle, spawnVeil } from './obstacles.js';
 import { sfx } from '../audio/audio.js';
+import { STEP } from '../core/loop.js';
 import { bossHp, bossSpeed, bossLayer, timeMul } from './balance.js';
 
 const ALL = [0, 1, 2, 3, 4];
-// Below the status bar and the health bar (name + bar end ~66 px under SAFE_TOP).
+// Below the HUD strip and the arena fade under it (clear by SAFE_TOP + 64).
 const holdY = () => 150 + SAFE_TOP;
 
 // Attack parts: volley (n shots per lane), sweep (lanes in order), low (jumpable wave),
@@ -596,10 +597,11 @@ function frenzy(b, difficulty) {
   b.frenzyShot = { lane, at: Math.ceil(now) + 4 };
 }
 
-export function drawBossTelegraph(b) {
+export function drawBossTelegraph(b, alpha = 1) {
   if (b && b.frenzyShot) glowLane(b.frenzyShot.lane, b.color, 0.9);
   if (!b || !b.teleParts.length) return;
-  const prog = b.state === 'telegraph' ? Math.min(1, b.stateT / teleTime()) : 1;
+  // stateT advanced to this frame (sim runs at 60, render at the display rate)
+  const prog = b.state === 'telegraph' ? Math.min(1, (b.stateT + alpha * STEP) / teleTime()) : 1;
   for (const p of b.teleParts) {
     const c = p.kind === 'low' ? PAL.orange : p.kind === 'obs' ? PAL.magenta : b.color;
     if (!p.lanes.length) continue;
@@ -644,8 +646,8 @@ export function drawBossBar(b) {
   if (!b || b.dead) return;
   // Up in the HUD strip, under the XP bar, clear of the boss body; the name
   // sits centred between the hearts and the distance.
-  const x = 8, y = SAFE_TOP + 9, w = W - 16;
-  text(b.name, W / 2, SAFE_TOP + 26, { color: b.color, size: 12, align: 'center', font: 'display' });
+  const x = 8, y = SAFE_TOP + 14, w = W - 16;
+  text(b.name, W / 2, SAFE_TOP + 32, { color: b.color, size: 12, align: 'center', font: 'display', maxW: W - 250 });
   // capsule track, solid fill, two notches at the phase thresholds
   ctx.fillStyle = '#1a141e';
   ctx.beginPath(); ctx.roundRect(x, y, w, 5, 2.5); ctx.fill();
