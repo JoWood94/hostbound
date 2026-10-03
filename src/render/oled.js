@@ -162,23 +162,6 @@ export function drawSymbiote(x, y, pose) {
   ctx.globalAlpha = DIM;
 }
 
-// Death: the silhouette bursts into solid droplets that fly out and shrink.
-export function drawSymbioteDeath(x, y, R, deadT) {
-  if (deadT > 0.75) return false;
-  const k = deadT / 0.75, e = ease(k);
-  ctx.save();
-  ctx.globalAlpha = DIM;
-  ctx.fillStyle = k < 0.08 ? '#ffffff' : SYM_BODY;
-  for (let i = 0; i < 12; i++) {
-    const a = i * 2.39996 + 0.4;
-    const d = R * (0.3 + e * (1.8 + (i % 3) * 0.6));
-    const r = R * (0.36 - (i % 4) * 0.05) * (1 - k);
-    if (r < 0.4) continue;
-    ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, r, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.restore();
-  return true;
-}
 
 // ---------------------------------------------------------------------------
 // Obstacles: one primitive family each, and the shape carries the meaning:

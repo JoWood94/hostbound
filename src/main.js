@@ -7,7 +7,7 @@ import { applyPost } from './render/post.js';
 import { drawFx, updateShake, shakeOffset, fxCount } from './render/fx.js';
 let layerDim = 1;
 import { drawPlayerBullets, drawEnemyBullets, enemyBullets, playerBullets, LOW } from './game/bullets.js';
-import { drawPlayer, drawPlayerDeath, symRadius } from './game/player.js';
+import { drawPlayer, symRadius } from './game/player.js';
 import { drawLiquidMorph, drawRegrow } from './render/oled.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
@@ -248,7 +248,7 @@ function update(dt) {
       const holding = !locked && ((p.down && !p.consumed && hitTest(p.startX, p.startY) === 'endRun' && hitTest(p.x, p.y) === 'endRun') || keyHeld('KeyQ'));
       run.holdT = holding ? (run.holdT || 0) + dt : Math.max(0, (run.holdT || 0) - dt * 3);
       run.holdHint = Math.max(0, (run.holdHint || 0) - dt);
-      if (run.holdT >= END_HOLD) { run.holdT = 0; run.quit = true; run.gooStart = performance.now(); run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
+      if (run.holdT >= END_HOLD) { run.holdT = 0; run.quit = true; run.player.dead = true; endRun(run); run.deadT = 0.8; break; }
       if (locked) break;
       if (id === 'resume' || id === 'enter' || input.pause) { run.mode = 'play'; run.holdT = 0; sfx.select(); }
       else if (id === 'skipTutorial' && run.tutorial) { finishTutorial(run); run.mode = 'play'; sfx.select(); }
@@ -348,8 +348,7 @@ function render(alpha) {
     setDim(1);
     drawEnemyBullets('low', alpha);   // low waves under the board: you jump over them
     if (r.intro) { if (!r.intro.regrow) drawIntro(r); }   // the regrow is drawn over the HUD, below
-    else if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
-    else drawPlayerDeath(r.player, r.deadT);
+    else if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);   // dead: drawDead melts it into goo
     drawEnemyBullets('high', alpha);  // normal enemy bullets always on top: readability rule
     drawBossBar(r.boss);
     drawHud(r);

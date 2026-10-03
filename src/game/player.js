@@ -2,7 +2,7 @@ import { ctx, H } from '../core/canvas.js';
 import { PAL } from '../render/palette.js';
 import { ring } from '../render/draw.js';
 import { burst, shake, hitStop } from '../render/fx.js';
-import { drawSymbiote, drawSymbioteDeath, SYM_BODY, capsule } from '../render/oled.js';
+import { drawSymbiote, SYM_BODY, capsule } from '../render/oled.js';
 
 const SYM_R = 19;   // body radius of the procedural symbiote
 import { LANES, laneX } from './world.js';
@@ -282,6 +282,3 @@ function drawSymbioteLive(p, x, y, jh, stats) {
 }
 
 // Death: the symbiote bursts (row 3, frames 3-7). Returns false when finished.
-export function drawPlayerDeath(p, deadT) {
-  return drawSymbioteDeath(p.x, PLAYER_Y + 2, SYM_R * (1 + growth(p)), deadT);
-}

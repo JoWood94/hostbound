@@ -12,6 +12,7 @@ import { drawIcon } from '../render/icons.js';
 import { ITEMS, ITEM_BY_ID, RARITY, SYNERGIES, STAT_DEFS, statDelta, computeStats } from '../game/items.js';
 import { BOARDS } from '../game/boards.js';
 import { laneX, LANE_W } from '../game/world.js';
+import { PLAYER_Y, symRadius } from '../game/player.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
 import { drawSymbiote, drawGoo, drawRegrow } from '../render/oled.js';
@@ -21,6 +22,7 @@ import { version } from '../../package.json';
 
 // Shown on the menu; single source of truth is package.json.
 const VERSION = `v${version}`;
+const easeInOut = (q) => (q < 0.5 ? 4 * q * q * q : 1 - (-2 * q + 2) ** 3 / 2);
 // Primary UI colour: the symbiote's pink (RUN, RESUME, RETRY, selection).
 const PINK = '#d83cd8';
 
@@ -557,6 +559,7 @@ export function drawPause(run, save) {
   // The alien you are playing, big and alive.
   const sy = y0 + 166;
   run.pauseSym = run.pauseSym || {};
+  run.pausePose = { x: W / 2, y: sy + Math.sin(t * 2) * 3, R: 36 };   // where the goo starts if the run ends here
   drawSymbiote(W / 2, sy + Math.sin(t * 2) * 3, { R: 36, bank: Math.sin(t * 0.8) * 0.12, t, hit: false, genome: p.specimen, state: run.pauseSym });
 
   let y = y0 + HEAD;
@@ -606,7 +609,6 @@ export function drawDead(run) {
     ctx.restore();
   }
   dim(run.quit ? 1 : Math.min(1, Math.max(0, run.deadT - 0.6) * 1.6));
-  if (run.deadT < 0.6) return;
   const top = SAFE_TOP, bot = H - SAFE_BOTTOM, rs = run.rs;
 
   // Bottom block first, so the upper block can centre in what is left.
@@ -628,6 +630,25 @@ export function drawDead(run) {
   while (rows > 1 && HEAD + bodyH(rows) > floor - top) rows--;
   const y0 = top + Math.max(0, (floor - top - HEAD - bodyH(rows)) * 0.4);
 
+  // This run's alien, dead: from right where it was (on the track, or the
+  // pause screen's alien when the run was ended from pause) it slumps into
+  // goo WHILE it slides to its spot on the death screen, one move, at its
+  // own size (no zoom). It keeps simmering there; on RETRY / MENU the goo
+  // itself becomes the next specimen (main.js, drawRegrow).
+  const now = performance.now(), tt = now / 1000, p = run.player;
+  if (!run.gooStart) {
+    run.gooStart = now;
+    run.gooFrom = (run.quit ? run.pausePose : null) || { x: p.x, y: PLAYER_Y + 2, R: symRadius(p) };
+  }
+  const from = run.gooFrom, GOO_S = 0.9;
+  const to = run.deadPose = { x: W / 2, y: y0 + 250, R: from.R };
+  const since = (now - run.gooStart) / 1000;
+  const q = easeInOut(Math.min(1, since / GOO_S));
+  const gx = from.x + (to.x - from.x) * q;
+  const gy = from.y + (to.y - from.y) * q - Math.sin(Math.PI * q) * 14;   // a soft lift on the way
+  drawGoo(p.specimen, since / (GOO_S * 1.35), gx, gy, from.R, tt);   // still slumping as it arrives
+  if (run.deadT < 0.6) return;   // the freeze frame: only the goo so far
+
   const jitter = !run.quit && run.deadT < 0.9 ? (Math.random() - 0.5) * 5 : 0;
   text('CONSUMED', W / 2 + jitter, y0 + 50, { color: PAL.red, size: 30, align: 'center', font: 'display' });
   if (k) text(`BY ${k.what}`, W / 2, y0 + 80, { color: k.color, size: 11, align: 'center', font: 'display', maxW: W - 64 });
@@ -636,13 +657,6 @@ export function drawDead(run) {
   const rec = run.newBest ? 'NEW BEST' : run.daily && run.newDailyBest ? 'NEW DAILY BEST' : `BEST ${run.save.best}m`;
   text(rec, W / 2, y0 + 150, { color: run.newBest || run.newDailyBest ? PAL.acid : PAL.mute, size: 12, align: 'center', font: 'display' });
   text(`${rs.kills} KILLS · ${rs.bosses} BOSSES · LV ${run.level}${run.daily ? ` · DAILY ${run.dailyKey}` : ''}`, W / 2, y0 + 176, { color: PAL.white, size: 10, align: 'center', font: 'display', maxW: W - 48 });
-
-  // This run's alien, dead: it collapses into a simmering goo. On RETRY /
-  // MENU the goo itself becomes the next specimen (main.js, drawRegrow).
-  const now = performance.now(), tt = now / 1000;
-  run.gooStart = run.gooStart || now;
-  run.deadPose = { x: W / 2, y: y0 + 250, R: 50 };
-  drawGoo(run.player.specimen, (now - run.gooStart) / 750, run.deadPose.x, run.deadPose.y, run.deadPose.R, tt);
 
   let y = y0 + HEAD;
   if (ids.length) {
