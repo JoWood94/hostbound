@@ -423,10 +423,14 @@ export function drawGoo(genome, k, x, y, R, t) {
   ctx.save();
   ctx.globalAlpha = DIM;
   // the puddle spreads under the body while the parts slump into it
-  const b = 1 - m;
-  const { Rs, sx, sy, cy } = gooBody(x, y, R * (0.5 + 0.5 * m), t, b, col, t * 1.3);
+  // the puddle spreads and flattens late, so the body still reads as the
+  // alien for most of the collapse
+  const late = m * m;
+  const { Rs, sx, sy, cy } = gooBody(x, y, R * (0.5 + 0.5 * m), t, 1 - late, col, t * 1.3);
   ctx.fillStyle = col;
-  if (m < 1) tiedParts(parts, x, y, R, m, 0.9);
+  // tiedParts speeds melting up by 1.3; feed it m² so the parts hold their
+  // shape early and slump away toward the end of the collapse
+  if (m < 1) tiedParts(parts, x, y, R, late * 0.77, 0.9);
   if (m > 0.6) gooBubbles(x, cy, Rs, sx, sy, t, 1);
   // eyes: slide off the body and drift on the surface, as Xs
   eyes.forEach((p, i) => {
@@ -436,6 +440,18 @@ export function drawGoo(genome, k, x, y, R, t) {
   });
   ctx.restore();
   ctx.globalAlpha = DIM;
+}
+
+// Death: the body glides from where it died (a = {x, y, R}) to its spot on
+// the death screen (b), grows to b.R and slumps into goo, all on ONE curve
+// (u 0..1 over the glide; after 1 it simmers in place). The curve moves at
+// once and settles on arrival, and the melt follows it exactly, so it is
+// fully goo just as it lands.
+export function drawDeathGoo(genome, u, a, b, t) {
+  const q = 1 - (1 - clamp01(u)) ** 2;
+  const x = a.x + (b.x - a.x) * q;
+  const y = a.y + (b.y - a.y) * q - Math.sin(Math.PI * q) * 14;   // a soft lift on the way
+  drawGoo(genome, 1 - Math.cbrt(1 - q), x, y, a.R + (b.R - a.R) * q, t);   // drawGoo eases k: melt == q
 }
 
 // RETRY / MENU: the goo becomes the next specimen in one continuous move.

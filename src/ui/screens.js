@@ -15,7 +15,7 @@ import { laneX, LANE_W } from '../game/world.js';
 import { PLAYER_Y, symRadius } from '../game/player.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
-import { drawSymbiote, drawGoo, drawRegrow } from '../render/oled.js';
+import { drawSymbiote, drawDeathGoo, drawRegrow } from '../render/oled.js';
 import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
 import { version } from '../../package.json';
@@ -23,6 +23,8 @@ import { version } from '../../package.json';
 // Shown on the menu; single source of truth is package.json.
 const VERSION = `v${version}`;
 const easeInOut = (q) => (q < 0.5 ? 4 * q * q * q : 1 - (-2 * q + 2) ** 3 / 2);
+// The pause alien's size, and the size every death's goo ends on.
+const DEAD_R = 36;
 // Primary UI colour: the symbiote's pink (RUN, RESUME, RETRY, selection).
 const PINK = '#d83cd8';
 
@@ -559,8 +561,8 @@ export function drawPause(run, save) {
   // The alien you are playing, big and alive.
   const sy = y0 + 166;
   run.pauseSym = run.pauseSym || {};
-  run.pausePose = { x: W / 2, y: sy + Math.sin(t * 2) * 3, R: 36 };   // where the goo starts if the run ends here
-  drawSymbiote(W / 2, sy + Math.sin(t * 2) * 3, { R: 36, bank: Math.sin(t * 0.8) * 0.12, t, hit: false, genome: p.specimen, state: run.pauseSym });
+  run.pausePose = { x: W / 2, y: sy + Math.sin(t * 2) * 3, R: DEAD_R };   // where the goo starts if the run ends here
+  drawSymbiote(W / 2, sy + Math.sin(t * 2) * 3, { R: DEAD_R, bank: Math.sin(t * 0.8) * 0.12, t, hit: false, genome: p.specimen, state: run.pauseSym });
 
   let y = y0 + HEAD;
   if (!ids.length) {
@@ -632,21 +634,18 @@ export function drawDead(run) {
 
   // This run's alien, dead: from right where it was (on the track, or the
   // pause screen's alien when the run was ended from pause) it slumps into
-  // goo WHILE it slides to its spot on the death screen, one move, at its
-  // own size (no zoom). It keeps simmering there; on RETRY / MENU the goo
-  // itself becomes the next specimen (main.js, drawRegrow).
+  // goo WHILE it slides to its spot and grows to DEAD_R: one curve drives
+  // the glide, the growth and the melt, so it is fully goo exactly as it
+  // arrives, and every death ends on the same size. It keeps simmering
+  // there; on RETRY / MENU the goo becomes the next specimen (drawRegrow).
   const now = performance.now(), tt = now / 1000, p = run.player;
   if (!run.gooStart) {
     run.gooStart = now;
     run.gooFrom = (run.quit ? run.pausePose : null) || { x: p.x, y: PLAYER_Y + 2, R: symRadius(p) };
   }
-  const from = run.gooFrom, GOO_S = 0.9;
-  const to = run.deadPose = { x: W / 2, y: y0 + 250, R: from.R };
-  const since = (now - run.gooStart) / 1000;
-  const q = easeInOut(Math.min(1, since / GOO_S));
-  const gx = from.x + (to.x - from.x) * q;
-  const gy = from.y + (to.y - from.y) * q - Math.sin(Math.PI * q) * 14;   // a soft lift on the way
-  drawGoo(p.specimen, since / (GOO_S * 1.35), gx, gy, from.R, tt);   // still slumping as it arrives
+  const from = run.gooFrom, GOO_S = 0.95;
+  const to = run.deadPose = { x: W / 2, y: y0 + 250, R: DEAD_R };
+  drawDeathGoo(p.specimen, (now - run.gooStart) / 1000 / GOO_S, from, to, tt);
   if (run.deadT < 0.6) return;   // the freeze frame: only the goo so far
 
   const jitter = !run.quit && run.deadT < 0.9 ? (Math.random() - 0.5) * 5 : 0;
