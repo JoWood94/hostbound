@@ -644,7 +644,7 @@ export function drawDead(run) {
   drawDeathGoo(p.specimen, since / GOO_S, from, to, tt);
   // The words and buttons wait for the goo to land, then fade in, so the
   // glide never crosses them.
-  const ui = Math.min(1, Math.max(0, (since - GOO_S * 0.85) / 0.3));
+  const ui = Math.min(1, Math.max(0, (since - GOO_S * 0.65) / 0.2));   // starts with the goo ~90% there
   run.deadReady = ui > 0.5;   // main.js takes RETRY / MENU only from here on
   if (ui <= 0) return;
   ctx.save();
