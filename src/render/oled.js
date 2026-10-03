@@ -297,18 +297,19 @@ function tiedParts(list, cx, cy, R, k, slump) {
     if (e >= 0.995) continue;
     const x = cx + p.x * R * (1 - e), y = cy + p.y * R * (1 - e) + slump * R * e * (1 - e) * (1.2 - p.y * 0.3);
     const r = p.e * R * (0.55 + 0.45 * (1 - e));
-    capsule(cx, cy, x, y, r * 0.75); ctx.fill();
+    // the tie thins away as the part settles, so a fully grown body has none
+    const tie = r * 0.75 * clamp01(e * 4);
+    if (tie > 0.3) { capsule(cx, cy, x, y, tie); ctx.fill(); }
     drawPart(p, x, y, R, 1 - e);
   }
 }
 
 // timeline (u = 0..1): the melt and the fall start together
 const MELT = 0.42, LAND = 0.6, OUT0 = 0.7;
-export function drawLiquidMorph(genome, u, ax, ay, aR, bx, by, bR, t, premelted = false) {
+export function drawLiquidMorph(genome, u, ax, ay, aR, bx, by, bR, t) {
   const g = genome || FIRST_SPECIMEN;
   const { parts, eyes } = genomeParts(g, t);
-  // premelted: it starts as the pool drawMelt() ends on (RETRY from death)
-  const melt = premelted ? 1 : easeIO(clamp01(u / MELT));
+  const melt = easeIO(clamp01(u / MELT));
   const out = easeIO(clamp01((u - OUT0) / (1 - OUT0)));
   const q = clamp01(u / LAND);                               // the fall
   const fall = q * q * (1.6 - 0.6 * q);                      // eases off the menu, hits hard
@@ -384,13 +385,11 @@ export function drawLiquidMorph(genome, u, ax, ay, aR, bx, by, bR, t, premelted 
 }
 
 // ---------------------------------------------------------------------------
-// Rebirth (death screen -> RETRY or MENU). drawMelt: the dead goo rounds up
-// into a pool; the X eyes close back into green beads. It ends on exactly
-// the pool drawLiquidMorph(..., premelted) starts from, so RETRY can pour it
-// onto the track. drawReform: the pool glides to the menu spot and the new
-// genome grows out of it.
+// Death goo and rebirth. drawGoo: the dead alien slumps into a simmering
+// puddle. drawRegrow: RETRY / MENU turn that puddle into the NEXT specimen
+// (already grown, so its shape is known) in one continuous move.
 // ---------------------------------------------------------------------------
-const POOL = 0.72;   // pool radius / alien radius, as drawLiquidMorph starts
+const POOL = 0.72;   // goo mass radius / alien radius
 
 // The dead alien as goo: its parts slump and melt into one pink puddle
 // (k 0..1 over the collapse) that keeps simmering: a slow lumpy wobble,
@@ -408,6 +407,19 @@ function xEye(x, y, ir, xk = 1) {
   ctx.fillStyle = '#000';
   capsule(x - d, y - d, x + d, y + d, w); ctx.fill();
   capsule(x + d, y - d, x - d, y + d, w); ctx.fill();
+}
+// bubbles on the rim: swell, then pop (f scales them away)
+function gooBubbles(x, cy, Rs, sx, sy, t, f) {
+  for (let i = 0; i < 4; i++) {
+    const c = (t * 0.55 + i * 0.29) % 1, a = -Math.PI * (0.2 + i * 0.2);
+    const r = Rs * 0.26 * f * Math.sin(c * Math.PI) * (c < 0.92 ? 1 : 0);
+    if (r > 0.5) { ctx.beginPath(); ctx.arc(x + Math.cos(a) * Rs * sx * 0.82, cy + Math.sin(a) * Rs * sy * 0.82, r, 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+// where dead eye i of n drifts on the goo surface
+function gooEye(i, n, x, cy, Rs, sx, sy, t) {
+  return [x + gooEyeX(i, n, Rs, sx) + Math.sin(t * 0.8 + i * 2) * Rs * 0.08,
+    cy - Rs * sy * 0.15 + Math.sin(t * 1.1 + i * 1.7) * Rs * 0.07];
 }
 // shape of the puddle at blend b (0 = goo, 1 = round living pool)
 function gooBody(x, y, R, t, b, col, ph) {
@@ -432,16 +444,10 @@ export function drawGoo(genome, k, x, y, R, t) {
   const { Rs, sx, sy, cy } = gooBody(x, y, R * (0.5 + 0.5 * m), t, b, col, t * 1.3);
   ctx.fillStyle = col;
   if (m < 1) tiedParts(parts, x, y, R, m, 0.9);
-  // bubbles on the rim: swell, then pop
-  if (m > 0.6) for (let i = 0; i < 4; i++) {
-    const c = (t * 0.55 + i * 0.29) % 1, a = -Math.PI * (0.2 + i * 0.2);
-    const r = Rs * 0.26 * Math.sin(c * Math.PI) * (c < 0.92 ? 1 : 0);
-    if (r > 0.5) { ctx.beginPath(); ctx.arc(x + Math.cos(a) * Rs * sx * 0.82, cy + Math.sin(a) * Rs * sy * 0.82, r, 0, Math.PI * 2); ctx.fill(); }
-  }
+  if (m > 0.6) gooBubbles(x, cy, Rs, sx, sy, t, 1);
   // eyes: slide off the body and drift on the surface, as Xs
   eyes.forEach((p, i) => {
-    const gx = x + gooEyeX(i, eyes.length, Rs, sx) + Math.sin(t * 0.8 + i * 2) * Rs * 0.08;
-    const gy = cy - Rs * sy * 0.15 + Math.sin(t * 1.1 + i * 1.7) * Rs * 0.07;
+    const [gx, gy] = gooEye(i, eyes.length, x, cy, Rs, sx, sy, t);
     const ex = x + p.x * R + (gx - x - p.x * R) * m, ey = y + p.y * R + (gy - y - p.y * R) * m;
     xEye(ex, ey, p.r * R * (0.8 + 0.2 * (1 - m)));
   });
@@ -449,50 +455,53 @@ export function drawGoo(genome, k, x, y, R, t) {
   ctx.globalAlpha = DIM;
 }
 
-// RETRY / MENU: the goo comes alive. It rounds up into the pool that
-// drawLiquidMorph(..., premelted) and drawReform() start from; the Xs close
-// and the eyes surface as green beads.
-export function drawMelt(genome, u, x, y, R, t, ph0) {
-  const g = genome || FIRST_SPECIMEN;
-  const { eyes } = genomeParts(g, t);
-  const m = easeIO(clamp01(u));
-  ctx.save();
-  ctx.globalAlpha = DIM;
-  const { Rs, sx, sy, cy } = gooBody(x, y, R, t, m, SYM_BODY, ph0 * (1 - m));
-  eyes.forEach((p, i) => {
-    const gx = x + gooEyeX(i, eyes.length, Rs, sx) + Math.sin(t * 0.8 + i * 2) * Rs * 0.08 * (1 - m);
-    const gy = cy - Rs * sy * 0.15 + Math.sin(t * 1.1 + i * 1.7) * Rs * 0.07 * (1 - m);
-    const bx = x + p.x * Rs * 0.38, by = y + p.y * Rs * 0.3 - Rs * 0.1;   // the pool's beads
-    const ex = gx + (bx - gx) * m, ey = gy + (by - gy) * m, ir = p.r * R;
-    // the X closes and the iris shrinks to the pool's bead size
-    xEye(ex, ey, ir * (0.8 - 0.25 * m), 1 - clamp01(m * 1.6));
-  });
-  ctx.restore();
-  ctx.globalAlpha = DIM;
-}
-
-const GLIDE = 0.45, OUT1 = 0.35;
-export function drawReform(genome, u, ax, ay, aR, bx, by, bR, t) {
-  const g = genome || FIRST_SPECIMEN;
-  const { parts, eyes } = genomeParts(g, t);
-  const q = easeIO(clamp01(u / GLIDE));
-  const out = easeIO(clamp01((u - OUT1) / (1 - OUT1)));
-  const cx = ax + (bx - ax) * q, cy = ay + (by - ay) * q;
-  const vel = Math.sin(clamp01(u / GLIDE) * Math.PI);    // stretched along the glide
-  const R0 = aR * POOL, R1 = bR * POOL;
-  const Rm = R0 + (R1 - R0) * q;
-  const k = 1 - out;
+// RETRY / MENU: the goo becomes the next specimen in one continuous move.
+// The mass lifts off the floor and rounds up while it travels from the goo
+// (a = {x, y, R}, the drawGoo arguments) to the destination pose (b), and the
+// NEW genome's parts grow out of it on the way; the dead X eyes sink in as
+// the new eyes open with their slits. At u = 1 it is exactly what
+// drawSymbiote draws at b (same parts, same arm wave), so nothing pops.
+export function drawRegrow(oldG, newG, u, a, b, t) {
+  const old = genomeParts(oldG || FIRST_SPECIMEN, t).eyes;
+  const { parts, eyes } = genomeParts(newG || FIRST_SPECIMEN, t);
+  u = clamp01(u);
+  const q = easeIO(u);                                   // travel
+  const rb = 1 - (1 - clamp01(u / 0.45)) ** 3;          // goo -> round, eases out
+  const g = clamp01((u - 0.1) / 0.9);
+  const out = (1 - Math.cos(Math.PI * g)) / 2;           // new parts grow out, gently, all the way
+  const vel = 4 * u * (1 - u);                           // fastest mid-way
+  const travel = Math.min(1, Math.abs(b.y - a.y) / (a.R * 3));
+  const Rc = a.R + (b.R - a.R) * q;
+  const sx0 = GOO_SX + (1 - GOO_SX) * rb, sy0 = GOO_SY + (1 - GOO_SY) * rb;
+  const RsA = a.R * POOL;
+  const cy0 = a.y + RsA * (1 - sy0) * 0.9;               // the goo's centre, lifting
+  const cx = a.x + (b.x - a.x) * q, cy = cy0 + (b.y - cy0) * q;
+  const st = 1 + 0.3 * vel * travel;                     // stretched along the fall
+  const sx = sx0 / Math.sqrt(st), sy = sy0 * st;
+  const Rs = Rc * POOL * (0.2 + 0.8 * (1 - out * out));   // the mass holds while the parts come out
   ctx.save();
   ctx.globalAlpha = DIM;
   ctx.fillStyle = SYM_BODY;
-  if (k > 0.01) slime(cx, cy, Rm * (0.45 + 0.55 * k), 1 / Math.sqrt(1 + 0.25 * vel), 1 + 0.25 * vel, 0.09 + 0.12 * vel, u * 9);
-  if (out > 0) tiedParts(parts, bx, by, bR, 1 - out, 0);
-  for (const p of eyes) {
-    let px, py, ir;
-    if (out > 0) { px = bx + p.x * bR * out + p.x * R1 * 0.38 * (1 - out); py = by + p.y * bR * out + (p.y * R1 * 0.3 - R1 * 0.1) * (1 - out); ir = p.r * bR * (0.55 + 0.45 * out); }
-    else { px = cx + p.x * Rm * 0.38; py = cy + p.y * Rm * 0.3 - Rm * 0.1; ir = p.r * (aR + (bR - aR) * q) * 0.55; }
+  if (out < 0.97) slime(cx, cy, Rs, sx, sy, 0.13 - 0.04 * rb + 0.06 * vel, t * 1.3);
+  gooBubbles(cx, cy, Rs, sx, sy, t, 1 - clamp01(u / 0.25));
+  ctx.fillStyle = SYM_BODY;
+  // tiedParts speeds k up by 1.3 (made for melting); undo it so the parts
+  // grow along the gentle curve instead of popping out late
+  tiedParts(parts, cx, cy, Rc, (1 - out) / 1.3, 0);
+  // dead eyes ride the mass and sink in
+  const xk = 1 - clamp01(u / 0.45);
+  if (xk > 0.02) old.forEach((p, i) => {
+    const [gx, gy] = gooEye(i, old.length, cx, cy, Rs, sx, sy, t);
+    xEye(gx, gy, p.r * a.R * 0.8 * xk, xk);
+  });
+  // new eyes surface as beads while the Xs sink, then ride out with the body
+  const ek = clamp01((u - 0.12) / 0.4);
+  if (ek > 0.02) for (const p of eyes) {
+    const px = cx + p.x * Rc * out, py = cy + p.y * Rc * out;
+    const ir = p.r * Rc * ek * (0.6 + 0.4 * out);
     ctx.fillStyle = SYM_IRIS; ctx.beginPath(); ctx.arc(px, py, ir, 0, Math.PI * 2); ctx.fill();
-    if (out > 0.05) { const pw = ir * 0.7 * out, ph2 = ir * 0.22 * out; capsule(px - pw + ph2, py, px + pw - ph2, py, ph2); ctx.fillStyle = '#000'; ctx.fill(); }
+    const f = clamp01((out - 0.4) / 0.6);
+    if (f > 0.05) { const pw = ir * 0.7 * f, ph2 = ir * 0.22 * f; capsule(px - pw + ph2, py, px + pw - ph2, py, ph2); ctx.fillStyle = '#000'; ctx.fill(); }
   }
   ctx.restore();
   ctx.globalAlpha = DIM;

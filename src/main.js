@@ -8,7 +8,7 @@ import { drawFx, updateShake, shakeOffset, fxCount } from './render/fx.js';
 let layerDim = 1;
 import { drawPlayerBullets, drawEnemyBullets, enemyBullets, playerBullets, LOW } from './game/bullets.js';
 import { drawPlayer, drawPlayerDeath, symRadius } from './game/player.js';
-import { drawLiquidMorph } from './render/oled.js';
+import { drawLiquidMorph, drawRegrow } from './render/oled.js';
 import { drawEnemies, drawTelegraphs, spawnEnemy, enemies, look, drawCorpses } from './game/enemies.js';
 import { drawWorld, updateWorld } from './game/world.js';
 import { drawObstacles, spawnObstacle, obstacles } from './game/obstacles.js';
@@ -29,7 +29,7 @@ import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickIt
 import { drawHud } from './ui/hud.js';
 import { drawTutorial, finishTutorial } from './game/tutorial.js';
 import { makeSpecimen } from './render/specimen.js';
-import { MENU_SYM, menuBob, REBORN_S } from './ui/screens.js';
+import { MENU_SYM, menuBob, REGROW_S, regrowFade } from './ui/screens.js';
 import { randomSeed } from './core/rng.js';
 import { drawMenu, drawArchive, ARCH, archiveTab, archiveSelect, tickArchive, drawPick, drawPause, drawDead, END_HOLD } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
@@ -127,13 +127,6 @@ function toastBuild(r) {
   for (const f of fused) r.toasts.push({ text: f.name, sub: f.desc.slice(0, 60), color: PAL.magenta, t: 5, dur: 5 });
 }
 
-// RETRY / MENU from the death screen: the dead alien melts first.
-function rebirth(to) {
-  const p = run.deadPose || { x: W / 2, y: H / 2, R: 38, ph0: 0 };
-  run.reborn = { to, start: performance.now(), ...p };
-  sfx.select();
-}
-
 async function shareRun(r) {
   const url = `${location.origin}${location.pathname}`;
   const where = r.daily ? ` on the DAILY ${r.dailyKey}` : '';
@@ -152,11 +145,11 @@ function toggleSetting(id) {
   applySettings(audioSettings()); writeSave(save); sfx.select();
 }
 
-// From the death screen the menu alien re-forms out of the melted pool.
+// From the death screen the menu alien grows out of the goo (drawRegrow).
 let menuMorph = null;
-function toMenu() {
+function toMenu(morph = null) {
   screen = 'menu';
-  menuMorph = run && run.reborn ? { start: performance.now(), x: run.reborn.x, y: run.reborn.y - UI_OFFSET, R: run.reborn.R } : null;
+  menuMorph = morph;
   MENU_SYM.state = {};
   menuT = 0;   // the logo traces itself in again
   run = null;
@@ -266,20 +259,16 @@ function update(dt) {
     case 'dead':
       updateDead(run, dt);
       if (run.deadT > 0.8) {
-        const rb = run.reborn;
-        if (rb) {
-          // the dead alien has melted: pour it onto the track or back home
-          if (performance.now() - rb.start >= REBORN_S * 1000) {
-            if (rb.to === 'menu') toMenu();
-            else {
-              const old = run;
-              startRun(old.daily);
-              run.intro = { premelted: true, start: performance.now(), t0: 0, dur: 1.0, x0: rb.x, y0: rb.y, R0: rb.R };
-            }
-          }
-        } else if (id === 'retry' || id === 'enter' || input.jump) rebirth('retry');
-        else if (id === 'menu') rebirth('menu');
-        else if (id === 'share') shareRun(run);
+        // The goo becomes the next specimen (already grown, so its shape
+        // is known) in one move, onto the track or back to the menu spot.
+        const from = run.deadPose || { x: W / 2, y: H / 2, R: 50 }, oldG = run.player.specimen;
+        if (id === 'retry' || id === 'enter' || input.jump) {
+          startRun(run.daily);
+          run.intro = { regrow: true, start: performance.now(), dur: REGROW_S.retry, from, oldG };
+        } else if (id === 'menu') {
+          toMenu({ start: performance.now(), from: { ...from, y: from.y - UI_OFFSET }, oldG });
+          sfx.select();
+        } else if (id === 'share') shareRun(run);
       }
       break;
   }
@@ -303,8 +292,14 @@ function centred(fn) {
 // Timed on real time, so it is as smooth as the display refresh.
 function drawIntro(r) {
   const it = r.intro, p = r.player;
-  const u = Math.min(1, (performance.now() - it.start) / (it.dur * 1000));
-  drawLiquidMorph(p.specimen, u, it.x0, it.y0, it.R0, p.x, PLAYER_Y + 2, symRadius(p), it.t0, !!it.premelted);
+  const now = performance.now(), u = Math.min(1, (now - it.start) / (it.dur * 1000));
+  if (it.regrow) {
+    // RETRY: the death screen's black fades off the track while the goo
+    // becomes the next specimen at the run start
+    const f = regrowFade(u);
+    if (f > 0) { ctx.fillStyle = `rgba(0,0,0,${f})`; ctx.fillRect(0, 0, W, H); }
+    drawRegrow(it.oldG, p.specimen, u, it.from, { x: p.x, y: PLAYER_Y + 2, R: symRadius(p) }, now / 1000);
+  } else drawLiquidMorph(p.specimen, u, it.x0, it.y0, it.R0, p.x, PLAYER_Y + 2, symRadius(p), it.t0);
 }
 
 function render(alpha) {
@@ -352,12 +347,13 @@ function render(alpha) {
     drawHusks(r);
     setDim(1);
     drawEnemyBullets('low', alpha);   // low waves under the board: you jump over them
-    if (r.intro) drawIntro(r);
+    if (r.intro && !r.intro.regrow) drawIntro(r);
     else if (!r.player.dead) drawPlayer(r.player, alpha, r.stats);
     else drawPlayerDeath(r.player, r.deadT);
     drawEnemyBullets('high', alpha);  // normal enemy bullets always on top: readability rule
     drawBossBar(r.boss);
     drawHud(r);
+    if (r.intro && r.intro.regrow) drawIntro(r);   // over the HUD: its fade covers it too
     if (r.mode === 'play') drawTutorial(r);
     if (r.mode === 'pick') centred(() => drawPick(r));
     else if (r.mode === 'pause') drawPause(r, save);
