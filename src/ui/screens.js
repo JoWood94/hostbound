@@ -14,7 +14,7 @@ import { BOARDS } from '../game/boards.js';
 import { laneX, LANE_W } from '../game/world.js';
 import { ACHIEVEMENTS, rewardOf, unlockedItems, unlockedBoards } from '../game/achievements.js';
 import { heart } from './hud.js';
-import { drawSymbiote } from '../render/oled.js';
+import { drawSymbiote, drawGoo, drawMelt, drawReform } from '../render/oled.js';
 import { todayKey } from '../game/run.js';
 import { COMBOS, offerHints, activeCombos } from '../game/combos.js';
 import { version } from '../../package.json';
@@ -146,8 +146,11 @@ function drawLogo(t) {
 // the RUN transition can take over from exactly this pose.
 export const MENU_SYM = { y: 276, R: 46, state: {} };
 export const menuBob = (t) => Math.sin(t * 2) * 3;
+// Death screen -> RETRY / MENU: the dead alien melts for REBORN_S, then the
+// pool pours onto the track (RETRY) or glides to the menu spot (MENU_MORPH_S).
+export const REBORN_S = 0.55, MENU_MORPH_S = 0.9;
 
-export function drawMenu(save, t, boardIdx, specimen) {
+export function drawMenu(save, t, boardIdx, specimen, morph = null) {
   dim(0.55);
   drawLogo(t);
 
@@ -160,7 +163,9 @@ export function drawMenu(save, t, boardIdx, specimen) {
   }
   // The protagonist, big and free-floating, drawn live: this run's specimen.
   // On RUN it flies from here to the start of the run (main.js run.intro).
-  drawSymbiote(W / 2, MENU_SYM.y + menuBob(t), { R: MENU_SYM.R, bank: Math.sin(t * 0.8) * 0.12, t, hit: false, genome: specimen, state: MENU_SYM.state });
+  const mu = morph ? (performance.now() - morph.start) / (MENU_MORPH_S * 1000) : 1;
+  if (mu < 1) drawReform(specimen, mu, morph.x, morph.y, morph.R, W / 2, MENU_SYM.y + menuBob(t), MENU_SYM.R, t);
+  else drawSymbiote(W / 2, MENU_SYM.y + menuBob(t), { R: MENU_SYM.R, bank: Math.sin(t * 0.8) * 0.12, t, hit: false, genome: specimen, state: MENU_SYM.state });
 
   // One primary action; everything else is an outline.
   const bx = 48, bw = W - 96;
@@ -600,7 +605,7 @@ export function drawDead(run) {
   // Bottom block first, so the upper block can centre in what is left.
   const bx = 48, bw = W - 96, hw = (bw - 10) / 2;
   const py = bot - 62, ry = py - 64;
-  if (run.deadT > 0.8) {
+  if (run.deadT > 0.8 && !run.reborn) {
     button('retry', bx, ry, bw, 54, run.daily ? 'RETRY DAILY' : 'RETRY', { color: PINK, fill: true, size: 22 });
     button('menu', bx, py, hw, 44, 'MENU', { color: PAL.white, size: 14 });
     button('share', bx + hw + 10, py, hw, 44, run.shareMsg || 'SHARE', { color: PAL.acid, size: 14 });
@@ -610,7 +615,7 @@ export function drawDead(run) {
   const ids = Object.keys(run.stacks).filter((id) => ITEM_BY_ID[id]);
   const per = Math.floor((W - 40) / BUILD_CS);
   const unl = [...new Set(run.newUnlocks)];
-  const HEAD = 306;   // titles, distance, stats, the dead alien
+  const HEAD = 292;   // titles, distance, stats, the dead goo
   let rows = Math.ceil(ids.length / per);
   const bodyH = (r) => (ids.length ? 20 + r * BUILD_CS : 0) + (unl.length ? 30 + Math.min(unl.length, 6) * 18 : 0);
   while (rows > 1 && HEAD + bodyH(rows) > floor - top) rows--;
@@ -625,11 +630,16 @@ export function drawDead(run) {
   text(rec, W / 2, y0 + 150, { color: run.newBest || run.newDailyBest ? PAL.acid : PAL.mute, size: 12, align: 'center', font: 'display' });
   text(`${rs.kills} KILLS · ${rs.bosses} BOSSES · LV ${run.level}${run.daily ? ` · DAILY ${run.dailyKey}` : ''}`, W / 2, y0 + 176, { color: PAL.white, size: 10, align: 'center', font: 'display', maxW: W - 48 });
 
-  // This run's alien, dead: it keels over, drained, with X eyes.
-  run.deadSym = run.deadSym || {};
-  // Animated like the menu alien: it bobs and sways, just slower and limp.
-  const tt = performance.now() / 1000;
-  drawSymbiote(W / 2, y0 + 250 + Math.sin(tt * 1.1) * 5, { R: 38, bank: Math.sin(tt * 0.5) * 0.1, t: tt, hit: false, genome: run.player.specimen, state: run.deadSym, dead: true });
+  // This run's alien, dead: it collapses into a drained, simmering goo. On
+  // RETRY / MENU the goo comes alive again (main.js run.reborn).
+  const now = performance.now(), tt = now / 1000, rb = run.reborn;
+  run.gooStart = run.gooStart || now;
+  const gx = W / 2, gy = y0 + 250, gR = 50;
+  if (rb) drawMelt(run.player.specimen, Math.min(1, (now - rb.start) / (REBORN_S * 1000)), rb.x, rb.y, rb.R, tt, rb.ph0);
+  else {
+    drawGoo(run.player.specimen, (now - run.gooStart) / 900, gx, gy, gR, tt);
+    run.deadPose = { x: gx, y: gy, R: gR, ph0: tt * 1.3 };
+  }
 
   let y = y0 + HEAD;
   if (ids.length) {

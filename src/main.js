@@ -29,7 +29,7 @@ import { createRun, updateRun, updateDead, endRun, acquire, coveredLanes, pickIt
 import { drawHud } from './ui/hud.js';
 import { drawTutorial, finishTutorial } from './game/tutorial.js';
 import { makeSpecimen } from './render/specimen.js';
-import { MENU_SYM, menuBob } from './ui/screens.js';
+import { MENU_SYM, menuBob, REBORN_S } from './ui/screens.js';
 import { randomSeed } from './core/rng.js';
 import { drawMenu, drawArchive, ARCH, archiveTab, archiveSelect, tickArchive, drawPick, drawPause, drawDead, END_HOLD } from './ui/screens.js';
 import { unlockAudio, applySettings, sfx, suspendAudio, resumeAudio } from './audio/audio.js';
@@ -127,6 +127,13 @@ function toastBuild(r) {
   for (const f of fused) r.toasts.push({ text: f.name, sub: f.desc.slice(0, 60), color: PAL.magenta, t: 5, dur: 5 });
 }
 
+// RETRY / MENU from the death screen: the dead alien melts first.
+function rebirth(to) {
+  const p = run.deadPose || { x: W / 2, y: H / 2, R: 38, ph0: 0 };
+  run.reborn = { to, start: performance.now(), ...p };
+  sfx.select();
+}
+
 async function shareRun(r) {
   const url = `${location.origin}${location.pathname}`;
   const where = r.daily ? ` on the DAILY ${r.dailyKey}` : '';
@@ -145,8 +152,12 @@ function toggleSetting(id) {
   applySettings(audioSettings()); writeSave(save); sfx.select();
 }
 
+// From the death screen the menu alien re-forms out of the melted pool.
+let menuMorph = null;
 function toMenu() {
   screen = 'menu';
+  menuMorph = run && run.reborn ? { start: performance.now(), x: run.reborn.x, y: run.reborn.y - UI_OFFSET, R: run.reborn.R } : null;
+  MENU_SYM.state = {};
   menuT = 0;   // the logo traces itself in again
   run = null;
   setMusic('menu');
@@ -255,8 +266,19 @@ function update(dt) {
     case 'dead':
       updateDead(run, dt);
       if (run.deadT > 0.8) {
-        if (id === 'retry' || id === 'enter' || input.jump) startRun(run.daily);
-        else if (id === 'menu') toMenu();
+        const rb = run.reborn;
+        if (rb) {
+          // the dead alien has melted: pour it onto the track or back home
+          if (performance.now() - rb.start >= REBORN_S * 1000) {
+            if (rb.to === 'menu') toMenu();
+            else {
+              const old = run;
+              startRun(old.daily);
+              run.intro = { premelted: true, start: performance.now(), t0: 0, dur: 1.0, x0: rb.x, y0: rb.y, R0: rb.R };
+            }
+          }
+        } else if (id === 'retry' || id === 'enter' || input.jump) rebirth('retry');
+        else if (id === 'menu') rebirth('menu');
         else if (id === 'share') shareRun(run);
       }
       break;
@@ -282,7 +304,7 @@ function centred(fn) {
 function drawIntro(r) {
   const it = r.intro, p = r.player;
   const u = Math.min(1, (performance.now() - it.start) / (it.dur * 1000));
-  drawLiquidMorph(p.specimen, u, it.x0, it.y0, it.R0, p.x, PLAYER_Y + 2, symRadius(p), it.t0);
+  drawLiquidMorph(p.specimen, u, it.x0, it.y0, it.R0, p.x, PLAYER_Y + 2, symRadius(p), it.t0, !!it.premelted);
 }
 
 function render(alpha) {
@@ -293,7 +315,7 @@ function render(alpha) {
 
   if (screen === 'menu') {
     drawWorld(menuT * 6, -1);
-    centred(() => drawMenu(save, menuT, boardIdx, nextSpecimen));
+    centred(() => drawMenu(save, menuT, boardIdx, nextSpecimen, menuMorph));
   } else if (screen === 'archive') {
     tickArchive(pointer(), takeWheel());
     drawArchive(save);
